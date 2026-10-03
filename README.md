@@ -37,6 +37,10 @@ Bu proje; teknolojileri popüler oldukları için eklemek yerine şu temel mühe
 
 ## 2. Yüksek Seviyeli Sistem Mimarisi
 
+> **Önemli Mimari Ayrım (Orchestration vs Choreography)**:
+> Sistemde olaylar alt servisler tarafından aynı anda rastgele veya paralel olarak dinlenmez (**Koreografi değil**).
+> **`order-service` bir Orkestra Şefidir (Saga Orchestrator)**. Stok, Ödeme ve Kargo adımlarını Kafka üzerinden **sıra sıra (sequential)** ve çift yönlü olarak yönetir.
+
 ```text
                                   ┌─────────────────┐
                                   │     İstemci     │
@@ -55,30 +59,33 @@ Bu proje; teknolojileri popüler oldukları için eklemek yerine şu temel mühe
              │                             │                             │
              ▼                             ▼                             ▼
      ┌───────────────┐             ┌───────────────┐             ┌───────────────┐
-     │ Order Service │             │ Product       │             │ Customer      │
-     │  (Port: 8082) │             │ Service(8081) │             │ Service(8086) │
-     └───────┬───────┘             └───────────────┘             └───────────────┘
-             │
-             │ Domain Olayları (Orders Created / Confirmed / Cancelled)
-             ▼
-     ┌───────────────────────────────────────────────────────────────────┐
-     │                       Apache Kafka Backbone                       │
-     └───────┬─────────────────────────┬─────────────────────────┬───────┘
-             │                         │                         │
-             ▼                         ▼                         ▼
-       ┌───────────┐             ┌───────────┐             ┌───────────┐
-       │ Inventory │             │  Payment  │             │ Shipping  │
-       │  Service  │             │  Service  │             │  Service  │
-       │(Port: 8084)             │(Port: 8083)             │(Port: 8085)
-       └───────────┘             └───────────┘             └───────────┘
-             │                         │                         │
-             └─────────────────────────┼─────────────────────────┘
-                                       │
-                                       ▼
-                            ┌──────────────────────┐
-                            │ Notification Service │
-                            │     (Port: 8087)     │
-                            └──────────────────────┘
+     │ Product       │             │ Customer      │             │ Order Service │
+     │ Service(8081) │             │ Service(8086) │             │ (Port: 8082)  │
+     │ Redis Önbellek│             │ Profil / Adres│             │ [Saga Şefi]   │
+     └───────────────┘             └───────────────┘             └───────┬───────┘
+                                                                         │
+                  ┌──────────────────────────────────────────────────────┴──────────────────────┐
+                  │                 Apache Kafka Event Backbone                                 │
+                  │   Adım adım (sequential) çift yönlü orkestrasyon mesajlaşma akışı           │
+                  └───┬─────────────▲─────────────┬─────────────▲─────────────┬─────────────▲───┘
+                      │ (1)         │ (2)         │ (3)         │ (4)         │ (5)         │ (6)
+                      │ Stok        │ Stok        │ Ödeme       │ Ödeme       │ Kargo       │ Kargo
+                      │ Emri        │ Yanıtı      │ Emri        │ Yanıtı      │ Emri        │ Yanıtı
+                      ▼             │             ▼             │             ▼             │
+                ┌───────────────────┴─┐     ┌───────────────────┴─┐     ┌───────────────────┴─┐
+                │  Inventory Service  │     │   Payment Service   │     │  Shipping Service   │
+                │     (Port: 8084)    │     │     (Port: 8083)    │     │     (Port: 8085)    │
+                │  Stok Rezervasyonu  │     │  Tahsilat & Prov.   │     │  Kargo & Takip No   │
+                └─────────────────────┘     └─────────────────────┘     └─────────────────────┘
+                                                                                   │
+                                (Sipariş Onaylandı / İptal Olayı)                 │ (7)
+                                 orders.confirmed / orders.cancelled               │
+                                                                                   ▼
+                                                                        ┌─────────────────────┐
+                                                                        │Notification Service │
+                                                                        │     (Port: 8087)    │
+                                                                        │  E-posta / SMS Gönd.│
+                                                                        └─────────────────────┘
 ```
 
 ---
@@ -102,40 +109,54 @@ Bu proje; teknolojileri popüler oldukları için eklemek yerine şu temel mühe
 
 ## 4. Sipariş Saga Orkestrasyon Akışı (Saga Pattern)
 
-Sipariş işleme akışı `order-service` tarafından orkestre edilir. Her adım bir önceki adımın başarılı tamamlanmasıyla tetiklenir:
+Sipariş süreci **merkezi durum makinesi (State Machine)** ile `order-service` tarafından orkestre edilir. Her adım bir önceki adımın başarılı Kafka olayına istinaden tetiklenir:
 
 ```text
        [Müşteri Sipariş Talebi]
                   │
                   ▼
           ┌───────────────┐
-          │  Sipariş Aç   │ ──(orders.created)──► [Inventory Service]
-          │   (PENDING)   │                              │
-          └───────────────┘                    (inventory.reserved)
-                  │                                      │
-                  ▼                                      ▼
+          │  Sipariş Aç   │ ──(1. orders.created)────► [Inventory Service]
+          │   (PENDING)   │                                   │
+          └───────────────┘                                   ▼
+                  ▲                                   (Stok Rezerve Et)
+                  │                                           │
+                  │ ◄──(2. inventory.reserved)────────────────┘
+                  ▼
           ┌───────────────┐
-          │ Stok Rezerve  │ ──(reserve.payment)─► [Payment Service]
-          │  (RESERVED)   │                              │
-          └───────────────┘                     (payments.authorized)
-                  │                                      │
-                  ▼                                      ▼
+          │ Stok Rezerve  │ ──(3. payments.process)──► [Payment Service]
+          │(INV_RESERVED) │                                   │
+          └───────────────┘                                   ▼
+                  ▲                                   (Ödemeyi Tahsil Et)
+                  │                                           │
+                  │ ◄──(4. payments.authorized)───────────────┘
+                  ▼
           ┌───────────────┐
-          │ Ödeme Alındı  │ ──(create.shipping)─► [Shipping Service]
-          │ (AUTHORIZED)  │                              │
-          └───────────────┘                     (shipments.created)
-                  │                                      │
-                  ▼                                      ▼
+          │ Ödeme Alındı  │ ──(5. shipments.create)──► [Shipping Service]
+          │  (PAY_AUTH)   │                                   │
+          └───────────────┘                                   ▼
+                  ▲                                   (Kargo Takip No Aç)
+                  │                                           │
+                  │ ◄──(6. shipments.created)─────────────────┘
+                  ▼
           ┌───────────────┐
-          │  CONFIRMED    │ ──(orders.confirmed)─► [Notification Service]
-          │ (Tamamlandı)  │
+          │   CONFIRMED   │ ──(7. orders.confirmed)──► [Notification Service]
+          │ (Sipariş Tam) │                            (E-posta / SMS Gönderimi)
           └───────────────┘
 ```
 
-### Telafi İşlemleri (Compensating Transactions):
-- **Stok Rezerve Edilemezse**: Sipariş `INVENTORY_FAILED` -> `CANCELLED` durumuna geçer.
-- **Ödeme Alınamazsa**: Sipariş `PAYMENT_FAILED` -> `CANCELLED` olur; rezerve edilen stok serbest bırakılır (`inventory.released`).
-- **Kargo Başarısız Olursa**: Sipariş `SHIPPING_FAILED` -> `CANCELLED` olur; ödeme iade edilir (`payments.refunded`) ve stok serbest bırakılır.
+### Telafi İşlemleri (Compensating Transactions - Geri Alma Akışı):
+Hata anında yapılan işlemler geriye doğru adım adım telafi edilir:
+- **1. Adım Hatası (Stok Yoksa - `inventory.failed`)**: 
+  - Sipariş doğrudan `INVENTORY_FAILED` ➔ `CANCELLED` durumuna geçer. 
+  - Henüz ödeme alınmadığı ve kargo açılmadığı için geri alınacak başka bir işlem yoktur.
+- **2. Adım Hatası (Ödeme Başarısızsa - `payments.failed`)**: 
+  - Sipariş `PAYMENT_FAILED` ➔ `CANCELLED` durumuna geçer. 
+  - **Telafi**: Rezerve edilen stoğu rafa geri koymak için `inventory.released` olayı tetiklenir.
+- **3. Adım Hatası (Kargo Açılamazsa - `shipments.failed`)**: 
+  - Sipariş `SHIPPING_FAILED` ➔ `CANCELLED` durumuna geçer. 
+  - **1. Telafi**: Çekilen para müşteriye iade edilir (`payments.refunded`).
+  - **2. Telafi**: Rezerve edilen stok serbest bırakılır (`inventory.released`).
 
 ---
 
