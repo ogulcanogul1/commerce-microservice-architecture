@@ -12,6 +12,9 @@ import com.dgl.customer.exception.CustomerNotFoundException;
 import com.dgl.customer.exception.EmailAlreadyExistsException;
 import com.dgl.customer.repository.CustomerPreferencesRepository;
 import com.dgl.customer.repository.CustomerRepository;
+import com.dgl.customer.messaging.event.CustomerCreatedPayload;
+import com.dgl.customer.messaging.event.CustomerUpdatedPayload;
+import com.dgl.customer.outbox.OutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,6 +31,7 @@ public class CustomerServiceImpl implements CustomerService {
 
     private final CustomerRepository customerRepository;
     private final CustomerPreferencesRepository preferencesRepository;
+    private final OutboxService outboxService;
 
     @Override
     @Transactional
@@ -57,6 +61,23 @@ public class CustomerServiceImpl implements CustomerService {
         customer.setPreferences(preferences);
 
         Customer saved = customerRepository.save(customer);
+
+        outboxService.recordEvent(
+                "Customer",
+                saved.getId().toString(),
+                "CustomerCreated",
+                UUID.randomUUID(),
+                null,
+                new CustomerCreatedPayload(
+                        saved.getId(),
+                        saved.getEmail(),
+                        saved.getFirstName(),
+                        saved.getLastName(),
+                        saved.getPhoneNumber(),
+                        saved.getStatus().name()
+                )
+        );
+
         return mapToResponse(saved);
     }
 
@@ -74,6 +95,22 @@ public class CustomerServiceImpl implements CustomerService {
         if (request.status() != null) {
             customer.setStatus(request.status());
         }
+
+        outboxService.recordEvent(
+                "Customer",
+                customer.getId().toString(),
+                "CustomerUpdated",
+                UUID.randomUUID(),
+                null,
+                new CustomerUpdatedPayload(
+                        customer.getId(),
+                        customer.getEmail(),
+                        customer.getFirstName(),
+                        customer.getLastName(),
+                        customer.getPhoneNumber(),
+                        customer.getStatus().name()
+                )
+        );
 
         return mapToResponse(customer);
     }
