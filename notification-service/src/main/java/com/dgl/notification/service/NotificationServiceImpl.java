@@ -3,6 +3,7 @@ package com.dgl.notification.service;
 import com.dgl.notification.domain.*;
 import com.dgl.notification.dto.request.SendNotificationRequest;
 import com.dgl.notification.dto.response.NotificationResponse;
+import com.dgl.notification.exception.NotificationNotFoundException;
 import com.dgl.notification.repository.NotificationRepository;
 import com.dgl.notification.repository.ProcessedEventRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -72,7 +73,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public NotificationResponse getNotificationById(UUID id) {
         Notification notification = notificationRepository.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("Notification not found with ID: " + id));
+                .orElseThrow(() -> new NotificationNotFoundException(id));
         return mapToResponse(notification);
     }
 
