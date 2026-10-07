@@ -10,6 +10,10 @@ import com.dgl.product.dto.response.ProductResponse;
 import com.dgl.product.exception.CategoryNotFoundException;
 import com.dgl.product.exception.ProductAlreadyExistsException;
 import com.dgl.product.exception.ProductNotFoundException;
+import com.dgl.product.messaging.event.ProductCreatedPayload;
+import com.dgl.product.messaging.event.ProductDeletedPayload;
+import com.dgl.product.messaging.event.ProductUpdatedPayload;
+import com.dgl.product.outbox.OutboxService;
 import com.dgl.product.repository.CategoryRepository;
 import com.dgl.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +37,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final OutboxService outboxService;
 
     @Override
     @Transactional
@@ -73,6 +78,25 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Product savedProduct = productRepository.save(product);
+
+        outboxService.recordEvent(
+                "Product",
+                savedProduct.getId().toString(),
+                "ProductCreated",
+                UUID.randomUUID(),
+                null,
+                new ProductCreatedPayload(
+                        savedProduct.getId(),
+                        savedProduct.getSku(),
+                        savedProduct.getName(),
+                        savedProduct.getSlug(),
+                        savedProduct.getCategory().getId(),
+                        savedProduct.getBasePrice(),
+                        savedProduct.getCurrency(),
+                        savedProduct.getStatus().name()
+                )
+        );
+
         return mapToResponse(savedProduct);
     }
 
@@ -104,6 +128,23 @@ public class ProductServiceImpl implements ProductService {
                 product.getAttributes().add(attribute);
             }
         }
+
+        outboxService.recordEvent(
+                "Product",
+                product.getId().toString(),
+                "ProductUpdated",
+                UUID.randomUUID(),
+                null,
+                new ProductUpdatedPayload(
+                        product.getId(),
+                        product.getSku(),
+                        product.getName(),
+                        product.getCategory().getId(),
+                        product.getBasePrice(),
+                        product.getCurrency(),
+                        product.getStatus().name()
+                )
+        );
 
         return mapToResponse(product);
     }
@@ -150,6 +191,15 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
         product.setStatus(ProductStatus.ARCHIVED);
+
+        outboxService.recordEvent(
+                "Product",
+                product.getId().toString(),
+                "ProductDeleted",
+                UUID.randomUUID(),
+                null,
+                new ProductDeletedPayload(product.getId(), product.getSku())
+        );
     }
 
     private ProductResponse mapToResponse(Product product) {
