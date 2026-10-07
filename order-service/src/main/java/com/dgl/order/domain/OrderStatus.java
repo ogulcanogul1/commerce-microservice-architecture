@@ -1,0 +1,13 @@
+package com.dgl.order.domain;
+
+public enum OrderStatus {
+    PENDING,
+    INVENTORY_RESERVED,
+    PAYMENT_AUTHORIZED,
+    SHIPPING_CREATED,
+    CONFIRMED,
+    INVENTORY_FAILED,
+    PAYMENT_FAILED,
+    SHIPPING_FAILED,
+    CANCELLED
+}
