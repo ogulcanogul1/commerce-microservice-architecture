@@ -1,3 +1,96 @@
+server:
+  port: 8080
+
 spring:
   application:
     name: api-gateway
+  cloud:
+    gateway:
+      mvc:
+        routes:
+          - id: product-service-route
+            uri: ${SERVICES_PRODUCT_URL:http://localhost:8081}
+            predicates:
+              - Path=/api/v1/products/**, /api/v1/categories/**
+            filters:
+              - CircuitBreaker=productCircuitBreaker,forward:/fallback/product
+
+          - id: order-service-route
+            uri: ${SERVICES_ORDER_URL:http://localhost:8082}
+            predicates:
+              - Path=/api/v1/orders/**
+            filters:
+              - CircuitBreaker=orderCircuitBreaker,forward:/fallback/order
+
+          - id: payment-service-route
+            uri: ${SERVICES_PAYMENT_URL:http://localhost:8083}
+            predicates:
+              - Path=/api/v1/payments/**
+            filters:
+              - CircuitBreaker=paymentCircuitBreaker,forward:/fallback/payment
+
+          - id: inventory-service-route
+            uri: ${SERVICES_INVENTORY_URL:http://localhost:8084}
+            predicates:
+              - Path=/api/v1/inventory/**
+            filters:
+              - CircuitBreaker=inventoryCircuitBreaker,forward:/fallback/inventory
+
+          - id: shipping-service-route
+            uri: ${SERVICES_SHIPPING_URL:http://localhost:8085}
+            predicates:
+              - Path=/api/v1/shipments/**, /api/v1/shipping/**
+            filters:
+              - CircuitBreaker=shippingCircuitBreaker,forward:/fallback/shipping
+
+          - id: customer-service-route
+            uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
+            predicates:
+              - Path=/api/v1/customers/**
+            filters:
+              - CircuitBreaker=customerCircuitBreaker,forward:/fallback/customer
+
+          - id: notification-service-route
+            uri: ${SERVICES_NOTIFICATION_URL:http://localhost:8087}
+            predicates:
+              - Path=/api/v1/notifications/**
+            filters:
+              - CircuitBreaker=notificationCircuitBreaker,forward:/fallback/notification
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5000
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      productCircuitBreaker:
+        baseConfig: default
+      orderCircuitBreaker:
+        baseConfig: default
+      paymentCircuitBreaker:
+        baseConfig: default
+      inventoryCircuitBreaker:
+        baseConfig: default
+      shippingCircuitBreaker:
+        baseConfig: default
+      customerCircuitBreaker:
+        baseConfig: default
+      notificationCircuitBreaker:
+        baseConfig: default
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 3s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,circuitbreakers
+  endpoint:
+    health:
+      show-details: always
