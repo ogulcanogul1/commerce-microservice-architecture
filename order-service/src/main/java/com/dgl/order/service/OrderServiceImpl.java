@@ -12,6 +12,11 @@ import com.dgl.order.dto.response.OrderResponse;
 import com.dgl.order.dto.response.OrderSagaStateResponse;
 import com.dgl.order.exception.InvalidOrderStateException;
 import com.dgl.order.exception.OrderNotFoundException;
+import com.dgl.order.messaging.event.OrderCancelledPayload;
+import com.dgl.order.messaging.event.OrderConfirmedPayload;
+import com.dgl.order.messaging.event.OrderCreatedPayload;
+import com.dgl.order.messaging.event.OrderItemPayload;
+import com.dgl.order.outbox.OutboxService;
 import com.dgl.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,6 +37,7 @@ import java.util.UUID;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
+    private final OutboxService outboxService;
 
     @Override
     @Transactional
@@ -76,6 +82,30 @@ public class OrderServiceImpl implements OrderService {
         order.setSagaState(sagaState);
 
         Order saved = orderRepository.save(order);
+
+        List<OrderItemPayload> itemPayloads = order.getItems().stream()
+                .map(i -> new OrderItemPayload(i.getSku(), i.getProductName(), i.getUnitPrice(), i.getQuantity()))
+                .toList();
+
+        OrderCreatedPayload createdPayload = new OrderCreatedPayload(
+                saved.getId(),
+                saved.getOrderNumber(),
+                saved.getCustomerId(),
+                saved.getTotalAmount(),
+                saved.getCurrency(),
+                saved.getShippingAddress(),
+                itemPayloads
+        );
+
+        outboxService.recordEvent(
+                "Order",
+                saved.getId().toString(),
+                "OrderCreated",
+                saved.getCorrelationId(),
+                null,
+                createdPayload
+        );
+
         return mapToResponse(saved);
     }
 
@@ -122,6 +152,15 @@ public class OrderServiceImpl implements OrderService {
             order.getSagaState().setCurrentStep("ORDER_CANCELLED");
         }
 
+        outboxService.recordEvent(
+                "Order",
+                order.getId().toString(),
+                "OrderCancelled",
+                order.getCorrelationId(),
+                null,
+                new OrderCancelledPayload(order.getId(), order.getOrderNumber(), request.reason())
+        );
+
         return mapToResponse(order);
     }
 
@@ -134,6 +173,26 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(newStatus);
         if (failureReason != null) {
             order.setFailureReason(failureReason);
+        }
+
+        if (newStatus == OrderStatus.CONFIRMED) {
+            outboxService.recordEvent(
+                    "Order",
+                    order.getId().toString(),
+                    "OrderConfirmed",
+                    order.getCorrelationId(),
+                    null,
+                    new OrderConfirmedPayload(order.getId(), order.getOrderNumber(), order.getCustomerId(), order.getTotalAmount())
+            );
+        } else if (newStatus == OrderStatus.CANCELLED) {
+            outboxService.recordEvent(
+                    "Order",
+                    order.getId().toString(),
+                    "OrderCancelled",
+                    order.getCorrelationId(),
+                    null,
+                    new OrderCancelledPayload(order.getId(), order.getOrderNumber(), failureReason != null ? failureReason : "Order cancelled")
+            );
         }
 
         return mapToResponse(order);
