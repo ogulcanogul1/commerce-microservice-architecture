@@ -10,6 +10,10 @@ import com.dgl.shipping.dto.response.ShipmentResponse;
 import com.dgl.shipping.dto.response.TrackingResponse;
 import com.dgl.shipping.exception.InvalidShippingStateException;
 import com.dgl.shipping.exception.ShipmentNotFoundException;
+import com.dgl.shipping.messaging.event.ShipmentCancelledPayload;
+import com.dgl.shipping.messaging.event.ShipmentCreatedPayload;
+import com.dgl.shipping.messaging.event.ShipmentDeliveredPayload;
+import com.dgl.shipping.outbox.OutboxService;
 import com.dgl.shipping.repository.ShipmentEventRepository;
 import com.dgl.shipping.repository.ShipmentRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +34,7 @@ public class ShippingServiceImpl implements ShippingService {
 
     private final ShipmentRepository shipmentRepository;
     private final ShipmentEventRepository shipmentEventRepository;
+    private final OutboxService outboxService;
 
     @Override
     @Transactional
@@ -56,6 +61,24 @@ public class ShippingServiceImpl implements ShippingService {
         shipment.getEvents().add(initialEvent);
 
         Shipment saved = shipmentRepository.save(shipment);
+
+        outboxService.recordEvent(
+                "Shipment",
+                saved.getId().toString(),
+                "ShipmentCreated",
+                null,
+                null,
+                new ShipmentCreatedPayload(
+                        saved.getId(),
+                        saved.getOrderId(),
+                        saved.getTrackingNumber(),
+                        saved.getCarrier().name(),
+                        saved.getRecipientName(),
+                        saved.getDeliveryAddress(),
+                        saved.getEstimatedDelivery()
+                )
+        );
+
         return mapToResponse(saved);
     }
 
@@ -115,6 +138,22 @@ public class ShippingServiceImpl implements ShippingService {
                 .build();
         shipment.getEvents().add(event);
 
+        if (request.status() == ShipmentStatus.DELIVERED) {
+            outboxService.recordEvent(
+                    "Shipment",
+                    shipment.getId().toString(),
+                    "ShipmentDelivered",
+                    null,
+                    null,
+                    new ShipmentDeliveredPayload(
+                            shipment.getId(),
+                            shipment.getOrderId(),
+                            shipment.getTrackingNumber(),
+                            shipment.getActualDelivery()
+                    )
+            );
+        }
+
         return mapToResponse(shipment);
     }
 
@@ -138,6 +177,20 @@ public class ShippingServiceImpl implements ShippingService {
                 .location("Logistics Center")
                 .build();
         shipment.getEvents().add(event);
+
+        outboxService.recordEvent(
+                "Shipment",
+                shipment.getId().toString(),
+                "ShipmentCancelled",
+                null,
+                null,
+                new ShipmentCancelledPayload(
+                        shipment.getId(),
+                        shipment.getOrderId(),
+                        shipment.getTrackingNumber(),
+                        reason
+                )
+        );
 
         return mapToResponse(shipment);
     }
