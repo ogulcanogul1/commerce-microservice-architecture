@@ -193,11 +193,32 @@ cd ..
 
 ---
 
-## 7. Yapay Zeka Ajanları İçin Özel Yönergeler
+## 7. Git Commit Standartları ve Mesaj Formatı (Ayrıntılı ve Açıklayıcı)
+
+Tüm commit mesajları Conventional Commits standardına uygun olmalı; soyut veya genel ifadeler yerine eklenen bileşenlerin adlarını ve sorumluluklarını açıkça içermelidir:
+
+1. **DTO Commitleri**:
+   - Asla sadece `feat(<servis>): add dtos` yazılmaz.
+   - Hangi istek ve cevap DTO'larının eklendiği başlıkta ve gövdede listelenir.
+   - Örnek Başlık: `feat(product): add product and category dtos (Create/UpdateProduct, ProductResponse, CategoryResponse)`
+
+2. **Servis Katmanı Commitleri**:
+   - Asla sadece `feat(<servis>): add service layer` yazılmaz.
+   - Eklenen servis arayüzleri ve iş mantığı özellikleri listelenir.
+   - Örnek Başlık: `feat(product): add service layer (ProductService, CategoryService with slug generation)`
+
+3. **Entity ve Repository Commitleri**:
+   - Eklenen aggregate, entity ve repository arayüzleri açıkça belirtilir.
+   - Örnek Başlık: `feat(order): add domain entities (Order, OrderItem, OrderSagaState)`
+
+---
+
+## 8. Yapay Zeka Ajanları İçin Özel Yönergeler
 
 Bu repoda geliştirme yaparken:
 1. **Asla Monolit Kod Yazma**: Servis izolasyonunu koru. Bir servisin kodunu diğer servise asla import etme.
 2. **Her Zaman Doğrulama ve İstisna Yönetimi Ekle**: Bean Validation kullan ve hatalarda `ProblemDetails` dön.
 3. **Yinelenen Olayları Daima Yönet**: Kafka dinleyicilerine idempotent kontroller ekle.
 4. **Saga Durum Makinesine Tam Uyum Sağla**: `order-service` içindeki ara durumları atlama.
-5. **Servise Özel Kuralları İncele**: Bir serviste kod yazmadan önce o servisin dizinindeki `AGENTS.md` ve `CLAUDE.md` dosyalarını mutlaka oku.
+5. **Açıklayıcı Git Commit Mesajları Kullan**: Commit atarken 7. bölümdeki ayrıntılı commit kurallarına harfiyen uy.
+6. **Servise Özel Kuralları İncele**: Bir serviste kod yazmadan önce o servisin dizinindeki `AGENTS.md` ve `CLAUDE.md` dosyalarını mutlaka oku.

@@ -10,3 +10,4 @@ Tüm mimari standartlar, olay zarfı tanımları, port dağılımları ve kodlam
 - **Idempotency**: Her Kafka tüketicisi `(consumer_group, event_id)` kontrolü ile yinelenen mesajları eler. Ödemelerde `Idempotency-Key` zorunludur.
 - **Olay Formatı**: Tüm Kafka mesajları standart JSON zarfında (`eventId`, `eventType`, `aggregateId`, `aggregateType`, `timestamp`, `version`, `correlationId`, `causationId`, `payload`) olmalıdır.
 - **Portlar**: Gateway (8080), Product (8081), Order (8082), Payment (8083), Inventory (8084), Shipping (8085), Customer (8086), Notification (8087).
+- **Ayrıntılı Git Commit Mesajları**: Commit mesajlarında asla genel/soyut ifadeler (`add dtos`, `add service layer`) tek başına kullanılmamalıdır. Eklenen DTO sınıfları (ör. `CreateProductRequest`, `ProductResponse`), servisler (ör. `ProductService`, `CategoryService`) veya domain varlıkları başlıkta veya gövdede açıkça listelenmelidir.

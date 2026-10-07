@@ -66,6 +66,8 @@ cd <servis-dizini>; .\mvnw spring-boot:run; cd ..
    - DTO ve Event tanımları için Java 21 `record` kullanılmalıdır.
    - Jakarta Bean Validation zorunludur (`@Valid`, `@NotNull`, `@NotBlank`).
    - Hata cevapları RFC 7807 `ProblemDetails` standardında olmalıdır.
+7. **Ayrıntılı Git Commit Standartları**:
+   - Commit mesajlarında genel ve soyut başlıklar (`add dtos`, `add service layer`) yerine eklenen sınıfların ve servislerin isimleri açıkça belirtilmelidir (ör. `feat(product): add dtos (Create/UpdateProduct, ProductResponse)`, `feat(product): add service layer (ProductService, CategoryService)`).
 
 ---
 
