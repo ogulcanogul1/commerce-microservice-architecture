@@ -12,6 +12,10 @@ import com.dgl.inventory.exception.InsufficientStockException;
 import com.dgl.inventory.exception.InventoryNotFoundException;
 import com.dgl.inventory.repository.InventoryItemRepository;
 import com.dgl.inventory.repository.StockReservationRepository;
+import com.dgl.inventory.messaging.event.InventoryReleasedPayload;
+import com.dgl.inventory.messaging.event.InventoryReservedPayload;
+import com.dgl.inventory.messaging.event.ReservedItemPayload;
+import com.dgl.inventory.outbox.OutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +35,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final InventoryItemRepository inventoryRepository;
     private final StockReservationRepository reservationRepository;
+    private final OutboxService outboxService;
 
     @Override
     @Transactional
@@ -87,6 +92,20 @@ public class InventoryServiceImpl implements InventoryService {
         }
 
         List<StockReservation> savedReservations = reservationRepository.saveAll(reservations);
+
+        List<ReservedItemPayload> reservedPayloads = request.items().stream()
+                .map(i -> new ReservedItemPayload(i.sku(), i.quantity()))
+                .toList();
+
+        outboxService.recordEvent(
+                "Inventory",
+                request.orderId().toString(),
+                "InventoryReserved",
+                null,
+                null,
+                new InventoryReservedPayload(request.orderId(), reservedPayloads)
+        );
+
         return savedReservations.stream().map(this::mapReservationToResponse).toList();
     }
 
@@ -102,6 +121,17 @@ public class InventoryServiceImpl implements InventoryService {
                 res.setStatus(ReservationStatus.RELEASED);
                 res.setReleasedAt(Instant.now());
             }
+        }
+
+        if (!reservations.isEmpty()) {
+            outboxService.recordEvent(
+                    "Inventory",
+                    orderId.toString(),
+                    "InventoryReleased",
+                    null,
+                    null,
+                    new InventoryReleasedPayload(orderId, "Stock released by order workflow")
+            );
         }
     }
 
