@@ -12,6 +12,9 @@ import com.dgl.payment.exception.PaymentFailedException;
 import com.dgl.payment.exception.PaymentNotFoundException;
 import com.dgl.payment.repository.PaymentRefundRepository;
 import com.dgl.payment.repository.PaymentRepository;
+import com.dgl.payment.messaging.event.PaymentAuthorizedPayload;
+import com.dgl.payment.messaging.event.PaymentRefundedPayload;
+import com.dgl.payment.outbox.OutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +34,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final PaymentRefundRepository paymentRefundRepository;
+    private final OutboxService outboxService;
 
     @Override
     @Transactional
@@ -57,6 +61,23 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
 
         Payment saved = paymentRepository.save(payment);
+
+        outboxService.recordEvent(
+                "Payment",
+                saved.getId().toString(),
+                "PaymentAuthorized",
+                null,
+                null,
+                new PaymentAuthorizedPayload(
+                        saved.getId(),
+                        saved.getOrderId(),
+                        saved.getCustomerId(),
+                        saved.getAmount(),
+                        saved.getCurrency(),
+                        saved.getTransactionReference()
+                )
+        );
+
         return mapToResponse(saved);
     }
 
@@ -120,6 +141,22 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         PaymentRefund savedRefund = paymentRefundRepository.save(refund);
+
+        outboxService.recordEvent(
+                "Payment",
+                payment.getId().toString(),
+                "PaymentRefunded",
+                null,
+                null,
+                new PaymentRefundedPayload(
+                        payment.getId(),
+                        payment.getOrderId(),
+                        savedRefund.getAmount(),
+                        savedRefund.getRefundReference(),
+                        savedRefund.getRefundReason()
+                )
+        );
+
         return mapRefundToResponse(savedRefund);
     }
 
