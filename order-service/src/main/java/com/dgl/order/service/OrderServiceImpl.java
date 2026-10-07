@@ -1,0 +1,215 @@
+package com.dgl.order.service;
+
+import com.dgl.order.domain.Order;
+import com.dgl.order.domain.OrderItem;
+import com.dgl.order.domain.OrderSagaState;
+import com.dgl.order.domain.OrderStatus;
+import com.dgl.order.dto.request.CancelOrderRequest;
+import com.dgl.order.dto.request.CreateOrderItemRequest;
+import com.dgl.order.dto.request.CreateOrderRequest;
+import com.dgl.order.dto.response.OrderItemResponse;
+import com.dgl.order.dto.response.OrderResponse;
+import com.dgl.order.dto.response.OrderSagaStateResponse;
+import com.dgl.order.exception.InvalidOrderStateException;
+import com.dgl.order.exception.OrderNotFoundException;
+import com.dgl.order.repository.OrderRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class OrderServiceImpl implements OrderService {
+
+    private final OrderRepository orderRepository;
+
+    @Override
+    @Transactional
+    public OrderResponse createOrder(CreateOrderRequest request, UUID correlationId) {
+        UUID effectiveCorrelationId = correlationId != null ? correlationId : UUID.randomUUID();
+        String orderNumber = "ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<OrderItem> items = new ArrayList<>();
+
+        Order order = Order.builder()
+                .orderNumber(orderNumber)
+                .customerId(request.customerId())
+                .status(OrderStatus.PENDING)
+                .currency(request.currency() != null ? request.currency() : "TRY")
+                .shippingAddress(request.shippingAddress())
+                .correlationId(effectiveCorrelationId)
+                .items(items)
+                .build();
+
+        for (CreateOrderItemRequest itemReq : request.items()) {
+            BigDecimal subtotal = itemReq.unitPrice().multiply(BigDecimal.valueOf(itemReq.quantity()));
+            totalAmount = totalAmount.add(subtotal);
+
+            OrderItem item = OrderItem.builder()
+                    .order(order)
+                    .sku(itemReq.sku())
+                    .productName(itemReq.productName())
+                    .unitPrice(itemReq.unitPrice())
+                    .quantity(itemReq.quantity())
+                    .subtotal(subtotal)
+                    .build();
+            items.add(item);
+        }
+
+        order.setTotalAmount(totalAmount);
+
+        OrderSagaState sagaState = OrderSagaState.builder()
+                .order(order)
+                .currentStep("ORDER_CREATED")
+                .build();
+        order.setSagaState(sagaState);
+
+        Order saved = orderRepository.save(order);
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public OrderResponse getOrderById(UUID id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+        return mapToResponse(order);
+    }
+
+    @Override
+    public OrderResponse getOrderByOrderNumber(String orderNumber) {
+        Order order = orderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new OrderNotFoundException("Order not found with number: " + orderNumber));
+        return mapToResponse(order);
+    }
+
+    @Override
+    public Page<OrderResponse> getOrdersByCustomer(UUID customerId, Pageable pageable) {
+        return orderRepository.findByCustomerId(customerId, pageable)
+                .map(this::mapToResponse);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse cancelOrder(UUID id, CancelOrderRequest request) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return mapToResponse(order);
+        }
+
+        if (order.getStatus() == OrderStatus.CONFIRMED) {
+            throw new InvalidOrderStateException("Confirmed order cannot be cancelled directly via standard cancel endpoint");
+        }
+
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setFailureReason(request.reason());
+
+        if (order.getSagaState() != null) {
+            order.getSagaState().setFailureStep(order.getSagaState().getCurrentStep());
+            order.getSagaState().setFailureReason(request.reason());
+            order.getSagaState().setCurrentStep("ORDER_CANCELLED");
+        }
+
+        return mapToResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateOrderStatus(UUID id, OrderStatus newStatus, String failureReason) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        order.setStatus(newStatus);
+        if (failureReason != null) {
+            order.setFailureReason(failureReason);
+        }
+
+        return mapToResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateSagaStep(UUID id, String step, OrderStatus status, String failureReason) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        order.setStatus(status);
+        if (failureReason != null) {
+            order.setFailureReason(failureReason);
+        }
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setCurrentStep(step);
+            Instant now = Instant.now();
+            switch (step) {
+                case "INVENTORY_RESERVED" -> saga.setInventoryReservedAt(now);
+                case "PAYMENT_AUTHORIZED" -> saga.setPaymentAuthorizedAt(now);
+                case "SHIPPING_CREATED" -> saga.setShippingCreatedAt(now);
+                default -> {}
+            }
+            if (failureReason != null) {
+                saga.setFailureStep(step);
+                saga.setFailureReason(failureReason);
+            }
+        }
+
+        return mapToResponse(order);
+    }
+
+    private OrderResponse mapToResponse(Order order) {
+        List<OrderItemResponse> itemResponses = order.getItems() != null
+                ? order.getItems().stream()
+                .map(item -> new OrderItemResponse(
+                        item.getId(),
+                        item.getSku(),
+                        item.getProductName(),
+                        item.getUnitPrice(),
+                        item.getQuantity(),
+                        item.getSubtotal()
+                ))
+                .toList()
+                : Collections.emptyList();
+
+        OrderSagaStateResponse sagaResponse = null;
+        if (order.getSagaState() != null) {
+            OrderSagaState s = order.getSagaState();
+            sagaResponse = new OrderSagaStateResponse(
+                    s.getCurrentStep(),
+                    s.getInventoryReservedAt(),
+                    s.getPaymentAuthorizedAt(),
+                    s.getShippingCreatedAt(),
+                    s.getFailureStep(),
+                    s.getFailureReason()
+            );
+        }
+
+        return new OrderResponse(
+                order.getId(),
+                order.getOrderNumber(),
+                order.getCustomerId(),
+                order.getStatus(),
+                order.getTotalAmount(),
+                order.getCurrency(),
+                order.getShippingAddress(),
+                order.getFailureReason(),
+                order.getCorrelationId(),
+                itemResponses,
+                sagaResponse,
+                order.getCreatedAt(),
+                order.getUpdatedAt()
+        );
+    }
+}
