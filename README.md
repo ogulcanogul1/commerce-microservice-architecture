@@ -206,6 +206,10 @@ Başlatılan Servisler:
 - **Redis 7**: `localhost:6379`
 - **Apache Kafka (KRaft)**: `localhost:9092`
 - **Kafka UI**: `http://localhost:8090` (Mesajları ve topic'leri tarayıcıdan izleyebilirsiniz)
+- **Prometheus**: `http://localhost:9090` (Mikroservis Actuator metriklerini toplar)
+- **Grafana Tempo**: `localhost:3200` (HTTP: `4318`, gRPC: `4317` OTLP trace alıcıları)
+- **Grafana Loki**: `http://localhost:3100` (Yapısal log kümeleme)
+- **Grafana**: `http://localhost:3000` (`admin` / `admin`) - Önceden tanımlı gösterge panelleri (Dashboards)
 
 ### 6.2. Mikroservisleri Derleme ve Çalıştırma
 Her servis kendi bağımsız Maven Wrapper'ına sahiptir:
@@ -220,7 +224,53 @@ cd ..
 
 ---
 
-## 7. Geliştirici ve Yapay Zeka Ajan Kılavuzları
+## 7. Gözlemlenebilirlik, Dağıtık İzleme ve Loglama Mimarisi (LGTM Stack)
+
+Platform; **Prometheus (Metrikler)**, **Tempo (Dağıtık İzler)**, **Loki (Loglar)** ve **Grafana (Görselleştirme)** bileşenlerinden oluşan kurumsal seviyede bir gözlemlenebilirlik mimarisine sahiptir.
+
+```text
+  [HTTP İstek] ──► [API Gateway] ──(X-Correlation-Id)──► [Order Service] ──► [PostgreSQL (Outbox)]
+                         │                                       │
+                    OpenTelemetry                           traceparent
+                         │                                       ▼
+                         ▼                              [Kafka Header Enjeksiyonu]
+                 [Grafana Tempo] ◄────────────────────── [Kafka Tüketicisi Child Span]
+                         ▲
+                         │ (Derived Fields: TraceID ◄──► Logs)
+                         ▼
+                   [Grafana Loki] ◄── [Promtail] ◄── Container Console Logs
+                         ▲
+                         │
+                 [Grafana Dashboard] ◄── [Prometheus] ◄── 8x /actuator/prometheus
+```
+
+### 7.1. Dağıtık Outbox Trace Kopması ve Çözümü (The Outbox Trace Gap)
+- **Problem**: Geleneksel Spring Boot izlemesinde, HTTP isteği bittikten sonra veritabanındaki `outbox_events` tablosunu okuyan `@Scheduled` arka plan iş parçacığı ilk isteğin trace bağlamını kaybeder.
+- **Çözüm**:
+  1. `OutboxServiceImpl` aktif `Tracer` nesnesinden W3C `traceparent` (`00-{traceId}-{spanId}-01`), `correlationId` ve `causationId` bilgilerini yakalayarak `EventEnvelope` JSON payload'una kaydeder.
+  2. `OutboxPoller` bu değerleri Kafka `ProducerRecord` başlıklarına (`traceparent`, `X-Correlation-Id`, `X-Causation-Id`) enjekte eder.
+  3. Tüketici servislerde `factory.getContainerProperties().setObservationEnabled(true);` aktifleştirilerek gelen `traceparent` üzerinden otomatik **Child Span** başlatılır. Grafana Tempo'da tüm Saga adımları tek bir şelalede hiyerarşik olarak birleşir.
+
+### 7.2. Kesintisiz MDC Korelasyon Zinciri (Mapped Diagnostic Context)
+- **HTTP Filtresi**: Tüm downstream servislere eklenen `CorrelationIdFilter`, gelen `X-Correlation-Id` başlığını SLF4J `MDC`'ye yerleştirir ve cevap başlığında döndürür.
+- **Kafka Tüketici Interceptor'ı**: `KafkaConsumerConfig` içerisindeki `RecordInterceptor`, Kafka'dan gelen mesaj işlenmeye başlarken `X-Correlation-Id` başlığını otomatik olarak consumer thread'inin MDC'sine koyar ve işlem sonunda temizler.
+- **Log Formatı**: Konsol ve Loki logları `[%application,%traceId,%spanId,%correlationId]` deseniyle zenginleştirilir.
+
+### 7.3. Grafana Çift Yönlü Gezinme (Trace-to-Logs & Logs-to-Trace)
+- **Loki ➔ Tempo**: Loki log satırındaki `traceId` değeri `derivedFields` ile otomatik linke dönüştürülür; tıklandığında doğrudan Tempo'daki ilgili trace'i açar.
+- **Tempo ➔ Loki**: Tempo'da herhangi bir span incelenirken `tracesToLogsV2` butonu ile o servisin o zaman dilimindeki ilgili logları tek tıkla filtrelenir.
+- **NodeGraph**: Mikroservisler arası çağrı bağımlılık şeması Tempo üzerinde görsel olarak sunulur.
+
+### 7.4. Önceden Yapılandırılmış Grafana Paneli (`commerce-overview.json`)
+Grafana açıldığında (`http://localhost:3000`) hazır gelen panel şunları gerçek zamanlı gösterir:
+- Mikroservis bazında HTTP istek hacmi (req/s), p95 gecikmeler ve 5xx hata oranları.
+- **Saga Orkestrasyon Metrikleri**: Maksimum Saga tamamlanma süresi (`orders_saga_duration_seconds_max`), başarıyla biten ve telafi edilen/iptal olan siparişler.
+- **Transactional Outbox & Idempotency**: Yayınlanan outbox olayları ve yinelenen/engellenen kopya Kafka mesajları (`events_duplicate_ignored_total`).
+- Ödeme, stok rezervasyonu, kargo ve bildirim operasyonel sayaçları.
+
+---
+
+## 8. Geliştirici ve Yapay Zeka Ajan Kılavuzları
 
 Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Claude Code** ve **Cursor** gibi yapay zeka ajanları için yapılandırılmış kurallar bulunmaktadır:
 
@@ -231,5 +281,5 @@ Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Cla
 
 ---
 
-## 8. Lisans
+## 9. Lisans
 Bu proje açık kaynaklıdır ve eğitim/mühendislik referansı amacıyla geliştirilmiştir.
