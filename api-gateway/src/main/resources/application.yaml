@@ -14,6 +14,7 @@ spring:
               - Path=/api/v1/products/**, /api/v1/categories/**
             filters:
               - CircuitBreaker=productCircuitBreaker,forward:/fallback/product
+              - Retry=3
 
           - id: order-service-route
             uri: ${SERVICES_ORDER_URL:http://localhost:8082}
@@ -21,6 +22,7 @@ spring:
               - Path=/api/v1/orders/**
             filters:
               - CircuitBreaker=orderCircuitBreaker,forward:/fallback/order
+              - Retry=3
 
           - id: payment-service-route
             uri: ${SERVICES_PAYMENT_URL:http://localhost:8083}
@@ -28,6 +30,7 @@ spring:
               - Path=/api/v1/payments/**
             filters:
               - CircuitBreaker=paymentCircuitBreaker,forward:/fallback/payment
+              - Retry=3
 
           - id: inventory-service-route
             uri: ${SERVICES_INVENTORY_URL:http://localhost:8084}
@@ -35,6 +38,7 @@ spring:
               - Path=/api/v1/inventory/**
             filters:
               - CircuitBreaker=inventoryCircuitBreaker,forward:/fallback/inventory
+              - Retry=3
 
           - id: shipping-service-route
             uri: ${SERVICES_SHIPPING_URL:http://localhost:8085}
@@ -42,6 +46,7 @@ spring:
               - Path=/api/v1/shipments/**, /api/v1/shipping/**
             filters:
               - CircuitBreaker=shippingCircuitBreaker,forward:/fallback/shipping
+              - Retry=3
 
           - id: customer-service-route
             uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
@@ -49,6 +54,7 @@ spring:
               - Path=/api/v1/customers/**
             filters:
               - CircuitBreaker=customerCircuitBreaker,forward:/fallback/customer
+              - Retry=3
 
           - id: notification-service-route
             uri: ${SERVICES_NOTIFICATION_URL:http://localhost:8087}
@@ -56,6 +62,7 @@ spring:
               - Path=/api/v1/notifications/**
             filters:
               - CircuitBreaker=notificationCircuitBreaker,forward:/fallback/notification
+              - Retry=3
 
 resilience4j:
   circuitbreaker:
