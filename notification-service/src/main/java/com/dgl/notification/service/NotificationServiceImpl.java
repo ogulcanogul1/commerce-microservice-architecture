@@ -24,6 +24,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final ProcessedEventRepository processedEventRepository;
     private final Map<NotificationChannel, ChannelSender> senders;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.dgl.notification.config.NotificationMetrics notificationMetrics;
+
     public NotificationServiceImpl(
             NotificationRepository notificationRepository,
             ProcessedEventRepository processedEventRepository,
@@ -48,10 +51,16 @@ public class NotificationServiceImpl implements NotificationService {
 
         try {
             sender.send(request.recipient(), request.subject(), request.content());
+            if (notificationMetrics != null) {
+                notificationMetrics.incrementSent(request.channel());
+            }
         } catch (Exception ex) {
             log.error("Failed to send notification via {}: {}", request.channel(), ex.getMessage(), ex);
             status = NotificationStatus.FAILED;
             errorMessage = ex.getMessage();
+            if (notificationMetrics != null) {
+                notificationMetrics.incrementFailed(request.channel());
+            }
         }
 
         Notification notification = Notification.builder()

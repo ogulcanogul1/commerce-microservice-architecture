@@ -12,9 +12,17 @@ public record EventEnvelope<T>(
     int version,
     UUID correlationId,
     UUID causationId,
+    String traceparent,
     T payload
 ) {
-    public static <T> EventEnvelope<T> of(String eventType, String aggregateId, String aggregateType, UUID correlationId, UUID causationId, T payload) {
+    public static <T> EventEnvelope<T> of(
+            String eventType,
+            String aggregateId,
+            String aggregateType,
+            UUID correlationId,
+            UUID causationId,
+            String traceparent,
+            T payload) {
         return new EventEnvelope<>(
             UUID.randomUUID(),
             eventType,
@@ -24,7 +32,18 @@ public record EventEnvelope<T>(
             1,
             correlationId != null ? correlationId : UUID.randomUUID(),
             causationId,
+            traceparent,
             payload
         );
+    }
+
+    public static <T> EventEnvelope<T> of(
+            String eventType,
+            String aggregateId,
+            String aggregateType,
+            UUID correlationId,
+            UUID causationId,
+            T payload) {
+        return of(eventType, aggregateId, aggregateType, correlationId, causationId, null, payload);
     }
 }

@@ -15,7 +15,9 @@ import com.dgl.customer.repository.CustomerRepository;
 import com.dgl.customer.messaging.event.CustomerCreatedPayload;
 import com.dgl.customer.messaging.event.CustomerUpdatedPayload;
 import com.dgl.customer.outbox.OutboxService;
+import com.dgl.customer.config.CustomerMetrics;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,9 @@ public class CustomerServiceImpl implements CustomerService {
     private final CustomerRepository customerRepository;
     private final CustomerPreferencesRepository preferencesRepository;
     private final OutboxService outboxService;
+
+    @Autowired(required = false)
+    private CustomerMetrics customerMetrics;
 
     @Override
     @Transactional
@@ -78,6 +83,10 @@ public class CustomerServiceImpl implements CustomerService {
                 )
         );
 
+        if (customerMetrics != null) {
+            customerMetrics.incrementCreated();
+        }
+
         return mapToResponse(saved);
     }
 
@@ -111,6 +120,10 @@ public class CustomerServiceImpl implements CustomerService {
                         customer.getStatus().name()
                 )
         );
+
+        if (customerMetrics != null) {
+            customerMetrics.incrementUpdated();
+        }
 
         return mapToResponse(customer);
     }

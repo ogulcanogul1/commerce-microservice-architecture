@@ -39,6 +39,9 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final OutboxService outboxService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.dgl.order.config.OrderMetrics orderMetrics;
+
     @Override
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest request, UUID correlationId) {
@@ -105,6 +108,10 @@ public class OrderServiceImpl implements OrderService {
                 null,
                 createdPayload
         );
+
+        if (orderMetrics != null) {
+            orderMetrics.incrementOrdersCreated();
+        }
 
         return mapToResponse(saved);
     }
@@ -253,6 +260,9 @@ public class OrderServiceImpl implements OrderService {
                         null,
                         new OrderConfirmedPayload(order.getId(), order.getOrderNumber(), order.getCustomerId(), order.getTotalAmount())
                 );
+                if (orderMetrics != null) {
+                    orderMetrics.incrementOrdersConfirmed();
+                }
             } else {
                 order.setStatus(OrderStatus.INVENTORY_RESERVED);
                 saga.setCurrentStep("INVENTORY_RESERVED");
@@ -289,6 +299,10 @@ public class OrderServiceImpl implements OrderService {
                 null,
                 new OrderCancelledPayload(order.getId(), order.getOrderNumber(), finalReason)
         );
+
+        if (orderMetrics != null) {
+            orderMetrics.incrementOrdersCancelled();
+        }
     }
 
     @Override
@@ -316,6 +330,9 @@ public class OrderServiceImpl implements OrderService {
                         null,
                         new OrderConfirmedPayload(order.getId(), order.getOrderNumber(), order.getCustomerId(), order.getTotalAmount())
                 );
+                if (orderMetrics != null) {
+                    orderMetrics.incrementOrdersConfirmed();
+                }
             } else {
                 order.setStatus(OrderStatus.PAYMENT_AUTHORIZED);
                 saga.setCurrentStep("PAYMENT_AUTHORIZED");
@@ -352,6 +369,10 @@ public class OrderServiceImpl implements OrderService {
                 null,
                 new OrderCancelledPayload(order.getId(), order.getOrderNumber(), finalReason)
         );
+
+        if (orderMetrics != null) {
+            orderMetrics.incrementOrdersCancelled();
+        }
     }
 
     @Override

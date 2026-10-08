@@ -3,8 +3,10 @@ package com.dgl.customer.outbox;
 import com.dgl.customer.messaging.event.EventEnvelope;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,15 +21,21 @@ public class OutboxServiceImpl implements OutboxService {
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
 
+    @Autowired(required = false)
+    private Tracer tracer;
+
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public <T> void recordEvent(String aggregateType, String aggregateId, String eventType, UUID correlationId, UUID causationId, T payload) {
+        String traceparent = extractCurrentTraceparent();
+
         EventEnvelope<T> envelope = EventEnvelope.of(
                 eventType,
                 aggregateId,
                 aggregateType,
                 correlationId,
                 causationId,
+                traceparent,
                 payload
         );
 
@@ -48,5 +56,13 @@ public class OutboxServiceImpl implements OutboxService {
             log.error("Failed to serialize customer outbox event payload for eventType: {}", eventType, e);
             throw new IllegalStateException("Failed to serialize outbox event payload", e);
         }
+    }
+
+    private String extractCurrentTraceparent() {
+        if (tracer != null && tracer.currentSpan() != null) {
+            var context = tracer.currentSpan().context();
+            return "00-" + context.traceId() + "-" + context.spanId() + "-01";
+        }
+        return null;
     }
 }
