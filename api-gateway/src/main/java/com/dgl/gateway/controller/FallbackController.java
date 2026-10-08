@@ -1,5 +1,6 @@
 package com.dgl.gateway.controller;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.time.Instant;
 
+@Slf4j
 @RestController
 @RequestMapping("/fallback")
 public class FallbackController {
@@ -56,6 +58,7 @@ public class FallbackController {
     }
 
     private ResponseEntity<ProblemDetail> buildFallbackResponse(String serviceName, String typeUri) {
+        log.warn("Circuit breaker fallback triggered for service: {}", serviceName);
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 serviceName + " is currently unavailable or experiencing high latency. Circuit breaker is active."

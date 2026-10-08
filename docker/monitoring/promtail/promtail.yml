@@ -29,8 +29,5 @@ scrape_configs:
       - labels:
           level:
           app:
-          traceId:
-          spanId:
-          correlationId:
       - output:
           source: output
