@@ -24,4 +24,15 @@ public interface OrderService {
     OrderResponse updateOrderStatus(UUID id, OrderStatus newStatus, String failureReason);
 
     OrderResponse updateSagaStep(UUID id, String step, OrderStatus status, String failureReason);
+
+    void handleInventoryReserved(UUID orderId);
+
+    void handleInventoryFailed(UUID orderId, String reason);
+
+    void handlePaymentAuthorized(UUID orderId);
+
+    void handlePaymentFailed(UUID orderId, String reason);
+
+    void handleShipmentCreated(UUID orderId);
 }
+

@@ -228,6 +228,146 @@ public class OrderServiceImpl implements OrderService {
         return mapToResponse(order);
     }
 
+    @Override
+    @Transactional
+    public void handleInventoryReserved(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setInventoryReservedAt(Instant.now());
+            if (saga.getPaymentAuthorizedAt() != null) {
+                // Both inventory and payment succeeded -> Order Confirmed!
+                order.setStatus(OrderStatus.CONFIRMED);
+                saga.setCurrentStep("CONFIRMED");
+                outboxService.recordEvent(
+                        "Order",
+                        order.getId().toString(),
+                        "OrderConfirmed",
+                        order.getCorrelationId(),
+                        null,
+                        new OrderConfirmedPayload(order.getId(), order.getOrderNumber(), order.getCustomerId(), order.getTotalAmount())
+                );
+            } else {
+                order.setStatus(OrderStatus.INVENTORY_RESERVED);
+                saga.setCurrentStep("INVENTORY_RESERVED");
+            }
+        }
+    }
+
+    @Override
+    @Transactional
+    public void handleInventoryFailed(UUID orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+
+        String finalReason = reason != null ? reason : "Inventory reservation failed";
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setFailureReason(finalReason);
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setCurrentStep("INVENTORY_FAILED");
+            saga.setFailureStep("INVENTORY_RESERVED");
+            saga.setFailureReason(finalReason);
+        }
+
+        outboxService.recordEvent(
+                "Order",
+                order.getId().toString(),
+                "OrderCancelled",
+                order.getCorrelationId(),
+                null,
+                new OrderCancelledPayload(order.getId(), order.getOrderNumber(), finalReason)
+        );
+    }
+
+    @Override
+    @Transactional
+    public void handlePaymentAuthorized(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setPaymentAuthorizedAt(Instant.now());
+            if (saga.getInventoryReservedAt() != null) {
+                // Both inventory and payment succeeded -> Order Confirmed!
+                order.setStatus(OrderStatus.CONFIRMED);
+                saga.setCurrentStep("CONFIRMED");
+                outboxService.recordEvent(
+                        "Order",
+                        order.getId().toString(),
+                        "OrderConfirmed",
+                        order.getCorrelationId(),
+                        null,
+                        new OrderConfirmedPayload(order.getId(), order.getOrderNumber(), order.getCustomerId(), order.getTotalAmount())
+                );
+            } else {
+                order.setStatus(OrderStatus.PAYMENT_AUTHORIZED);
+                saga.setCurrentStep("PAYMENT_AUTHORIZED");
+            }
+        }
+    }
+
+    @Override
+    @Transactional
+    public void handlePaymentFailed(UUID orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+
+        String finalReason = reason != null ? reason : "Payment authorization failed";
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setFailureReason(finalReason);
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setCurrentStep("PAYMENT_FAILED");
+            saga.setFailureStep("PAYMENT_AUTHORIZED");
+            saga.setFailureReason(finalReason);
+        }
+
+        outboxService.recordEvent(
+                "Order",
+                order.getId().toString(),
+                "OrderCancelled",
+                order.getCorrelationId(),
+                null,
+                new OrderCancelledPayload(order.getId(), order.getOrderNumber(), finalReason)
+        );
+    }
+
+    @Override
+    @Transactional
+    public void handleShipmentCreated(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setShippingCreatedAt(Instant.now());
+            saga.setCurrentStep("SHIPPING_CREATED");
+        }
+        order.setStatus(OrderStatus.SHIPPING_CREATED);
+    }
+
     private OrderResponse mapToResponse(Order order) {
         List<OrderItemResponse> itemResponses = order.getItems() != null
                 ? order.getItems().stream()
