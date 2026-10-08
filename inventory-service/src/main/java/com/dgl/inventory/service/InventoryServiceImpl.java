@@ -63,7 +63,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = {InsufficientStockException.class, InventoryNotFoundException.class})
     public List<ReservationResponse> reserveStock(ReserveStockRequest request) {
         long ttlMinutes = request.ttlMinutes() != null ? request.ttlMinutes() : DEFAULT_TTL_MINUTES;
         Instant expiresAt = Instant.now().plus(Duration.ofMinutes(ttlMinutes));
