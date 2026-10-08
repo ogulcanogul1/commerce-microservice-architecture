@@ -2,7 +2,7 @@ package com.dgl.shipping.exception;
 
 import java.util.UUID;
 
-public class ShipmentNotFoundException extends RuntimeException {
+public class ShipmentNotFoundException extends BusinessRuleException {
 
     public ShipmentNotFoundException(UUID id) {
         super("Shipment not found with ID: " + id);

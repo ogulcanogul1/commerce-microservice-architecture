@@ -2,7 +2,7 @@ package com.dgl.order.exception;
 
 import java.util.UUID;
 
-public class OrderNotFoundException extends RuntimeException {
+public class OrderNotFoundException extends BusinessRuleException {
 
     public OrderNotFoundException(UUID id) {
         super("Order not found with ID: " + id);

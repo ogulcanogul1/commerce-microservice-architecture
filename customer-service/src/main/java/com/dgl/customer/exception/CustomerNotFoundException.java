@@ -2,7 +2,7 @@ package com.dgl.customer.exception;
 
 import java.util.UUID;
 
-public class CustomerNotFoundException extends RuntimeException {
+public class CustomerNotFoundException extends BusinessRuleException {
 
     public CustomerNotFoundException(UUID id) {
         super("Customer not found with ID: " + id);

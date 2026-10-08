@@ -45,6 +45,11 @@ public class KafkaConsumerConfig {
 
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate);
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3L));
+        errorHandler.addNotRetryableExceptions(
+                com.dgl.payment.exception.BusinessRuleException.class,
+                com.fasterxml.jackson.core.JsonProcessingException.class,
+                IllegalArgumentException.class
+        );
         factory.setCommonErrorHandler(errorHandler);
 
         return factory;

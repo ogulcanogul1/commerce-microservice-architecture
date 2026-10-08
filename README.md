@@ -270,7 +270,46 @@ Grafana açıldığında (`http://localhost:3000`) hazır gelen panel şunları 
 
 ---
 
-## 8. Geliştirici ve Yapay Zeka Ajan Kılavuzları
+## 8. Hata Sınıflandırma ve Dayanıklılık Mimarisi (Resilience & Error Categorization)
+
+Dağıtık sistemlerde her hataya körü körüne retry atmak bir felaket desenidir (**Retry Storm / Cascading Failure**). Platform genelinde tüm istisnalar iki temel köke ayrılmıştır:
+
+```text
+                                  ┌───────────────────────────┐
+                                  │   Commerce Exception      │
+                                  └─────────────┬─────────────┘
+                                                │
+                       ┌────────────────────────┴────────────────────────┐
+                       ▼                                                 ▼
+        [TransientException (Retryable)]                [BusinessRuleException (NonRetryable)]
+        • Sunucu kilitlenmesi / Socket Timeout          • 4xx İstemci Hataları (400, 404, 409)
+        • HTTP 503 / 504                                • Yetersiz Bakiye, Yetersiz Stok
+        • DB Deadlock / OptimisticLockException         • Bozuk JSON (Poison Pill)
+                       │                                                 │
+                       ▼                                                 ▼
+               【 RETRY PATTERN 】                               【 ASLA RETRY ATILMAZ! 】
+          (Exponential Backoff + Jitter)                                 │
+          (Resilience4j Circuit Breaker)            ┌────────────────────┼────────────────────┐
+                                                    ▼                    ▼                    ▼
+                                               [Fail-Fast]         [Saga Telafisi]      [Dead Letter]
+                                             (ProblemDetails)       (Compensate)        (Kafka .DLT)
+```
+
+### 8.1. Sınıflandırma Standartları
+- **`Retryable` Marker Interface**: Ağ parazitleri veya anlık kilitlenmeler gibi kendiliğinden düzelebilecek geçici altyapı hataları için kullanılır (`TransientException`).
+- **`NonRetryable` Marker Interface**: İş kuralı ihlalleri, doğrulama hataları ve kalıcı problemler için kullanılır (`BusinessRuleException`).
+
+### 8.2. Asenkron Kafka Hata Yönetimi (`DefaultErrorHandler`)
+- Kafka dinleyicilerinde `errorHandler.addNotRetryableExceptions(BusinessRuleException.class, JsonProcessingException.class, IllegalArgumentException.class)` yapılandırılmıştır.
+- Kalıcı bir hata veya bozuk JSON (Poison Pill) geldiğinde sistem 3 kez beklemeden **anında** mesajı `.DLT` kuyruğuna (ör. `orders.created.DLT`) aktarır; diğer sağlıklı mesajların işlenmesi asla tıkanmaz.
+
+### 8.3. Senkron REST / HTTP Dayanıklılığı
+- **4xx Hataları**: Asla retry edilmez, `GlobalExceptionHandler` üzerinden RFC 7807 `ProblemDetails` olarak fail-fast dönülür.
+- **5xx / Timeout**: Yalnızca idempotent işlemler için Exponential Backoff ile retry uygulanır; hata oranı eşiği aştığında Resilience4j Circuit Breaker devreyi açarak servisi korur.
+
+---
+
+## 9. Geliştirici ve Yapay Zeka Ajan Kılavuzları
 
 Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Claude Code** ve **Cursor** gibi yapay zeka ajanları için yapılandırılmış kurallar bulunmaktadır:
 
@@ -281,5 +320,5 @@ Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Cla
 
 ---
 
-## 9. Lisans
+## 10. Lisans
 Bu proje açık kaynaklıdır ve eğitim/mühendislik referansı amacıyla geliştirilmiştir.

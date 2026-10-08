@@ -222,3 +222,7 @@ Bu repoda geliştirme yaparken:
 4. **Saga Durum Makinesine Tam Uyum Sağla**: `order-service` içindeki ara durumları atlama.
 5. **Açıklayıcı Git Commit Mesajları Kullan**: Commit atarken 7. bölümdeki ayrıntılı commit kurallarına harfiyen uy.
 6. **Servise Özel Kuralları İncele**: Bir serviste kod yazmadan önce o servisin dizinindeki `AGENTS.md` ve `CLAUDE.md` dosyalarını mutlaka oku.
+7. **İstisna Sınıflandırma Standardı (Retryable vs NonRetryable)**:
+   - Yeni bir domain hatası eklerken mutlaka `BusinessRuleException` (ve dolayısıyla `NonRetryable`) veya `TransientException` (`Retryable`) türetilmelidir.
+   - 4xx ve iş kuralı ihlalleri (`BusinessRuleException`) ASLA retry edilmez; doğrudan fail-fast veya Saga telafi akışına yönlendirilir.
+   - Kafka tüketicilerinde `DefaultErrorHandler.addNotRetryableExceptions(...)` listesine kalıcı hatalar eklenmeli ve zehirli mesajlar gecikmeden `.DLT` kuyruğuna yönlendirilmelidir.

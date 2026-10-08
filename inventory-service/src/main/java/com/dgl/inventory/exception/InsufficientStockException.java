@@ -3,7 +3,7 @@ package com.dgl.inventory.exception;
 import lombok.Getter;
 
 @Getter
-public class InsufficientStockException extends RuntimeException {
+public class InsufficientStockException extends BusinessRuleException {
 
     private final String sku;
     private final int requested;

@@ -11,3 +11,5 @@ Tüm mimari standartlar, olay zarfı tanımları, port dağılımları ve kodlam
 - **Olay Formatı**: Tüm Kafka mesajları standart JSON zarfında (`eventId`, `eventType`, `aggregateId`, `aggregateType`, `timestamp`, `version`, `correlationId`, `causationId`, `payload`) olmalıdır.
 - **Portlar**: Gateway (8080), Product (8081), Order (8082), Payment (8083), Inventory (8084), Shipping (8085), Customer (8086), Notification (8087).
 - **Ayrıntılı Git Commit Mesajları**: Commit mesajlarında asla genel/soyut ifadeler (`add dtos`, `add service layer`) tek başına kullanılmamalıdır. Eklenen DTO sınıfları (ör. `CreateProductRequest`, `ProductResponse`), servisler (ör. `ProductService`, `CategoryService`) veya domain varlıkları başlıkta veya gövdede açıkça listelenmelidir.
+- **İstisna Sınıflandırma Standardı (Retryable vs NonRetryable)**: Yeni eklenen domain hataları `BusinessRuleException` (`NonRetryable`) veya `TransientException` (`Retryable`) hiyerarşisine uymalıdır. İş kuralları ve 4xx hataları asla retry edilmez; fail-fast veya Saga telafi adımları tetiklenir.
+

@@ -2,7 +2,7 @@ package com.dgl.payment.exception;
 
 import java.util.UUID;
 
-public class PaymentNotFoundException extends RuntimeException {
+public class PaymentNotFoundException extends BusinessRuleException {
 
     public PaymentNotFoundException(UUID id) {
         super("Payment not found with ID: " + id);
