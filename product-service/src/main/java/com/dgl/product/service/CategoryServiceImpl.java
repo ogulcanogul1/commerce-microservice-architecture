@@ -1,5 +1,6 @@
 package com.dgl.product.service;
 
+import com.dgl.product.config.RedisConfig;
 import com.dgl.product.domain.Category;
 import com.dgl.product.dto.request.CreateCategoryRequest;
 import com.dgl.product.dto.request.UpdateCategoryRequest;
@@ -8,6 +9,8 @@ import com.dgl.product.exception.CategoryAlreadyExistsException;
 import com.dgl.product.exception.CategoryNotFoundException;
 import com.dgl.product.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +33,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @CacheEvict(value = RedisConfig.CATEGORIES_CACHE, allEntries = true)
     public CategoryResponse createCategory(CreateCategoryRequest request) {
         if (categoryRepository.existsByName(request.name())) {
             throw new CategoryAlreadyExistsException("Category with name '" + request.name() + "' already exists");
@@ -59,6 +63,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @CacheEvict(value = RedisConfig.CATEGORIES_CACHE, allEntries = true)
     public CategoryResponse updateCategory(UUID id, UpdateCategoryRequest request) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new CategoryNotFoundException(id));
@@ -84,6 +89,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @Cacheable(value = RedisConfig.CATEGORIES_CACHE, key = "#id")
     public CategoryResponse getCategoryById(UUID id) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new CategoryNotFoundException(id));
@@ -91,6 +97,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @Cacheable(value = RedisConfig.CATEGORIES_CACHE, key = "#slug")
     public CategoryResponse getCategoryBySlug(String slug) {
         Category category = categoryRepository.findBySlug(slug)
                 .orElseThrow(() -> new CategoryNotFoundException("Category not found with slug: " + slug));
@@ -98,6 +105,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @Cacheable(value = RedisConfig.CATEGORIES_CACHE, key = "'all'")
     public List<CategoryResponse> getAllCategories() {
         return categoryRepository.findAll().stream()
                 .map(this::mapToResponse)
@@ -106,6 +114,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @CacheEvict(value = RedisConfig.CATEGORIES_CACHE, allEntries = true)
     public void deleteCategory(UUID id) {
         if (!categoryRepository.existsById(id)) {
             throw new CategoryNotFoundException(id);

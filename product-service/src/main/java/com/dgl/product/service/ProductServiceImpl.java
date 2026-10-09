@@ -17,10 +17,13 @@ import com.dgl.product.outbox.OutboxService;
 import com.dgl.product.repository.CategoryRepository;
 import com.dgl.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.dgl.product.config.RedisConfig;
 
 import java.text.Normalizer;
 import java.util.*;
@@ -41,6 +44,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {RedisConfig.PRODUCTS_CACHE, RedisConfig.PRODUCT_SLUGS_CACHE}, allEntries = true)
     public ProductResponse createProduct(CreateProductRequest request) {
         if (productRepository.existsBySku(request.sku())) {
             throw new ProductAlreadyExistsException("Product with SKU '" + request.sku() + "' already exists");
@@ -102,6 +106,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {RedisConfig.PRODUCTS_CACHE, RedisConfig.PRODUCT_SLUGS_CACHE}, allEntries = true)
     public ProductResponse updateProduct(UUID id, UpdateProductRequest request) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
@@ -150,6 +155,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = RedisConfig.PRODUCTS_CACHE, key = "#id")
     public ProductResponse getProductById(UUID id) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
@@ -157,6 +163,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = RedisConfig.PRODUCTS_CACHE, key = "#sku")
     public ProductResponse getProductBySku(String sku) {
         Product product = productRepository.findBySku(sku)
                 .orElseThrow(() -> new ProductNotFoundException("Product not found with SKU: " + sku));
@@ -164,6 +171,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = RedisConfig.PRODUCT_SLUGS_CACHE, key = "#slug")
     public ProductResponse getProductBySlug(String slug) {
         Product product = productRepository.findBySlug(slug)
                 .orElseThrow(() -> new ProductNotFoundException("Product not found with slug: " + slug));
@@ -187,6 +195,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {RedisConfig.PRODUCTS_CACHE, RedisConfig.PRODUCT_SLUGS_CACHE}, allEntries = true)
     public void deleteProduct(UUID id) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
