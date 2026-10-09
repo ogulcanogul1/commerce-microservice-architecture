@@ -19,6 +19,7 @@ import com.dgl.order.messaging.event.OrderItemPayload;
 import com.dgl.order.outbox.OutboxService;
 import com.dgl.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -387,6 +389,46 @@ public class OrderServiceImpl implements OrderService {
             saga.setCurrentStep("SHIPPING_CREATED");
         }
         order.setStatus(OrderStatus.SHIPPING_CREATED);
+    }
+
+    @Override
+    @Transactional
+    public void handleSagaTimeout(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.CONFIRMED) {
+            log.info("Order {} already in terminal state {}, skipping timeout cancellation", order.getId(), order.getStatus());
+            return;
+        }
+
+        String timeoutReason = "Saga execution timed out after waiting for intermediate step completion";
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setFailureReason(timeoutReason);
+
+        OrderSagaState saga = order.getSagaState();
+        if (saga != null) {
+            saga.setFailureStep(saga.getCurrentStep());
+            saga.setFailureReason(timeoutReason);
+            saga.setCurrentStep("SAGA_TIMEOUT");
+        }
+
+        outboxService.recordEvent(
+                "Order",
+                order.getId().toString(),
+                "OrderCancelled",
+                order.getCorrelationId(),
+                null,
+                new OrderCancelledPayload(order.getId(), order.getOrderNumber(), timeoutReason)
+        );
+
+        if (orderMetrics != null) {
+            orderMetrics.incrementOrdersCancelled();
+            orderMetrics.incrementSagaTimeouts();
+        }
+
+        log.warn("Order {} (number={}) timed out during saga execution and was cancelled. Compensation event emitted.",
+                order.getId(), order.getOrderNumber());
     }
 
     private OrderResponse mapToResponse(Order order) {

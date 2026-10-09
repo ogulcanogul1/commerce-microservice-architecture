@@ -21,5 +21,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     Page<Order> findByStatus(OrderStatus status, Pageable pageable);
 
+    java.util.List<Order> findByStatusInAndUpdatedAtBefore(java.util.Collection<OrderStatus> statuses, java.time.Instant threshold);
+
     boolean existsByOrderNumber(String orderNumber);
 }

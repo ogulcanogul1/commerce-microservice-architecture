@@ -264,4 +264,40 @@ class OrderServiceImplTest {
         assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("SHIPPING_CREATED");
         assertThat(sampleOrder.getSagaState().getShippingCreatedAt()).isNotNull();
     }
+
+    @Test
+    @DisplayName("handleSagaTimeout: Should cancel stuck order, update saga step to SAGA_TIMEOUT, and emit OrderCancelled outbox event")
+    void handleSagaTimeout_shouldCancelStuckOrderAndEmitCompensationEvent() {
+        sampleOrder.setStatus(OrderStatus.INVENTORY_RESERVED);
+        sampleOrder.getSagaState().setCurrentStep("INVENTORY_RESERVED");
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+
+        orderService.handleSagaTimeout(orderId);
+
+        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(sampleOrder.getFailureReason()).contains("Saga execution timed out");
+        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("SAGA_TIMEOUT");
+        assertThat(sampleOrder.getSagaState().getFailureStep()).isEqualTo("INVENTORY_RESERVED");
+
+        verify(outboxService).recordEvent(
+                eq("Order"),
+                eq(orderId.toString()),
+                eq("OrderCancelled"),
+                eq(sampleOrder.getCorrelationId()),
+                isNull(),
+                any(OrderCancelledPayload.class)
+        );
+    }
+
+    @Test
+    @DisplayName("handleSagaTimeout: Should do nothing if order is already CONFIRMED")
+    void handleSagaTimeout_shouldIgnoreIfAlreadyConfirmed() {
+        sampleOrder.setStatus(OrderStatus.CONFIRMED);
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+
+        orderService.handleSagaTimeout(orderId);
+
+        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        verify(outboxService, never()).recordEvent(any(), any(), any(), any(), any(), any());
+    }
 }

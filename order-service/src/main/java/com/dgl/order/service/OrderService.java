@@ -34,5 +34,7 @@ public interface OrderService {
     void handlePaymentFailed(UUID orderId, String reason);
 
     void handleShipmentCreated(UUID orderId);
+ 
+    void handleSagaTimeout(UUID orderId);
 }
 

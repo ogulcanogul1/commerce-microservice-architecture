@@ -16,6 +16,7 @@ public class OrderMetrics {
     private final Counter duplicateEventsCounter;
     private final Counter outboxPublishedCounter;
     private final Counter outboxFailedCounter;
+    private final Counter sagaTimeoutsCounter;
     private final Timer sagaDurationTimer;
 
     public OrderMetrics(MeterRegistry registry) {
@@ -46,6 +47,11 @@ public class OrderMetrics {
                 .description("Total number of outbox event publish failures")
                 .register(registry);
 
+        this.sagaTimeoutsCounter = Counter.builder("order.saga.timeouts.total")
+                .tag("service", "order-service")
+                .description("Total number of orders timed out during Saga execution")
+                .register(registry);
+
         this.sagaDurationTimer = Timer.builder("order.saga.duration")
                 .description("Execution duration of the entire order Saga workflow")
                 .register(registry);
@@ -57,5 +63,6 @@ public class OrderMetrics {
     public void incrementDuplicateEvents() { duplicateEventsCounter.increment(); }
     public void incrementOutboxPublished() { outboxPublishedCounter.increment(); }
     public void incrementOutboxFailed() { outboxFailedCounter.increment(); }
+    public void incrementSagaTimeouts() { sagaTimeoutsCounter.increment(); }
     public void recordSagaDuration(long durationMs) { sagaDurationTimer.record(durationMs, TimeUnit.MILLISECONDS); }
 }

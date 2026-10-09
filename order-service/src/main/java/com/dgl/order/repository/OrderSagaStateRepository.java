@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface OrderSagaStateRepository extends JpaRepository<OrderSagaState, UUID> {
 
     List<OrderSagaState> findByCurrentStep(String currentStep);
+
+    List<OrderSagaState> findByCurrentStepInAndUpdatedAtBefore(java.util.Collection<String> currentSteps, java.time.Instant threshold);
 }
