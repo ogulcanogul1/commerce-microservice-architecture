@@ -76,6 +76,55 @@ spring:
               - CircuitBreaker=notificationCircuitBreaker,forward:/fallback/notification
               - Retry=3
 
+          - id: product-service-docs
+            uri: ${SERVICES_PRODUCT_URL:http://localhost:8081}
+            predicates:
+              - Path=/v3/api-docs/product-service
+            filters:
+              - SetPath=/v3/api-docs
+
+          - id: order-service-docs
+            uri: ${SERVICES_ORDER_URL:http://localhost:8082}
+            predicates:
+              - Path=/v3/api-docs/order-service
+            filters:
+              - SetPath=/v3/api-docs
+
+          - id: payment-service-docs
+            uri: ${SERVICES_PAYMENT_URL:http://localhost:8083}
+            predicates:
+              - Path=/v3/api-docs/payment-service
+            filters:
+              - SetPath=/v3/api-docs
+
+          - id: inventory-service-docs
+            uri: ${SERVICES_INVENTORY_URL:http://localhost:8084}
+            predicates:
+              - Path=/v3/api-docs/inventory-service
+            filters:
+              - SetPath=/v3/api-docs
+
+          - id: shipping-service-docs
+            uri: ${SERVICES_SHIPPING_URL:http://localhost:8085}
+            predicates:
+              - Path=/v3/api-docs/shipping-service
+            filters:
+              - SetPath=/v3/api-docs
+
+          - id: customer-service-docs
+            uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
+            predicates:
+              - Path=/v3/api-docs/customer-service
+            filters:
+              - SetPath=/v3/api-docs
+
+          - id: notification-service-docs
+            uri: ${SERVICES_NOTIFICATION_URL:http://localhost:8087}
+            predicates:
+              - Path=/v3/api-docs/notification-service
+            filters:
+              - SetPath=/v3/api-docs
+
 resilience4j:
   circuitbreaker:
     configs:
@@ -139,4 +188,25 @@ rate-limiter:
   authenticated:
     limit: 60
     window-seconds: 60
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: 1. Ürün Kataloğu (Product Service)
+        url: /v3/api-docs/product-service
+      - name: 2. Sipariş Yönetimi (Order Service)
+        url: /v3/api-docs/order-service
+      - name: 3. Müşteri & Kimlik Doğrulama (Customer & Auth Service)
+        url: /v3/api-docs/customer-service
+      - name: 4. Ödeme Servisi (Payment Service)
+        url: /v3/api-docs/payment-service
+      - name: 5. Stok Servisi (Inventory Service)
+        url: /v3/api-docs/inventory-service
+      - name: 6. Kargo Servisi (Shipping Service)
+        url: /v3/api-docs/shipping-service
+      - name: 7. Bildirim Servisi (Notification Service)
+        url: /v3/api-docs/notification-service
 
