@@ -354,7 +354,70 @@ Platform genelinde mikroservisler arası güvenlik **Token-Based Edge Authentica
 
 ---
 
-## 10. Geliştirici ve Yapay Zeka Ajan Kılavuzları
+---
+
+## 10. Kurumsal Hazırlık ve Üretime Hazır Altyapı (Enterprise Production-Readiness)
+
+Platform; kurumsal üretim ortamlarının gereksinim duyduğu 6 kritik dayanıklılık, performans ve gözlemlenebilirlik desenine tam uyumludur:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        KURUMSAL ÜRETİME HAZIRLIK MİMARİSİ                              │
+├──────────────────────────┬──────────────────────────┬──────────────────────────────────┤
+│ 1. Redis Cache-Aside     │ 2. Saga Timeout Worker   │ 3. Redis Rate Limiter            │
+│ (product-service)        │ (order-service)          │ (api-gateway)                    │
+│ • Okuma Hızlandırma      │ • Askıda Sipariş Tespiti │ • Atomik Lua Token Bucket        │
+│ • Sıkı TTL (15-60 dk)    │ • Otomatik Telafi Tetik  │ • IP & User-Id Bazlı Kotalar     │
+│ • Invalidation Eviction  │ • orders.cancelled Olayı │ • 429 Too Many Requests          │
+├──────────────────────────┼──────────────────────────┼──────────────────────────────────┤
+│ 4. Flyway Migrations     │ 5. Merkezi Swagger UI    │ 6. Uçtan Uca Saga Testleri       │
+│ (7 Mikroservis)          │ (api-gateway)            │ (order-service)                  │
+│ • ddl-auto: validate     │ • /swagger-ui.html Hub   │ • Embedded Kafka Testleri        │
+│ • V1__init_schema.sql    │ • 7 Servis Dropdown Menü │ • Ödeme Reddi & Kargo Telafisi   │
+│ • Güvenli Şema Evrimi    │ • Bearer JWT Yetkilend.  │ • %100 Deterministik Doğrulama   │
+└──────────────────────────┴──────────────────────────┴──────────────────────────────────┘
+```
+
+### 10.1. Redis Cache-Aside Deseni (`product-service`)
+- **Trafik Ayrımı**: E-ticaret trafiğinin %95'ini oluşturan ürün ve kategori sorguları Redis önbelleğinden milisaniyeler içinde sunulur.
+- **TTL Stratejisi**: Ürünler için 15 dakika, kategoriler için 60 dakika TTL tanımlıdır.
+- **Önbellek Zehirlenmesi / Delinmesi (Penetration) Koruması**: `disableCachingNullValues()` ile var olmayan kayıtların önbelleğe doluşması engellenir.
+- **Aktif Geçersiz Kılma (Eviction)**: Bir ürün veya kategori güncellendiğinde, silindiğinde veya stok değiştiğinde `@CacheEvict(allEntries = true)` ile önbellek anında temizlenir.
+
+### 10.2. Saga Zaman Aşımı İşçisi (`OrderSagaTimeoutWorker` in `order-service`)
+- **Problem**: Asenkron dağıtık mimaride zehirli mesajlar `.DLT` kuyruğuna taşındığında veya alt servisler geçici olarak yanıt veremediğinde siparişlerin sonsuza dek `PENDING` kalması riski.
+- **Çözüm**: `@Scheduled(fixedDelay = 30000)` ile çalışan arka plan işçisi, SLA süresini (varsayılan 300 sn) aşan ve tamamlanmamış siparişleri tespit eder.
+- **Otomatik Telafi**: Sipariş `CANCELLED` yapılır, `failureReason = "SAGA_TIMEOUT"` atanır ve Outbox tablosuna `OrderCancelled` olayı basılarak rezerve edilmiş stokların (`inventory.released`) serbest bırakılması sağlanır. Prometheus metriği (`order_saga_timeout_total`) artırılır.
+
+### 10.3. Dağıtık Redis Token Bucket Rate Limiter (`api-gateway`)
+- **Atomik Lua Scripti**: Race condition oluşmadan Redis üzerinde kayan pencere (Sliding Window) sayaç algoritması çalıştırılır.
+- **Ayrık Kota Politikası**:
+  - **Anonim İstemciler**: IP adresi başına dakikada 10 istek.
+  - **Giriş Yapmış Müşteriler**: Kullanıcı ID'si (`X-User-Id` / JWT `sub`) başına dakikada 60 istek.
+- **Standart Yanıt**: Limit aşıldığında RFC 7807 uyumlu `429 Too Many Requests ProblemDetail` ve `Retry-After: 60` başlığı dönülür.
+- **Fail-Open Dayanıklılığı**: Redis geçici olarak kesilirse sistem trafiği bloke etmez, güvenlik logu yazarak fail-open modunda istekleri geçirmeye devam eder.
+
+### 10.4. Versiyonlu Veritabanı Migrasyonları (Flyway)
+- **Güvenli Şema Yönetimi**: Üretim ortamlarında `hibernate.ddl-auto: update` kullanımı yasaklanmış; yerine `hibernate.ddl-auto: validate` ve `flyway.enabled: true` devreye alınmıştır.
+- **V1 Şemaları**: Her mikroservisin kendi izole veritabanı için (`product_db`, `order_db`, `payment_db`, `inventory_db`, `shipping_db`, `customer_db`, `notification_db`) PostgreSQL DDL tabloları, birincil/yabancı anahtarlar ve B-Tree indeksler `V1__init_schema.sql` dosyalarında versiyonlanmıştır.
+
+### 10.5. Merkezi OpenAPI 3.0 & Swagger UI Portalı (`api-gateway`)
+- **Tek Noktadan API Keşfi**: Geliştiriciler ve entegratörler API Gateway üzerinden `http://localhost:8080/swagger-ui.html` adresine giderek tek bir arayüzden tüm mikroservislerin API dokümantasyonuna erişebilir.
+- **Canlı Şema Entegrasyonu**: Gateway, açılır menüdeki servis seçimlerine göre `/v3/api-docs/*` isteklerini ilgili mikroservise ters proxy ile yönlendirir.
+- **İnteraktif Güvenlik**: Tüm servislerde `BearerAuth` JWT güvenlik şeması tanımlıdır; `Authorize` butonuna token yapıştırılarak korumalı uç noktalar doğrudan Swagger üzerinden test edilebilir.
+
+### 10.6. Kapsamlı Saga Uçtan Uca Entegrasyon Testleri (`order-service`)
+- `@EmbeddedKafka` ile harici servis bağımlılığı olmadan izole ortamda 6 ana iş akışı test edilmektedir:
+  1. **Mutlu Yol (Happy Path)**: `inventory.reserved` + `payments.authorized` ➡️ Sipariş `CONFIRMED` ve Outbox'a `OrderConfirmed` yazılır.
+  2. **Stok Başarısızlığı Telafisi**: `inventory.failed` ➡️ Sipariş `CANCELLED` ve `OrderCancelled` outbox olayı üretilir.
+  3. **Ödeme Başarısızlığı Telafisi**: Stok rezerve edildikten sonra `payments.failed` gelir ➡️ Sipariş `CANCELLED` olur ve stok iadesi için telafi olayı tetiklenir.
+  4. **Kullanıcı/İptal Emri Telafisi**: Müşteri rezervasyon aşamasında iptal ettiğinde telafi zinciri yürütülür.
+  5. **Tam Yaşam Döngüsü**: Sipariş onayından sonra `shipments.created` olayı ile `SHIPPING_CREATED` durumuna geçiş doğrulanır.
+  6. **Kesin İdempotency**: Kafka'dan gelen kopya olaylar tespit edilip güvenle yok sayılır.
+
+---
+
+## 11. Geliştirici ve Yapay Zeka Ajan Kılavuzları
 
 Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Claude Code** ve **Cursor** gibi yapay zeka ajanları için yapılandırılmış kurallar bulunmaktadır:
 
@@ -365,5 +428,5 @@ Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Cla
 
 ---
 
-## 11. Lisans
+## 12. Lisans
 Bu proje açık kaynaklıdır ve eğitim/mühendislik referansı amacıyla geliştirilmiştir.
