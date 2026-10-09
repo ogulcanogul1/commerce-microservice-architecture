@@ -34,7 +34,7 @@ public class OutboxEvent {
     private String type;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(nullable = false, columnDefinition = "jsonb")
+    @Column(nullable = false)
     private String payload;
 
     @Enumerated(EnumType.STRING)

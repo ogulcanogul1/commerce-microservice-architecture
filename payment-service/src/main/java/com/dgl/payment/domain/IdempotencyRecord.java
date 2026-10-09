@@ -32,7 +32,7 @@ public class IdempotencyRecord {
     private String requestHash;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "response_payload", columnDefinition = "jsonb")
+    @Column(name = "response_payload")
     private String responsePayload;
 
     @Enumerated(EnumType.STRING)

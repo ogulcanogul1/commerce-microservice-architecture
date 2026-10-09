@@ -48,7 +48,7 @@ public class Shipment {
     private String recipientName;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "delivery_address", nullable = false, columnDefinition = "jsonb")
+    @Column(name = "delivery_address", nullable = false)
     private String deliveryAddress;
 
     @Column(name = "estimated_delivery")

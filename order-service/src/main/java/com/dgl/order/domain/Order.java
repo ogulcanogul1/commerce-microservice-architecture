@@ -50,7 +50,7 @@ public class Order {
     private String currency = "TRY";
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "shipping_address", nullable = false, columnDefinition = "jsonb")
+    @Column(name = "shipping_address", nullable = false)
     private String shippingAddress;
 
     @Column(name = "failure_reason", columnDefinition = "TEXT")
