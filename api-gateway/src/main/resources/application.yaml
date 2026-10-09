@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   cloud:
     gateway:
       mvc:
@@ -126,4 +130,13 @@ logging:
 security:
   jwt:
     secret: ${JWT_SECRET:dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure}
+
+rate-limiter:
+  enabled: true
+  anonymous:
+    limit: 10
+    window-seconds: 60
+  authenticated:
+    limit: 60
+    window-seconds: 60
 
