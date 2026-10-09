@@ -309,7 +309,52 @@ Dağıtık sistemlerde her hataya körü körüne retry atmak bir felaket deseni
 
 ---
 
-## 9. Geliştirici ve Yapay Zeka Ajan Kılavuzları
+## 9. Kimlik Doğrulama ve Güvenlik Mimarisi (Authentication & Edge Security)
+
+Platform genelinde mikroservisler arası güvenlik **Token-Based Edge Authentication & Token Relay** deseniyle sağlanır:
+
+```text
+                  ┌────────────────────────────────────────────────────────┐
+                  │                 İSTEMCİ (Web / Mobil)                  │
+                  └───────────────┬────────────────────────┬───────────────┘
+                                  │                        │
+         1. Normal / OAuth2 Login │                        │ 2. İstekler (Bearer JWT)
+         (POST /api/v1/auth/...)  │                        │
+                                  ▼                        ▼
+                      ┌─────────────────────────────────────────┐
+                      │               API GATEWAY               │
+                      │  - JWT İmza ve Süre Doğrulama           │
+                      │  - Public Whitelist (/auth, GET /prod)  │
+                      │  - Claims Propagation:                  │
+                      │    (X-User-Id, X-User-Roles Header Ekle)│
+                      └───────────┬────────────────────────┬────┘
+                                  │                        │
+            /api/v1/auth/**       │                        │ /api/v1/orders/**
+                                  ▼                        ▼
+                      ┌──────────────────────┐   ┌──────────────────────┐
+                      │   CUSTOMER SERVICE   │   │    ORDER SERVICE     │
+                      │  (Kimlik & Auth Sağl.)│   │ (X-User-Id Header ile│
+                      │  - BCrypt Şifreleme  │   │  kullanıcıyı tanır)  │
+                      │  - JWT & Refresh Üret│   └──────────────────────┘
+                      │  - OAuth2 Entegrasyon│
+                      └──────────────────────┘
+```
+
+### 9.1. Kimlik ve Token Yönetimi (`customer-service`)
+- **Normal Giriş (Password-Based)**: `POST /api/v1/auth/login` (BCrypt hash karşılaştırması, 15 dk Access Token + 7 gün Refresh Token üretimi).
+- **Kullanıcı Kaydı (Register)**: `POST /api/v1/auth/register` (ACID veritabanı işleminde müşteri profili + kimlik bilgileri oluşturulur, Outbox olayı fırlatılır).
+- **Token Yenileme (Refresh)**: `POST /api/v1/auth/refresh` (Süresi biten access token yeni bir token ile yenilenir).
+- **OAuth2 / Sosyal Giriş (Google / GitHub)**: `POST /api/v1/auth/oauth2` (OAuth2 profil bilgileri alınır, varsa müşteriyle eşleştirilir, yoksa otomatik müşteri oluşturulup platform JWT'si üretilir).
+
+### 9.2. Edge Security ve Token Relay (`api-gateway`)
+- **Public Rotalar (Anonim Erişim)**: `/api/v1/auth/**`, `GET /api/v1/products/**`, `GET /api/v1/categories/**`, `/actuator/**`, `/fallback/**`.
+- **Korumalı Rotalar**: `/api/v1/orders/**`, `/api/v1/payments/**`, `/api/v1/customers/**` için geçerli `Bearer <JWT>` zorunludur.
+- **Claims Propagation**: Gateway JWT'yi doğruladıktan sonra token içindeki `sub` (User ID), `email` ve `role` bilgilerini ayıklayarak downstream servislere `X-User-Id`, `X-User-Email` ve `X-User-Roles` başlıkları olarak aktarır.
+- **Hata Yanıtları**: Geçersiz veya eksik token durumlarında RFC 7807 uyumlu `401 Unauthorized ProblemDetail` dönülür.
+
+---
+
+## 10. Geliştirici ve Yapay Zeka Ajan Kılavuzları
 
 Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Claude Code** ve **Cursor** gibi yapay zeka ajanları için yapılandırılmış kurallar bulunmaktadır:
 
@@ -320,5 +365,5 @@ Bu depoda insan geliştiricilerin yanı sıra **Antigravity**, **Gemini**, **Cla
 
 ---
 
-## 10. Lisans
+## 11. Lisans
 Bu proje açık kaynaklıdır ve eğitim/mühendislik referansı amacıyla geliştirilmiştir.

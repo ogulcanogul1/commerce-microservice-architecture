@@ -23,14 +23,39 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+                            response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
+
+                            org.springframework.http.ProblemDetail problem = org.springframework.http.ProblemDetail.forStatusAndDetail(
+                                    org.springframework.http.HttpStatus.UNAUTHORIZED,
+                                    "Authentication is required to access this resource"
+                            );
+                            problem.setTitle("Unauthorized");
+                            problem.setType(java.net.URI.create("https://api.commerce.com/errors/unauthorized"));
+                            problem.setProperty("timestamp", java.time.Instant.now().toString());
+
+                            new tools.jackson.databind.ObjectMapper().writeValue(response.getWriter(), problem);
+                        })
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/actuator/**",
                                 "/fallback/**",
+                                "/api/v1/auth/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.GET,
                                 "/api/v1/products/**",
                                 "/api/v1/categories/**"
                         ).permitAll()
-                        .anyRequest().permitAll() // Allow downstream routes during development; ready for JWT Resource Server
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+                        .anyRequest().authenticated()
                 );
 
         return http.build();

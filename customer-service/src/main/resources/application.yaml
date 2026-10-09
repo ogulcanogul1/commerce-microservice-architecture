@@ -26,6 +26,12 @@ outbox:
   poller:
     interval-ms: 1000
 
+security:
+  jwt:
+    secret: ${JWT_SECRET:dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure}
+    access-token-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
+    refresh-token-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
+
 management:
   endpoints:
     web:

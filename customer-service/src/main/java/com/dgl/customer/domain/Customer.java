@@ -38,6 +38,22 @@ public class Customer {
     @Column(name = "phone_number", length = 30)
     private String phoneNumber;
 
+    @Column(name = "password_hash")
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private Role role = Role.ROLE_CUSTOMER;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider", nullable = false, length = 30)
+    @Builder.Default
+    private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    @Column(name = "provider_id", length = 150)
+    private String providerId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     @Builder.Default

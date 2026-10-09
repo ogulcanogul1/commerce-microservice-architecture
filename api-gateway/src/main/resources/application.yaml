@@ -56,6 +56,14 @@ spring:
               - CircuitBreaker=customerCircuitBreaker,forward:/fallback/customer
               - Retry=3
 
+          - id: auth-service-route
+            uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
+            predicates:
+              - Path=/api/v1/auth/**
+            filters:
+              - CircuitBreaker=customerCircuitBreaker,forward:/fallback/customer
+              - Retry=3
+
           - id: notification-service-route
             uri: ${SERVICES_NOTIFICATION_URL:http://localhost:8087}
             predicates:
@@ -114,4 +122,8 @@ management:
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%15.15t] [${spring.application.name:},%X{traceId:-},%X{spanId:-},%X{correlationId:-}] %-40.40logger{39} : %m%n"
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure}
 

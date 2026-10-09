@@ -27,6 +27,16 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler({InvalidCredentialsException.class, InvalidTokenException.class})
+    public ProblemDetail handleUnauthorizedException(RuntimeException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setTitle("Unauthorized");
+        problem.setType(URI.create("https://api.commerce.com/errors/unauthorized"));
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ProblemDetail handleConflictException(RuntimeException ex) {
         log.warn("Resource already exists: {}", ex.getMessage());

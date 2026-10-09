@@ -13,4 +13,6 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     Optional<Customer> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    Optional<Customer> findByAuthProviderAndProviderId(com.dgl.customer.domain.AuthProvider authProvider, String providerId);
 }
