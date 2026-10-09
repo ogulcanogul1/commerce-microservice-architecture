@@ -186,6 +186,172 @@ class OrderSagaIntegrationTest {
         });
     }
 
+    @Test
+    @DisplayName("Saga Compensating Path: payments.failed after inventory.reserved -> Order becomes CANCELLED and compensation outbox event emitted")
+    void sagaCompensatingPath_paymentFailedAfterInventoryReserved_shouldCancelOrder() throws Exception {
+        com.dgl.order.dto.response.OrderResponse order = createTestOrder();
+        UUID orderId = order.id();
+
+        // 1. Stock reserved successfully
+        UUID invEventId = UUID.randomUUID();
+        Map<String, Object> invEnvelope = Map.of(
+                "eventId", invEventId.toString(),
+                "eventType", "InventoryReserved",
+                "aggregateId", orderId.toString(),
+                "aggregateType", "Inventory",
+                "timestamp", Instant.now().toString(),
+                "version", 1,
+                "correlationId", order.correlationId().toString(),
+                "payload", Map.of("orderId", orderId.toString(), "items", List.of())
+        );
+        kafkaTemplate.send("inventory.reserved", objectMapper.writeValueAsString(invEnvelope));
+
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            Order updated = orderRepository.findById(orderId).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(OrderStatus.INVENTORY_RESERVED);
+        });
+
+        // 2. Payment fails (e.g. card declined / insufficient balance)
+        UUID payFailEventId = UUID.randomUUID();
+        Map<String, Object> payFailEnvelope = Map.of(
+                "eventId", payFailEventId.toString(),
+                "eventType", "PaymentFailed",
+                "aggregateId", UUID.randomUUID().toString(),
+                "aggregateType", "Payment",
+                "timestamp", Instant.now().toString(),
+                "version", 1,
+                "correlationId", order.correlationId().toString(),
+                "payload", Map.of(
+                        "orderId", orderId.toString(),
+                        "reason", "Insufficient customer account balance"
+                )
+        );
+        kafkaTemplate.send("payments.failed", objectMapper.writeValueAsString(payFailEnvelope));
+
+        // 3. Verify order transitions to CANCELLED, saga step is PAYMENT_FAILED, and compensation outbox event is created
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            Order updated = orderRepository.findById(orderId).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+            assertThat(updated.getSagaState().getCurrentStep()).isEqualTo("PAYMENT_FAILED");
+            assertThat(updated.getFailureReason()).contains("Insufficient customer account balance");
+
+            boolean cancelledOutboxExists = outboxEventRepository.findAll().stream()
+                    .anyMatch(e -> "OrderCancelled".equals(e.getType()) && orderId.toString().equals(e.getAggregateId()));
+            assertThat(cancelledOutboxExists).isTrue();
+        });
+    }
+
+    @Test
+    @DisplayName("Saga Full Lifecycle: inventory.reserved + payments.authorized -> shipments.created -> Order advances to SHIPPING_CREATED")
+    void sagaFullLifecycle_inventoryReserved_paymentAuthorized_shipmentCreated() throws Exception {
+        com.dgl.order.dto.response.OrderResponse order = createTestOrder();
+        UUID orderId = order.id();
+
+        // 1. Stock reserved
+        UUID invEventId = UUID.randomUUID();
+        Map<String, Object> invEnvelope = Map.of(
+                "eventId", invEventId.toString(),
+                "eventType", "InventoryReserved",
+                "aggregateId", orderId.toString(),
+                "aggregateType", "Inventory",
+                "timestamp", Instant.now().toString(),
+                "version", 1,
+                "correlationId", order.correlationId().toString(),
+                "payload", Map.of("orderId", orderId.toString(), "items", List.of())
+        );
+        kafkaTemplate.send("inventory.reserved", objectMapper.writeValueAsString(invEnvelope));
+
+        // 2. Payment authorized
+        UUID payEventId = UUID.randomUUID();
+        Map<String, Object> payEnvelope = Map.of(
+                "eventId", payEventId.toString(),
+                "eventType", "PaymentAuthorized",
+                "aggregateId", UUID.randomUUID().toString(),
+                "aggregateType", "Payment",
+                "timestamp", Instant.now().toString(),
+                "version", 1,
+                "correlationId", order.correlationId().toString(),
+                "payload", Map.of(
+                        "paymentId", UUID.randomUUID().toString(),
+                        "orderId", orderId.toString(),
+                        "customerId", order.customerId().toString(),
+                        "amount", order.totalAmount(),
+                        "currency", "TRY"
+                )
+        );
+        kafkaTemplate.send("payments.authorized", objectMapper.writeValueAsString(payEnvelope));
+
+        // Await confirmation
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            Order updated = orderRepository.findById(orderId).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        });
+
+        // 3. Shipment created event
+        UUID shipEventId = UUID.randomUUID();
+        Map<String, Object> shipEnvelope = Map.of(
+                "eventId", shipEventId.toString(),
+                "eventType", "ShipmentCreated",
+                "aggregateId", UUID.randomUUID().toString(),
+                "aggregateType", "Shipment",
+                "timestamp", Instant.now().toString(),
+                "version", 1,
+                "correlationId", order.correlationId().toString(),
+                "payload", Map.of(
+                        "orderId", orderId.toString(),
+                        "trackingNumber", "TRK-987654321",
+                        "carrier", "Yurtici Kargo"
+                )
+        );
+        kafkaTemplate.send("shipments.created", objectMapper.writeValueAsString(shipEnvelope));
+
+        // Await shipment step recorded in saga state and status advanced to SHIPPING_CREATED
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            Order updated = orderRepository.findById(orderId).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(OrderStatus.SHIPPING_CREATED);
+            assertThat(updated.getSagaState().getCurrentStep()).isEqualTo("SHIPPING_CREATED");
+            assertThat(updated.getSagaState().getShippingCreatedAt()).isNotNull();
+        });
+    }
+
+    @Test
+    @DisplayName("Saga Compensating Path: User cancels order while INVENTORY_RESERVED -> Order becomes CANCELLED with compensation outbox event")
+    void sagaCompensatingPath_userCancelsWhileInventoryReserved_shouldCancelAndEmitCompensation() throws Exception {
+        com.dgl.order.dto.response.OrderResponse order = createTestOrder();
+        UUID orderId = order.id();
+
+        // 1. Stock reserved
+        UUID invEventId = UUID.randomUUID();
+        Map<String, Object> invEnvelope = Map.of(
+                "eventId", invEventId.toString(),
+                "eventType", "InventoryReserved",
+                "aggregateId", orderId.toString(),
+                "aggregateType", "Inventory",
+                "timestamp", Instant.now().toString(),
+                "version", 1,
+                "correlationId", order.correlationId().toString(),
+                "payload", Map.of("orderId", orderId.toString(), "items", List.of())
+        );
+        kafkaTemplate.send("inventory.reserved", objectMapper.writeValueAsString(invEnvelope));
+
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            Order updated = orderRepository.findById(orderId).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(OrderStatus.INVENTORY_RESERVED);
+        });
+
+        // 2. User cancels order
+        orderService.cancelOrder(orderId, new com.dgl.order.dto.request.CancelOrderRequest("Customer requested cancellation"));
+
+        // 3. Verify order is CANCELLED and compensation outbox event is created
+        Order updated = orderRepository.findById(orderId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(updated.getFailureReason()).isEqualTo("Customer requested cancellation");
+
+        boolean cancelledOutboxExists = outboxEventRepository.findAll().stream()
+                .anyMatch(e -> "OrderCancelled".equals(e.getType()) && orderId.toString().equals(e.getAggregateId()));
+        assertThat(cancelledOutboxExists).isTrue();
+    }
+
     private com.dgl.order.dto.response.OrderResponse createTestOrder() {
         com.dgl.order.dto.request.CreateOrderRequest request = new com.dgl.order.dto.request.CreateOrderRequest(
                 UUID.randomUUID(),
