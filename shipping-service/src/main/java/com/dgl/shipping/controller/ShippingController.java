@@ -1,10 +1,17 @@
 package com.dgl.shipping.controller;
 
+import com.dgl.shipping.cqrs.CommandBus;
+import com.dgl.shipping.cqrs.QueryBus;
+import com.dgl.shipping.cqrs.command.CancelShipmentCommand;
+import com.dgl.shipping.cqrs.command.CreateShipmentCommand;
+import com.dgl.shipping.cqrs.command.UpdateShipmentStatusCommand;
+import com.dgl.shipping.cqrs.query.GetShipmentByIdQuery;
+import com.dgl.shipping.cqrs.query.GetShipmentByOrderIdQuery;
+import com.dgl.shipping.cqrs.query.TrackShipmentQuery;
 import com.dgl.shipping.dto.request.CreateShipmentRequest;
 import com.dgl.shipping.dto.request.UpdateShipmentStatusRequest;
 import com.dgl.shipping.dto.response.ShipmentResponse;
 import com.dgl.shipping.dto.response.TrackingResponse;
-import com.dgl.shipping.service.ShippingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -23,7 +30,8 @@ import java.util.UUID;
 @Tag(name = "Shipping", description = "Endpoints for dispatching shipments, tracking parcels, and updating delivery status")
 public class ShippingController {
 
-    private final ShippingService shippingService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Create shipment", description = "Initiates parcel shipment and generates tracking number")
@@ -32,7 +40,7 @@ public class ShippingController {
             @ApiResponse(responseCode = "400", description = "Invalid shipment details")
     })
     public ResponseEntity<ShipmentResponse> createShipment(@Valid @RequestBody CreateShipmentRequest request) {
-        ShipmentResponse response = shippingService.createShipment(request);
+        ShipmentResponse response = commandBus.execute(new CreateShipmentCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -43,7 +51,8 @@ public class ShippingController {
             @ApiResponse(responseCode = "404", description = "Shipment not found")
     })
     public ResponseEntity<ShipmentResponse> getShipmentById(@PathVariable UUID id) {
-        return ResponseEntity.ok(shippingService.getShipmentById(id));
+        ShipmentResponse response = queryBus.execute(new GetShipmentByIdQuery(id));
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/order/{orderId}")
@@ -53,7 +62,8 @@ public class ShippingController {
             @ApiResponse(responseCode = "404", description = "Shipment not found")
     })
     public ResponseEntity<ShipmentResponse> getShipmentByOrderId(@PathVariable UUID orderId) {
-        return ResponseEntity.ok(shippingService.getShipmentByOrderId(orderId));
+        ShipmentResponse response = queryBus.execute(new GetShipmentByOrderIdQuery(orderId));
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/track/{trackingNumber}")
@@ -63,7 +73,8 @@ public class ShippingController {
             @ApiResponse(responseCode = "404", description = "Tracking number not found")
     })
     public ResponseEntity<TrackingResponse> trackShipment(@PathVariable String trackingNumber) {
-        return ResponseEntity.ok(shippingService.trackShipment(trackingNumber));
+        TrackingResponse response = queryBus.execute(new TrackShipmentQuery(trackingNumber));
+        return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{id}/status")
@@ -75,7 +86,8 @@ public class ShippingController {
     public ResponseEntity<ShipmentResponse> updateShipmentStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateShipmentStatusRequest request) {
-        return ResponseEntity.ok(shippingService.updateShipmentStatus(id, request));
+        ShipmentResponse response = commandBus.execute(new UpdateShipmentStatusCommand(id, request));
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/cancel")
@@ -88,6 +100,7 @@ public class ShippingController {
     public ResponseEntity<ShipmentResponse> cancelShipment(
             @PathVariable UUID id,
             @RequestParam(required = false, defaultValue = "Cancelled by user/saga") String reason) {
-        return ResponseEntity.ok(shippingService.cancelShipment(id, reason));
+        ShipmentResponse response = commandBus.execute(new CancelShipmentCommand(id, reason));
+        return ResponseEntity.ok(response);
     }
 }

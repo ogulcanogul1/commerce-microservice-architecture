@@ -1,21 +1,19 @@
 package com.dgl.shipping.service;
 
+import com.dgl.shipping.cqrs.CommandBus;
+import com.dgl.shipping.cqrs.QueryBus;
+import com.dgl.shipping.cqrs.command.CancelShipmentCommand;
+import com.dgl.shipping.cqrs.command.CreateShipmentCommand;
+import com.dgl.shipping.cqrs.command.UpdateShipmentStatusCommand;
+import com.dgl.shipping.cqrs.query.GetShipmentByIdQuery;
+import com.dgl.shipping.cqrs.query.GetShipmentByOrderIdQuery;
+import com.dgl.shipping.cqrs.query.TrackShipmentQuery;
 import com.dgl.shipping.domain.Carrier;
-import com.dgl.shipping.domain.Shipment;
 import com.dgl.shipping.domain.ShipmentStatus;
 import com.dgl.shipping.dto.request.CreateShipmentRequest;
 import com.dgl.shipping.dto.request.UpdateShipmentStatusRequest;
 import com.dgl.shipping.dto.response.ShipmentResponse;
 import com.dgl.shipping.dto.response.TrackingResponse;
-import com.dgl.shipping.exception.InvalidShippingStateException;
-import com.dgl.shipping.exception.ShipmentNotFoundException;
-import com.dgl.shipping.messaging.event.ShipmentCancelledPayload;
-import com.dgl.shipping.messaging.event.ShipmentCreatedPayload;
-import com.dgl.shipping.messaging.event.ShipmentDeliveredPayload;
-import com.dgl.shipping.outbox.OutboxService;
-import com.dgl.shipping.repository.ShipmentEventRepository;
-import com.dgl.shipping.repository.ShipmentRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,169 +21,99 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ShippingServiceImplTest {
 
     @Mock
-    private ShipmentRepository shipmentRepository;
+    private CommandBus commandBus;
 
     @Mock
-    private ShipmentEventRepository shipmentEventRepository;
-
-    @Mock
-    private OutboxService outboxService;
+    private QueryBus queryBus;
 
     @InjectMocks
     private ShippingServiceImpl shippingService;
 
-    private UUID shipmentId;
-    private UUID orderId;
-    private Shipment sampleShipment;
+    @Test
+    @DisplayName("createShipment: Should delegate to command bus")
+    void createShipment_shouldDelegate() {
+        CreateShipmentRequest request = new CreateShipmentRequest(UUID.randomUUID(), Carrier.YURTICI, "Name", "Addr");
+        ShipmentResponse mockResponse = mock(ShipmentResponse.class);
+        when(commandBus.execute(any(CreateShipmentCommand.class))).thenReturn(mockResponse);
 
-    @BeforeEach
-    void setUp() {
-        shipmentId = UUID.randomUUID();
-        orderId = UUID.randomUUID();
+        ShipmentResponse actual = shippingService.createShipment(request);
 
-        sampleShipment = Shipment.builder()
-                .id(shipmentId)
-                .orderId(orderId)
-                .trackingNumber("TRK-TEST123456")
-                .carrier(Carrier.YURTICI)
-                .status(ShipmentStatus.CREATED)
-                .recipientName("Ahmet Yilmaz")
-                .deliveryAddress("Bagdat Cad. No:1 Kadikoy Istanbul")
-                .events(new ArrayList<>())
-                .build();
+        assertThat(actual).isSameAs(mockResponse);
+        verify(commandBus).execute(new CreateShipmentCommand(request));
     }
 
     @Test
-    @DisplayName("createShipment: Should generate tracking number, save shipment and emit ShipmentCreated outbox event")
-    void createShipment_shouldSaveAndEmitOutboxEvent() {
-        when(shipmentRepository.save(any(Shipment.class))).thenAnswer(i -> {
-            Shipment s = i.getArgument(0);
-            s.setId(shipmentId);
-            return s;
-        });
+    @DisplayName("getShipmentById: Should delegate to query bus")
+    void getShipmentById_shouldDelegate() {
+        UUID id = UUID.randomUUID();
+        ShipmentResponse mockResponse = mock(ShipmentResponse.class);
+        when(queryBus.execute(any(GetShipmentByIdQuery.class))).thenReturn(mockResponse);
 
-        CreateShipmentRequest request = new CreateShipmentRequest(
-                orderId,
-                Carrier.YURTICI,
-                "Ahmet Yilmaz",
-                "Bagdat Cad. No:1 Kadikoy Istanbul"
-        );
+        ShipmentResponse actual = shippingService.getShipmentById(id);
 
-        ShipmentResponse response = shippingService.createShipment(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.id()).isEqualTo(shipmentId);
-        assertThat(response.status()).isEqualTo(ShipmentStatus.CREATED);
-        assertThat(response.trackingNumber()).startsWith("TRK-");
-
-        verify(outboxService).recordEvent(
-                eq("Shipment"),
-                eq(shipmentId.toString()),
-                eq("ShipmentCreated"),
-                isNull(),
-                isNull(),
-                any(ShipmentCreatedPayload.class)
-        );
+        assertThat(actual).isSameAs(mockResponse);
+        verify(queryBus).execute(new GetShipmentByIdQuery(id));
     }
 
     @Test
-    @DisplayName("updateShipmentStatus: When marked DELIVERED, should set delivery time and emit ShipmentDelivered outbox event")
-    void updateShipmentStatus_delivered_shouldEmitDeliveredOutboxEvent() {
-        when(shipmentRepository.findById(shipmentId)).thenReturn(Optional.of(sampleShipment));
+    @DisplayName("getShipmentByOrderId: Should delegate to query bus")
+    void getShipmentByOrderId_shouldDelegate() {
+        UUID orderId = UUID.randomUUID();
+        ShipmentResponse mockResponse = mock(ShipmentResponse.class);
+        when(queryBus.execute(any(GetShipmentByOrderIdQuery.class))).thenReturn(mockResponse);
 
-        UpdateShipmentStatusRequest request = new UpdateShipmentStatusRequest(
-                ShipmentStatus.DELIVERED,
-                "Delivered to recipient",
-                "Istanbul"
-        );
+        ShipmentResponse actual = shippingService.getShipmentByOrderId(orderId);
 
-        ShipmentResponse response = shippingService.updateShipmentStatus(shipmentId, request);
-
-        assertThat(response.status()).isEqualTo(ShipmentStatus.DELIVERED);
-        assertThat(sampleShipment.getActualDelivery()).isNotNull();
-
-        verify(outboxService).recordEvent(
-                eq("Shipment"),
-                eq(shipmentId.toString()),
-                eq("ShipmentDelivered"),
-                isNull(),
-                isNull(),
-                any(ShipmentDeliveredPayload.class)
-        );
+        assertThat(actual).isSameAs(mockResponse);
+        verify(queryBus).execute(new GetShipmentByOrderIdQuery(orderId));
     }
 
     @Test
-    @DisplayName("updateShipmentStatus: Cannot update status of an already DELIVERED shipment")
-    void updateShipmentStatus_alreadyDelivered_shouldThrowException() {
-        sampleShipment.setStatus(ShipmentStatus.DELIVERED);
-        when(shipmentRepository.findById(shipmentId)).thenReturn(Optional.of(sampleShipment));
+    @DisplayName("trackShipment: Should delegate to query bus")
+    void trackShipment_shouldDelegate() {
+        TrackingResponse mockResponse = mock(TrackingResponse.class);
+        when(queryBus.execute(any(TrackShipmentQuery.class))).thenReturn(mockResponse);
 
-        UpdateShipmentStatusRequest request = new UpdateShipmentStatusRequest(
-                ShipmentStatus.IN_TRANSIT,
-                "Invalid move",
-                "Istanbul"
-        );
+        TrackingResponse actual = shippingService.trackShipment("TRK-123");
 
-        assertThatThrownBy(() -> shippingService.updateShipmentStatus(shipmentId, request))
-                .isInstanceOf(InvalidShippingStateException.class)
-                .hasMessageContaining("Cannot update status of a DELIVERED shipment");
+        assertThat(actual).isSameAs(mockResponse);
+        verify(queryBus).execute(new TrackShipmentQuery("TRK-123"));
     }
 
     @Test
-    @DisplayName("cancelShipment: Should mark CANCELLED, add event and emit ShipmentCancelled outbox event")
-    void cancelShipment_shouldCancelAndEmitOutboxEvent() {
-        when(shipmentRepository.findById(shipmentId)).thenReturn(Optional.of(sampleShipment));
+    @DisplayName("updateShipmentStatus: Should delegate to command bus")
+    void updateShipmentStatus_shouldDelegate() {
+        UUID id = UUID.randomUUID();
+        UpdateShipmentStatusRequest request = new UpdateShipmentStatusRequest(ShipmentStatus.IN_TRANSIT, "On way", "City");
+        ShipmentResponse mockResponse = mock(ShipmentResponse.class);
+        when(commandBus.execute(any(UpdateShipmentStatusCommand.class))).thenReturn(mockResponse);
 
-        ShipmentResponse response = shippingService.cancelShipment(shipmentId, "Order cancelled by user");
+        ShipmentResponse actual = shippingService.updateShipmentStatus(id, request);
 
-        assertThat(response.status()).isEqualTo(ShipmentStatus.CANCELLED);
-        assertThat(sampleShipment.getFailureReason()).isEqualTo("Order cancelled by user");
-
-        verify(outboxService).recordEvent(
-                eq("Shipment"),
-                eq(shipmentId.toString()),
-                eq("ShipmentCancelled"),
-                isNull(),
-                isNull(),
-                any(ShipmentCancelledPayload.class)
-        );
+        assertThat(actual).isSameAs(mockResponse);
+        verify(commandBus).execute(new UpdateShipmentStatusCommand(id, request));
     }
 
     @Test
-    @DisplayName("cancelShipment: Delivered shipment cannot be cancelled")
-    void cancelShipment_deliveredShipment_shouldThrowException() {
-        sampleShipment.setStatus(ShipmentStatus.DELIVERED);
-        when(shipmentRepository.findById(shipmentId)).thenReturn(Optional.of(sampleShipment));
+    @DisplayName("cancelShipment: Should delegate to command bus")
+    void cancelShipment_shouldDelegate() {
+        UUID id = UUID.randomUUID();
+        ShipmentResponse mockResponse = mock(ShipmentResponse.class);
+        when(commandBus.execute(any(CancelShipmentCommand.class))).thenReturn(mockResponse);
 
-        assertThatThrownBy(() -> shippingService.cancelShipment(shipmentId, "Too late"))
-                .isInstanceOf(InvalidShippingStateException.class)
-                .hasMessageContaining("Delivered shipment cannot be cancelled");
-    }
+        ShipmentResponse actual = shippingService.cancelShipment(id, "Cancelled");
 
-    @Test
-    @DisplayName("trackShipment: Should return tracking details with event timeline")
-    void trackShipment_shouldReturnTrackingResponse() {
-        when(shipmentRepository.findByTrackingNumber("TRK-TEST123456")).thenReturn(Optional.of(sampleShipment));
-
-        TrackingResponse response = shippingService.trackShipment("TRK-TEST123456");
-
-        assertThat(response.trackingNumber()).isEqualTo("TRK-TEST123456");
-        assertThat(response.carrier()).isEqualTo(Carrier.YURTICI);
-        assertThat(response.currentStatus()).isEqualTo(ShipmentStatus.CREATED);
+        assertThat(actual).isSameAs(mockResponse);
+        verify(commandBus).execute(new CancelShipmentCommand(id, "Cancelled"));
     }
 }
