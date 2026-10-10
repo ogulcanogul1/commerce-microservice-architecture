@@ -1,303 +1,202 @@
 package com.dgl.order.service;
 
-import com.dgl.order.domain.Order;
-import com.dgl.order.domain.OrderItem;
-import com.dgl.order.domain.OrderSagaState;
+import com.dgl.order.cqrs.CommandBus;
+import com.dgl.order.cqrs.QueryBus;
+import com.dgl.order.cqrs.command.*;
+import com.dgl.order.cqrs.query.GetOrderByOrderNumberQuery;
+import com.dgl.order.cqrs.query.GetOrderByIdQuery;
+import com.dgl.order.cqrs.query.GetOrdersByCustomerQuery;
 import com.dgl.order.domain.OrderStatus;
 import com.dgl.order.dto.request.CancelOrderRequest;
-import com.dgl.order.dto.request.CreateOrderItemRequest;
 import com.dgl.order.dto.request.CreateOrderRequest;
 import com.dgl.order.dto.response.OrderResponse;
-import com.dgl.order.exception.InvalidOrderStateException;
-import com.dgl.order.exception.OrderNotFoundException;
-import com.dgl.order.messaging.event.OrderCancelledPayload;
-import com.dgl.order.messaging.event.OrderConfirmedPayload;
-import com.dgl.order.messaging.event.OrderCreatedPayload;
-import com.dgl.order.outbox.OutboxService;
-import com.dgl.order.repository.OrderRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
 
     @Mock
-    private OrderRepository orderRepository;
+    private CommandBus commandBus;
 
     @Mock
-    private OutboxService outboxService;
+    private QueryBus queryBus;
 
     @InjectMocks
     private OrderServiceImpl orderService;
 
-    private UUID orderId;
-    private UUID customerId;
-    private Order sampleOrder;
+    @Test
+    @DisplayName("createOrder: Should dispatch CreateOrderCommand to CommandBus")
+    void createOrder_shouldDispatchToCommandBus() {
+        CreateOrderRequest request = new CreateOrderRequest(UUID.randomUUID(), List.of(), "Address", "TRY");
+        UUID correlationId = UUID.randomUUID();
+        OrderResponse expected = mock(OrderResponse.class);
 
-    @BeforeEach
-    void setUp() {
-        orderId = UUID.randomUUID();
-        customerId = UUID.randomUUID();
+        when(commandBus.execute(any(CreateOrderCommand.class))).thenReturn(expected);
 
-        sampleOrder = Order.builder()
-                .id(orderId)
-                .orderNumber("ORD-12345678")
-                .customerId(customerId)
-                .status(OrderStatus.PENDING)
-                .totalAmount(new BigDecimal("250.00"))
-                .currency("TRY")
-                .shippingAddress("Bagdat Cad. No:1 Kadikoy Istanbul")
-                .correlationId(UUID.randomUUID())
-                .items(new ArrayList<>())
-                .build();
+        OrderResponse actual = orderService.createOrder(request, correlationId);
 
-        OrderSagaState sagaState = OrderSagaState.builder()
-                .orderId(orderId)
-                .order(sampleOrder)
-                .currentStep("ORDER_CREATED")
-                .build();
-        sampleOrder.setSagaState(sagaState);
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(any(CreateOrderCommand.class));
     }
 
     @Test
-    @DisplayName("createOrder: Should calculate total amount, persist order and emit OrderCreated outbox event")
-    void createOrder_shouldCalculateTotalAndEmitOutboxEvent() {
-        CreateOrderItemRequest item1 = new CreateOrderItemRequest("SKU-1", "Product 1", new BigDecimal("100.00"), 2);
-        CreateOrderItemRequest item2 = new CreateOrderItemRequest("SKU-2", "Product 2", new BigDecimal("50.00"), 1);
+    @DisplayName("getOrderById: Should dispatch GetOrderByIdQuery to QueryBus")
+    void getOrderById_shouldDispatchToQueryBus() {
+        UUID orderId = UUID.randomUUID();
+        OrderResponse expected = mock(OrderResponse.class);
 
-        CreateOrderRequest request = new CreateOrderRequest(
-                customerId,
-                List.of(item1, item2),
-                "Kadıköy, İstanbul",
-                "TRY"
-        );
+        when(queryBus.execute(any(GetOrderByIdQuery.class))).thenReturn(expected);
 
-        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
-            Order o = invocation.getArgument(0);
-            o.setId(orderId);
-            return o;
-        });
+        OrderResponse actual = orderService.getOrderById(orderId);
 
-        OrderResponse response = orderService.createOrder(request, UUID.randomUUID());
-
-        assertThat(response).isNotNull();
-        assertThat(response.id()).isEqualTo(orderId);
-        assertThat(response.totalAmount()).isEqualByComparingTo(new BigDecimal("250.00"));
-        assertThat(response.status()).isEqualTo(OrderStatus.PENDING);
-        assertThat(response.items()).hasSize(2);
-
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderCreated"),
-                any(UUID.class),
-                isNull(),
-                any(OrderCreatedPayload.class)
-        );
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetOrderByIdQuery(orderId));
     }
 
     @Test
-    @DisplayName("cancelOrder: Pending order should be marked CANCELLED and emit OrderCancelled outbox event")
-    void cancelOrder_pendingOrder_shouldCancelAndEmitOutboxEvent() {
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("getOrderByOrderNumber: Should dispatch GetOrderByOrderNumberQuery to QueryBus")
+    void getOrderByOrderNumber_shouldDispatchToQueryBus() {
+        OrderResponse expected = mock(OrderResponse.class);
 
-        CancelOrderRequest cancelRequest = new CancelOrderRequest("Customer requested cancellation");
-        OrderResponse response = orderService.cancelOrder(orderId, cancelRequest);
+        when(queryBus.execute(any(GetOrderByOrderNumberQuery.class))).thenReturn(expected);
 
-        assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
-        assertThat(response.failureReason()).isEqualTo("Customer requested cancellation");
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("ORDER_CANCELLED");
+        OrderResponse actual = orderService.getOrderByOrderNumber("ORD-123");
 
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderCancelled"),
-                eq(sampleOrder.getCorrelationId()),
-                isNull(),
-                any(OrderCancelledPayload.class)
-        );
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetOrderByOrderNumberQuery("ORD-123"));
     }
 
     @Test
-    @DisplayName("cancelOrder: Confirmed order should throw InvalidOrderStateException")
-    void cancelOrder_confirmedOrder_shouldThrowException() {
-        sampleOrder.setStatus(OrderStatus.CONFIRMED);
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("getOrdersByCustomer: Should dispatch GetOrdersByCustomerQuery to QueryBus")
+    void getOrdersByCustomer_shouldDispatchToQueryBus() {
+        UUID customerId = UUID.randomUUID();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<OrderResponse> expected = new PageImpl<>(List.of());
 
-        CancelOrderRequest cancelRequest = new CancelOrderRequest("Late cancellation");
+        when(queryBus.execute(any(GetOrdersByCustomerQuery.class))).thenReturn(expected);
 
-        assertThatThrownBy(() -> orderService.cancelOrder(orderId, cancelRequest))
-                .isInstanceOf(InvalidOrderStateException.class)
-                .hasMessageContaining("Confirmed order cannot be cancelled directly");
+        Page<OrderResponse> actual = orderService.getOrdersByCustomer(customerId, pageable);
 
-        verifyNoInteractions(outboxService);
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetOrdersByCustomerQuery(customerId, pageable));
     }
 
     @Test
-    @DisplayName("handleInventoryReserved: When payment not yet authorized, should transition to INVENTORY_RESERVED")
-    void handleInventoryReserved_whenPaymentNotAuthorized_shouldSetInventoryReserved() {
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("cancelOrder: Should dispatch CancelOrderCommand to CommandBus")
+    void cancelOrder_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
+        CancelOrderRequest request = new CancelOrderRequest("Reason");
+        OrderResponse expected = mock(OrderResponse.class);
+
+        when(commandBus.execute(any(CancelOrderCommand.class))).thenReturn(expected);
+
+        OrderResponse actual = orderService.cancelOrder(orderId, request);
+
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new CancelOrderCommand(orderId, request));
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus: Should dispatch UpdateOrderStatusCommand to CommandBus")
+    void updateOrderStatus_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
+        OrderResponse expected = mock(OrderResponse.class);
+
+        when(commandBus.execute(any(UpdateOrderStatusCommand.class))).thenReturn(expected);
+
+        OrderResponse actual = orderService.updateOrderStatus(orderId, OrderStatus.CONFIRMED, null);
+
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new UpdateOrderStatusCommand(orderId, OrderStatus.CONFIRMED, null));
+    }
+
+    @Test
+    @DisplayName("updateSagaStep: Should dispatch UpdateSagaStepCommand to CommandBus")
+    void updateSagaStep_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
+        OrderResponse expected = mock(OrderResponse.class);
+
+        when(commandBus.execute(any(UpdateSagaStepCommand.class))).thenReturn(expected);
+
+        OrderResponse actual = orderService.updateSagaStep(orderId, "STEP", OrderStatus.PENDING, null);
+
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new UpdateSagaStepCommand(orderId, "STEP", OrderStatus.PENDING, null));
+    }
+
+    @Test
+    @DisplayName("handleInventoryReserved: Should dispatch HandleInventoryReservedCommand to CommandBus")
+    void handleInventoryReserved_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
 
         orderService.handleInventoryReserved(orderId);
 
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.INVENTORY_RESERVED);
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("INVENTORY_RESERVED");
-        assertThat(sampleOrder.getSagaState().getInventoryReservedAt()).isNotNull();
-
-        verify(outboxService, never()).recordEvent(any(), any(), eq("OrderConfirmed"), any(), any(), any());
+        verify(commandBus).execute(new HandleInventoryReservedCommand(orderId));
     }
 
     @Test
-    @DisplayName("handleInventoryReserved: When payment already authorized, should transition to CONFIRMED and emit OrderConfirmed")
-    void handleInventoryReserved_whenPaymentAlreadyAuthorized_shouldConfirmOrder() {
-        sampleOrder.getSagaState().setPaymentAuthorizedAt(Instant.now());
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("handleInventoryFailed: Should dispatch HandleInventoryFailedCommand to CommandBus")
+    void handleInventoryFailed_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
 
-        orderService.handleInventoryReserved(orderId);
+        orderService.handleInventoryFailed(orderId, "Fail reason");
 
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("CONFIRMED");
-
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderConfirmed"),
-                eq(sampleOrder.getCorrelationId()),
-                isNull(),
-                any(OrderConfirmedPayload.class)
-        );
+        verify(commandBus).execute(new HandleInventoryFailedCommand(orderId, "Fail reason"));
     }
 
     @Test
-    @DisplayName("handlePaymentAuthorized: When inventory already reserved, should transition to CONFIRMED and emit OrderConfirmed")
-    void handlePaymentAuthorized_whenInventoryAlreadyReserved_shouldConfirmOrder() {
-        sampleOrder.getSagaState().setInventoryReservedAt(Instant.now());
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("handlePaymentAuthorized: Should dispatch HandlePaymentAuthorizedCommand to CommandBus")
+    void handlePaymentAuthorized_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
 
         orderService.handlePaymentAuthorized(orderId);
 
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("CONFIRMED");
-
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderConfirmed"),
-                eq(sampleOrder.getCorrelationId()),
-                isNull(),
-                any(OrderConfirmedPayload.class)
-        );
+        verify(commandBus).execute(new HandlePaymentAuthorizedCommand(orderId));
     }
 
     @Test
-    @DisplayName("handleInventoryFailed: Should cancel order and emit OrderCancelled outbox event")
-    void handleInventoryFailed_shouldCancelOrderAndEmitOutboxEvent() {
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("handlePaymentFailed: Should dispatch HandlePaymentFailedCommand to CommandBus")
+    void handlePaymentFailed_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
 
-        orderService.handleInventoryFailed(orderId, "Product SKU-1 out of stock");
+        orderService.handlePaymentFailed(orderId, "Payment declined");
 
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-        assertThat(sampleOrder.getFailureReason()).isEqualTo("Product SKU-1 out of stock");
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("INVENTORY_FAILED");
-        assertThat(sampleOrder.getSagaState().getFailureStep()).isEqualTo("INVENTORY_RESERVED");
-
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderCancelled"),
-                eq(sampleOrder.getCorrelationId()),
-                isNull(),
-                any(OrderCancelledPayload.class)
-        );
+        verify(commandBus).execute(new HandlePaymentFailedCommand(orderId, "Payment declined"));
     }
 
     @Test
-    @DisplayName("handlePaymentFailed: Should cancel order and emit OrderCancelled outbox event")
-    void handlePaymentFailed_shouldCancelOrderAndEmitOutboxEvent() {
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
-
-        orderService.handlePaymentFailed(orderId, "Insufficient credit card balance");
-
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-        assertThat(sampleOrder.getFailureReason()).isEqualTo("Insufficient credit card balance");
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("PAYMENT_FAILED");
-        assertThat(sampleOrder.getSagaState().getFailureStep()).isEqualTo("PAYMENT_AUTHORIZED");
-
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderCancelled"),
-                eq(sampleOrder.getCorrelationId()),
-                isNull(),
-                any(OrderCancelledPayload.class)
-        );
-    }
-
-    @Test
-    @DisplayName("handleShipmentCreated: Should update saga state and order status to SHIPPING_CREATED")
-    void handleShipmentCreated_shouldUpdateStatusToShippingCreated() {
-        sampleOrder.setStatus(OrderStatus.CONFIRMED);
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("handleShipmentCreated: Should dispatch HandleShipmentCreatedCommand to CommandBus")
+    void handleShipmentCreated_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
 
         orderService.handleShipmentCreated(orderId);
 
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.SHIPPING_CREATED);
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("SHIPPING_CREATED");
-        assertThat(sampleOrder.getSagaState().getShippingCreatedAt()).isNotNull();
+        verify(commandBus).execute(new HandleShipmentCreatedCommand(orderId));
     }
 
     @Test
-    @DisplayName("handleSagaTimeout: Should cancel stuck order, update saga step to SAGA_TIMEOUT, and emit OrderCancelled outbox event")
-    void handleSagaTimeout_shouldCancelStuckOrderAndEmitCompensationEvent() {
-        sampleOrder.setStatus(OrderStatus.INVENTORY_RESERVED);
-        sampleOrder.getSagaState().setCurrentStep("INVENTORY_RESERVED");
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
+    @DisplayName("handleSagaTimeout: Should dispatch HandleSagaTimeoutCommand to CommandBus")
+    void handleSagaTimeout_shouldDispatchToCommandBus() {
+        UUID orderId = UUID.randomUUID();
 
         orderService.handleSagaTimeout(orderId);
 
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-        assertThat(sampleOrder.getFailureReason()).contains("Saga execution timed out");
-        assertThat(sampleOrder.getSagaState().getCurrentStep()).isEqualTo("SAGA_TIMEOUT");
-        assertThat(sampleOrder.getSagaState().getFailureStep()).isEqualTo("INVENTORY_RESERVED");
-
-        verify(outboxService).recordEvent(
-                eq("Order"),
-                eq(orderId.toString()),
-                eq("OrderCancelled"),
-                eq(sampleOrder.getCorrelationId()),
-                isNull(),
-                any(OrderCancelledPayload.class)
-        );
-    }
-
-    @Test
-    @DisplayName("handleSagaTimeout: Should do nothing if order is already CONFIRMED")
-    void handleSagaTimeout_shouldIgnoreIfAlreadyConfirmed() {
-        sampleOrder.setStatus(OrderStatus.CONFIRMED);
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(sampleOrder));
-
-        orderService.handleSagaTimeout(orderId);
-
-        assertThat(sampleOrder.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
-        verify(outboxService, never()).recordEvent(any(), any(), any(), any(), any(), any());
+        verify(commandBus).execute(new HandleSagaTimeoutCommand(orderId));
     }
 }

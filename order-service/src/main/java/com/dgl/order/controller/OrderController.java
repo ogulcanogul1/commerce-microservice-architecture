@@ -1,10 +1,17 @@
 package com.dgl.order.controller;
 
+import com.dgl.order.cqrs.CommandBus;
+import com.dgl.order.cqrs.QueryBus;
+import com.dgl.order.cqrs.command.CancelOrderCommand;
+import com.dgl.order.cqrs.command.CreateOrderCommand;
+import com.dgl.order.cqrs.command.UpdateOrderStatusCommand;
+import com.dgl.order.cqrs.query.GetOrderByOrderNumberQuery;
+import com.dgl.order.cqrs.query.GetOrderByIdQuery;
+import com.dgl.order.cqrs.query.GetOrdersByCustomerQuery;
 import com.dgl.order.domain.OrderStatus;
 import com.dgl.order.dto.request.CancelOrderRequest;
 import com.dgl.order.dto.request.CreateOrderRequest;
 import com.dgl.order.dto.response.OrderResponse;
-import com.dgl.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -27,7 +34,8 @@ import java.util.UUID;
 @Tag(name = "Orders", description = "Endpoints for placing orders, tracking order lifecycle, and managing cancellations")
 public class OrderController {
 
-    private final OrderService orderService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Create an order", description = "Submits a new order and triggers the Saga workflow")
@@ -39,7 +47,7 @@ public class OrderController {
             @Valid @RequestBody CreateOrderRequest request,
             @Parameter(description = "Distributed trace correlation ID")
             @RequestHeader(value = "X-Correlation-Id", required = false) UUID correlationId) {
-        OrderResponse response = orderService.createOrder(request, correlationId);
+        OrderResponse response = commandBus.execute(new CreateOrderCommand(request, correlationId));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -50,7 +58,7 @@ public class OrderController {
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<OrderResponse> getOrderById(@PathVariable UUID id) {
-        return ResponseEntity.ok(orderService.getOrderById(id));
+        return ResponseEntity.ok(queryBus.execute(new GetOrderByIdQuery(id)));
     }
 
     @GetMapping("/by-number/{orderNumber}")
@@ -60,7 +68,7 @@ public class OrderController {
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<OrderResponse> getOrderByOrderNumber(@PathVariable String orderNumber) {
-        return ResponseEntity.ok(orderService.getOrderByOrderNumber(orderNumber));
+        return ResponseEntity.ok(queryBus.execute(new GetOrderByOrderNumberQuery(orderNumber)));
     }
 
     @GetMapping("/customer/{customerId}")
@@ -68,7 +76,7 @@ public class OrderController {
     public ResponseEntity<Page<OrderResponse>> getOrdersByCustomer(
             @PathVariable UUID customerId,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(orderService.getOrdersByCustomer(customerId, pageable));
+        return ResponseEntity.ok(queryBus.execute(new GetOrdersByCustomerQuery(customerId, pageable)));
     }
 
     @PostMapping("/{id}/cancel")
@@ -81,7 +89,7 @@ public class OrderController {
     public ResponseEntity<OrderResponse> cancelOrder(
             @PathVariable UUID id,
             @Valid @RequestBody CancelOrderRequest request) {
-        return ResponseEntity.ok(orderService.cancelOrder(id, request));
+        return ResponseEntity.ok(commandBus.execute(new CancelOrderCommand(id, request)));
     }
 
     @PatchMapping("/{id}/status")
@@ -90,6 +98,6 @@ public class OrderController {
             @PathVariable UUID id,
             @RequestParam OrderStatus status,
             @RequestParam(required = false) String reason) {
-        return ResponseEntity.ok(orderService.updateOrderStatus(id, status, reason));
+        return ResponseEntity.ok(commandBus.execute(new UpdateOrderStatusCommand(id, status, reason)));
     }
 }
