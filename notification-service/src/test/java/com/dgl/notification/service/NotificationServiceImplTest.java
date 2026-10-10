@@ -1,26 +1,26 @@
 package com.dgl.notification.service;
 
-import com.dgl.notification.domain.*;
+import com.dgl.notification.cqrs.CommandBus;
+import com.dgl.notification.cqrs.QueryBus;
+import com.dgl.notification.cqrs.command.MarkEventProcessedCommand;
+import com.dgl.notification.cqrs.command.SendNotificationCommand;
+import com.dgl.notification.cqrs.query.GetNotificationByIdQuery;
+import com.dgl.notification.cqrs.query.GetNotificationsByCustomerQuery;
+import com.dgl.notification.cqrs.query.IsEventProcessedQuery;
+import com.dgl.notification.domain.NotificationChannel;
 import com.dgl.notification.dto.request.SendNotificationRequest;
 import com.dgl.notification.dto.response.NotificationResponse;
-import com.dgl.notification.exception.NotificationNotFoundException;
-import com.dgl.notification.repository.NotificationRepository;
-import com.dgl.notification.repository.ProcessedEventRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -28,207 +28,72 @@ import static org.mockito.Mockito.*;
 class NotificationServiceImplTest {
 
     @Mock
-    private NotificationRepository notificationRepository;
+    private CommandBus commandBus;
 
     @Mock
-    private ProcessedEventRepository processedEventRepository;
+    private QueryBus queryBus;
 
-    @Mock
-    private ChannelSender emailSender;
-
-    @Mock
-    private ChannelSender smsSender;
-
+    @InjectMocks
     private NotificationServiceImpl notificationService;
 
-    @BeforeEach
-    void setUp() {
-        lenient().when(emailSender.getChannel()).thenReturn(NotificationChannel.EMAIL);
-        lenient().when(smsSender.getChannel()).thenReturn(NotificationChannel.SMS);
+    @Test
+    @DisplayName("sendNotification: Should delegate to command bus")
+    void sendNotification_shouldDelegate() {
+        SendNotificationRequest request = new SendNotificationRequest(UUID.randomUUID(), NotificationChannel.EMAIL, "a@b.com", "Sub", "Body", UUID.randomUUID());
+        NotificationResponse mockResponse = mock(NotificationResponse.class);
+        when(commandBus.execute(any(SendNotificationCommand.class))).thenReturn(mockResponse);
 
-        notificationService = new NotificationServiceImpl(
-                notificationRepository,
-                processedEventRepository,
-                List.of(emailSender, smsSender)
-        );
+        NotificationResponse actual = notificationService.sendNotification(request);
+
+        assertThat(actual).isSameAs(mockResponse);
+        verify(commandBus).execute(new SendNotificationCommand(request));
     }
 
     @Test
-    @DisplayName("sendNotification should succeed and persist SENT notification when channel sender succeeds")
-    void sendNotification_WhenSenderSucceeds_ShouldSaveSentNotification() {
-        UUID eventId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
-        SendNotificationRequest request = new SendNotificationRequest(
-                customerId,
-                NotificationChannel.EMAIL,
-                "user@example.com",
-                "Order Created",
-                "Your order has been placed.",
-                eventId
-        );
-
-        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
-            Notification n = invocation.getArgument(0);
-            n.setId(UUID.randomUUID());
-            n.setCreatedAt(Instant.now());
-            return n;
-        });
-
-        NotificationResponse response = notificationService.sendNotification(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.status()).isEqualTo(NotificationStatus.SENT);
-        assertThat(response.recipient()).isEqualTo("user@example.com");
-        assertThat(response.subject()).isEqualTo("Order Created");
-        assertThat(response.errorMessage()).isNull();
-
-        verify(emailSender, times(1)).send("user@example.com", "Order Created", "Your order has been placed.");
-        verify(notificationRepository, times(1)).save(any(Notification.class));
-    }
-
-    @Test
-    @DisplayName("sendNotification should capture failure and persist FAILED notification when sender throws exception")
-    void sendNotification_WhenSenderThrowsException_ShouldSaveFailedNotification() {
-        UUID eventId = UUID.randomUUID();
-        SendNotificationRequest request = new SendNotificationRequest(
-                null,
-                NotificationChannel.SMS,
-                "+905550000000",
-                "SMS Alert",
-                "Your payment failed",
-                eventId
-        );
-
-        doThrow(new RuntimeException("SMS gateway unreachable"))
-                .when(smsSender).send(anyString(), anyString(), anyString());
-
-        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
-            Notification n = invocation.getArgument(0);
-            n.setId(UUID.randomUUID());
-            n.setCreatedAt(Instant.now());
-            return n;
-        });
-
-        NotificationResponse response = notificationService.sendNotification(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.status()).isEqualTo(NotificationStatus.FAILED);
-        assertThat(response.errorMessage()).isEqualTo("SMS gateway unreachable");
-
-        verify(smsSender, times(1)).send("+905550000000", "SMS Alert", "Your payment failed");
-        verify(notificationRepository, times(1)).save(any(Notification.class));
-    }
-
-    @Test
-    @DisplayName("sendNotification should throw IllegalArgumentException when no sender is configured for channel")
-    void sendNotification_WhenNoSenderConfigured_ShouldThrowException() {
-        SendNotificationRequest request = new SendNotificationRequest(
-                null,
-                NotificationChannel.PUSH,
-                "token123",
-                "Push",
-                "Hello",
-                UUID.randomUUID()
-        );
-
-        assertThatThrownBy(() -> notificationService.sendNotification(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("No sender configured for channel: PUSH");
-
-        verifyNoInteractions(notificationRepository);
-    }
-
-    @Test
-    @DisplayName("getNotificationById should return response when notification exists")
-    void getNotificationById_WhenExists_ShouldReturnResponse() {
+    @DisplayName("getNotificationById: Should delegate to query bus")
+    void getNotificationById_shouldDelegate() {
         UUID id = UUID.randomUUID();
-        Notification notification = Notification.builder()
-                .id(id)
-                .channel(NotificationChannel.EMAIL)
-                .recipient("test@example.com")
-                .subject("Test Subject")
-                .content("Test Content")
-                .status(NotificationStatus.SENT)
-                .eventId(UUID.randomUUID())
-                .createdAt(Instant.now())
-                .build();
+        NotificationResponse mockResponse = mock(NotificationResponse.class);
+        when(queryBus.execute(any(GetNotificationByIdQuery.class))).thenReturn(mockResponse);
 
-        when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
+        NotificationResponse actual = notificationService.getNotificationById(id);
 
-        NotificationResponse response = notificationService.getNotificationById(id);
-
-        assertThat(response).isNotNull();
-        assertThat(response.id()).isEqualTo(id);
-        assertThat(response.recipient()).isEqualTo("test@example.com");
+        assertThat(actual).isSameAs(mockResponse);
+        verify(queryBus).execute(new GetNotificationByIdQuery(id));
     }
 
     @Test
-    @DisplayName("getNotificationById should throw NotificationNotFoundException when notification does not exist")
-    void getNotificationById_WhenNotFound_ShouldThrowException() {
-        UUID id = UUID.randomUUID();
-        when(notificationRepository.findById(id)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> notificationService.getNotificationById(id))
-                .isInstanceOf(NotificationNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("getNotificationsByCustomer should return mapped list of notifications")
-    void getNotificationsByCustomer_ShouldReturnList() {
+    @DisplayName("getNotificationsByCustomer: Should delegate to query bus")
+    void getNotificationsByCustomer_shouldDelegate() {
         UUID customerId = UUID.randomUUID();
-        Notification notification = Notification.builder()
-                .id(UUID.randomUUID())
-                .customerId(customerId)
-                .channel(NotificationChannel.EMAIL)
-                .recipient("customer@example.com")
-                .subject("Welcome")
-                .content("Welcome to our platform")
-                .status(NotificationStatus.SENT)
-                .eventId(UUID.randomUUID())
-                .createdAt(Instant.now())
-                .build();
+        List<NotificationResponse> mockList = List.of();
+        when(queryBus.execute(any(GetNotificationsByCustomerQuery.class))).thenReturn(mockList);
 
-        when(notificationRepository.findByCustomerIdOrderByCreatedAtDesc(customerId))
-                .thenReturn(List.of(notification));
+        List<NotificationResponse> actual = notificationService.getNotificationsByCustomer(customerId);
 
-        List<NotificationResponse> result = notificationService.getNotificationsByCustomer(customerId);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.getFirst().customerId()).isEqualTo(customerId);
+        assertThat(actual).isSameAs(mockList);
+        verify(queryBus).execute(new GetNotificationsByCustomerQuery(customerId));
     }
 
     @Test
-    @DisplayName("isEventProcessed should return repository existsById result")
-    void isEventProcessed_ShouldDelegateToRepository() {
+    @DisplayName("isEventProcessed: Should delegate to query bus")
+    void isEventProcessed_shouldDelegate() {
         UUID eventId = UUID.randomUUID();
-        String group = "notification-service-group";
-        ProcessedEventId processedEventId = ProcessedEventId.builder()
-                .consumerGroup(group)
-                .eventId(eventId)
-                .build();
+        when(queryBus.execute(any(IsEventProcessedQuery.class))).thenReturn(true);
 
-        when(processedEventRepository.existsById(processedEventId)).thenReturn(true);
+        boolean actual = notificationService.isEventProcessed("group", eventId);
 
-        boolean exists = notificationService.isEventProcessed(group, eventId);
-
-        assertThat(exists).isTrue();
-        verify(processedEventRepository, times(1)).existsById(processedEventId);
+        assertThat(actual).isTrue();
+        verify(queryBus).execute(new IsEventProcessedQuery("group", eventId));
     }
 
     @Test
-    @DisplayName("markEventProcessed should save ProcessedEvent with correct composite key")
-    void markEventProcessed_ShouldSaveProcessedEvent() {
+    @DisplayName("markEventProcessed: Should delegate to command bus")
+    void markEventProcessed_shouldDelegate() {
         UUID eventId = UUID.randomUUID();
-        String group = "notification-service-group";
 
-        notificationService.markEventProcessed(group, eventId, "OrderConfirmed");
+        notificationService.markEventProcessed("group", eventId, "EventType");
 
-        ArgumentCaptor<ProcessedEvent> captor = ArgumentCaptor.forClass(ProcessedEvent.class);
-        verify(processedEventRepository, times(1)).save(captor.capture());
-
-        ProcessedEvent saved = captor.getValue();
-        assertThat(saved.getId().getConsumerGroup()).isEqualTo(group);
-        assertThat(saved.getId().getEventId()).isEqualTo(eventId);
-        assertThat(saved.getEventType()).isEqualTo("OrderConfirmed");
+        verify(commandBus).execute(new MarkEventProcessedCommand("group", eventId, "EventType"));
     }
 }

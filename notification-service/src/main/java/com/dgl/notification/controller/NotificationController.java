@@ -1,8 +1,12 @@
 package com.dgl.notification.controller;
 
+import com.dgl.notification.cqrs.CommandBus;
+import com.dgl.notification.cqrs.QueryBus;
+import com.dgl.notification.cqrs.command.SendNotificationCommand;
+import com.dgl.notification.cqrs.query.GetNotificationByIdQuery;
+import com.dgl.notification.cqrs.query.GetNotificationsByCustomerQuery;
 import com.dgl.notification.dto.request.SendNotificationRequest;
 import com.dgl.notification.dto.response.NotificationResponse;
-import com.dgl.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -22,7 +26,8 @@ import java.util.UUID;
 @Tag(name = "Notifications", description = "Endpoints for dispatching and querying multi-channel notifications")
 public class NotificationController {
 
-    private final NotificationService notificationService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Send notification", description = "Dispatches a notification message via email, SMS, or push channel")
@@ -31,7 +36,7 @@ public class NotificationController {
             @ApiResponse(responseCode = "400", description = "Invalid notification parameters")
     })
     public ResponseEntity<NotificationResponse> sendNotification(@Valid @RequestBody SendNotificationRequest request) {
-        NotificationResponse response = notificationService.sendNotification(request);
+        NotificationResponse response = commandBus.execute(new SendNotificationCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -42,12 +47,12 @@ public class NotificationController {
             @ApiResponse(responseCode = "404", description = "Notification not found")
     })
     public ResponseEntity<NotificationResponse> getNotificationById(@PathVariable UUID id) {
-        return ResponseEntity.ok(notificationService.getNotificationById(id));
+        return ResponseEntity.ok(queryBus.execute(new GetNotificationByIdQuery(id)));
     }
 
     @GetMapping("/customer/{customerId}")
     @Operation(summary = "List customer notifications", description = "Retrieves notification history for a specific customer")
     public ResponseEntity<List<NotificationResponse>> getNotificationsByCustomer(@PathVariable UUID customerId) {
-        return ResponseEntity.ok(notificationService.getNotificationsByCustomer(customerId));
+        return ResponseEntity.ok(queryBus.execute(new GetNotificationsByCustomerQuery(customerId)));
     }
 }
