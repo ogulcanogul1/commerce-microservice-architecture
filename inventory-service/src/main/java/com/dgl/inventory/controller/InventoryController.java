@@ -1,10 +1,16 @@
 package com.dgl.inventory.controller;
 
+import com.dgl.inventory.cqrs.CommandBus;
+import com.dgl.inventory.cqrs.QueryBus;
+import com.dgl.inventory.cqrs.command.AddStockCommand;
+import com.dgl.inventory.cqrs.command.CommitStockCommand;
+import com.dgl.inventory.cqrs.command.ReleaseStockCommand;
+import com.dgl.inventory.cqrs.command.ReserveStockCommand;
+import com.dgl.inventory.cqrs.query.GetInventoryBySkuQuery;
 import com.dgl.inventory.dto.request.AddStockRequest;
 import com.dgl.inventory.dto.request.ReserveStockRequest;
 import com.dgl.inventory.dto.response.InventoryResponse;
 import com.dgl.inventory.dto.response.ReservationResponse;
-import com.dgl.inventory.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -24,7 +30,8 @@ import java.util.UUID;
 @Tag(name = "Inventory", description = "Endpoints for stock management, inventory reservations, commits, and releases")
 public class InventoryController {
 
-    private final InventoryService inventoryService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping("/stock")
     @Operation(summary = "Add stock", description = "Increases available quantity or creates initial inventory for a SKU")
@@ -33,7 +40,7 @@ public class InventoryController {
             @ApiResponse(responseCode = "400", description = "Invalid stock amount or SKU")
     })
     public ResponseEntity<InventoryResponse> addStock(@Valid @RequestBody AddStockRequest request) {
-        InventoryResponse response = inventoryService.addStock(request);
+        InventoryResponse response = commandBus.execute(new AddStockCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -44,7 +51,8 @@ public class InventoryController {
             @ApiResponse(responseCode = "404", description = "SKU not found in inventory")
     })
     public ResponseEntity<InventoryResponse> getInventoryBySku(@PathVariable String sku) {
-        return ResponseEntity.ok(inventoryService.getInventoryBySku(sku));
+        InventoryResponse response = queryBus.execute(new GetInventoryBySkuQuery(sku));
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/reserve")
@@ -55,7 +63,7 @@ public class InventoryController {
             @ApiResponse(responseCode = "409", description = "Optimistic locking conflict")
     })
     public ResponseEntity<List<ReservationResponse>> reserveStock(@Valid @RequestBody ReserveStockRequest request) {
-        List<ReservationResponse> response = inventoryService.reserveStock(request);
+        List<ReservationResponse> response = commandBus.execute(new ReserveStockCommand(request));
         return ResponseEntity.ok(response);
     }
 
@@ -66,7 +74,7 @@ public class InventoryController {
             @ApiResponse(responseCode = "404", description = "Reservation not found")
     })
     public ResponseEntity<Void> releaseStock(@PathVariable UUID orderId) {
-        inventoryService.releaseStock(orderId);
+        commandBus.execute(new ReleaseStockCommand(orderId));
         return ResponseEntity.noContent().build();
     }
 
@@ -77,7 +85,7 @@ public class InventoryController {
             @ApiResponse(responseCode = "404", description = "Reservation not found")
     })
     public ResponseEntity<Void> commitStock(@PathVariable UUID orderId) {
-        inventoryService.commitStock(orderId);
+        commandBus.execute(new CommitStockCommand(orderId));
         return ResponseEntity.noContent().build();
     }
 }
