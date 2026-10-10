@@ -1,11 +1,15 @@
 package com.dgl.customer.controller;
 
+import com.dgl.customer.cqrs.CommandBus;
+import com.dgl.customer.cqrs.command.LoginCommand;
+import com.dgl.customer.cqrs.command.OAuth2LoginCommand;
+import com.dgl.customer.cqrs.command.RefreshTokenCommand;
+import com.dgl.customer.cqrs.command.RegisterCommand;
 import com.dgl.customer.dto.request.LoginRequest;
 import com.dgl.customer.dto.request.OAuth2LoginRequest;
 import com.dgl.customer.dto.request.RefreshTokenRequest;
 import com.dgl.customer.dto.request.RegisterRequest;
 import com.dgl.customer.dto.response.AuthResponse;
-import com.dgl.customer.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -25,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Authentication", description = "Endpoints for user registration, credential login, token refreshing, and OAuth2 social login")
 public class AuthController {
 
-    private final AuthService authService;
+    private final CommandBus commandBus;
 
     @PostMapping("/register")
     @Operation(summary = "Register customer", description = "Creates a new customer account and issues an initial JWT token pair")
@@ -35,7 +39,7 @@ public class AuthController {
             @ApiResponse(responseCode = "409", description = "Email already registered")
     })
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        AuthResponse response = authService.register(request);
+        AuthResponse response = commandBus.execute(new RegisterCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -46,7 +50,7 @@ public class AuthController {
             @ApiResponse(responseCode = "401", description = "Invalid credentials")
     })
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        AuthResponse response = authService.login(request);
+        AuthResponse response = commandBus.execute(new LoginCommand(request));
         return ResponseEntity.ok(response);
     }
 
@@ -57,7 +61,7 @@ public class AuthController {
             @ApiResponse(responseCode = "401", description = "Expired or invalid refresh token")
     })
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
-        AuthResponse response = authService.refreshToken(request);
+        AuthResponse response = commandBus.execute(new RefreshTokenCommand(request));
         return ResponseEntity.ok(response);
     }
 
@@ -68,7 +72,7 @@ public class AuthController {
             @ApiResponse(responseCode = "400", description = "Invalid provider payload")
     })
     public ResponseEntity<AuthResponse> oauth2Login(@Valid @RequestBody OAuth2LoginRequest request) {
-        AuthResponse response = authService.oauth2Login(request);
+        AuthResponse response = commandBus.execute(new OAuth2LoginCommand(request));
         return ResponseEntity.ok(response);
     }
 }

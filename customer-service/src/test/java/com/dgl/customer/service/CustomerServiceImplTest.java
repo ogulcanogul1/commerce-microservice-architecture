@@ -1,33 +1,30 @@
 package com.dgl.customer.service;
 
-import com.dgl.customer.domain.Customer;
-import com.dgl.customer.domain.CustomerPreferences;
-import com.dgl.customer.domain.CustomerStatus;
+import com.dgl.customer.cqrs.CommandBus;
+import com.dgl.customer.cqrs.QueryBus;
+import com.dgl.customer.cqrs.command.CreateCustomerCommand;
+import com.dgl.customer.cqrs.command.UpdateCustomerCommand;
+import com.dgl.customer.cqrs.command.UpdatePreferencesCommand;
+import com.dgl.customer.cqrs.query.GetAllCustomersQuery;
+import com.dgl.customer.cqrs.query.GetCustomerByEmailQuery;
+import com.dgl.customer.cqrs.query.GetCustomerByIdQuery;
 import com.dgl.customer.dto.request.CreateCustomerRequest;
 import com.dgl.customer.dto.request.UpdateCustomerRequest;
 import com.dgl.customer.dto.request.UpdatePreferencesRequest;
 import com.dgl.customer.dto.response.CustomerResponse;
 import com.dgl.customer.dto.response.PreferencesResponse;
-import com.dgl.customer.exception.CustomerNotFoundException;
-import com.dgl.customer.exception.EmailAlreadyExistsException;
-import com.dgl.customer.messaging.event.CustomerCreatedPayload;
-import com.dgl.customer.messaging.event.CustomerUpdatedPayload;
-import com.dgl.customer.outbox.OutboxService;
-import com.dgl.customer.repository.CustomerPreferencesRepository;
-import com.dgl.customer.repository.CustomerRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
-import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -35,203 +32,90 @@ import static org.mockito.Mockito.*;
 class CustomerServiceImplTest {
 
     @Mock
-    private CustomerRepository customerRepository;
+    private CommandBus commandBus;
 
     @Mock
-    private CustomerPreferencesRepository preferencesRepository;
-
-    @Mock
-    private OutboxService outboxService;
+    private QueryBus queryBus;
 
     @InjectMocks
     private CustomerServiceImpl customerService;
 
     @Test
-    @DisplayName("createCustomer should succeed, initialize preferences and record CustomerCreated outbox event")
-    void createCustomer_WhenValid_ShouldSucceedAndRecordOutbox() {
-        CreateCustomerRequest request = new CreateCustomerRequest(
-                "john.doe@example.com",
-                "John",
-                "Doe",
-                "+905551112233"
-        );
-
-        when(customerRepository.existsByEmail("john.doe@example.com")).thenReturn(false);
-        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> {
-            Customer c = invocation.getArgument(0);
-            c.setId(UUID.randomUUID());
-            c.setCreatedAt(Instant.now());
-            c.setUpdatedAt(Instant.now());
-            return c;
-        });
+    @DisplayName("createCustomer should delegate to command bus")
+    void createCustomer_shouldDelegate() {
+        CreateCustomerRequest request = new CreateCustomerRequest("test@example.com", "John", "Doe", "+905551112233");
+        CustomerResponse mockResponse = mock(CustomerResponse.class);
+        when(commandBus.execute(any(CreateCustomerCommand.class))).thenReturn(mockResponse);
 
         CustomerResponse response = customerService.createCustomer(request);
 
-        assertThat(response).isNotNull();
-        assertThat(response.email()).isEqualTo("john.doe@example.com");
-        assertThat(response.firstName()).isEqualTo("John");
-        assertThat(response.status()).isEqualTo(CustomerStatus.ACTIVE);
-        assertThat(response.preferences()).isNotNull();
-        assertThat(response.preferences().emailNotifications()).isTrue();
-
-        verify(outboxService, times(1)).recordEvent(
-                eq("Customer"),
-                anyString(),
-                eq("CustomerCreated"),
-                any(UUID.class),
-                isNull(),
-                any(CustomerCreatedPayload.class)
-        );
+        assertThat(response).isSameAs(mockResponse);
+        verify(commandBus).execute(new CreateCustomerCommand(request));
     }
 
     @Test
-    @DisplayName("createCustomer should throw EmailAlreadyExistsException when email is taken")
-    void createCustomer_WhenEmailExists_ShouldThrowException() {
-        CreateCustomerRequest request = new CreateCustomerRequest(
-                "existing@example.com",
-                "Jane",
-                "Doe",
-                null
-        );
+    @DisplayName("updateCustomer should delegate to command bus")
+    void updateCustomer_shouldDelegate() {
+        UUID id = UUID.randomUUID();
+        UpdateCustomerRequest request = new UpdateCustomerRequest("A", "B", null, null);
+        CustomerResponse mockResponse = mock(CustomerResponse.class);
+        when(commandBus.execute(any(UpdateCustomerCommand.class))).thenReturn(mockResponse);
 
-        when(customerRepository.existsByEmail("existing@example.com")).thenReturn(true);
+        CustomerResponse response = customerService.updateCustomer(id, request);
 
-        assertThatThrownBy(() -> customerService.createCustomer(request))
-                .isInstanceOf(EmailAlreadyExistsException.class)
-                .hasMessageContaining("existing@example.com");
-
-        verify(customerRepository, never()).save(any(Customer.class));
-        verifyNoInteractions(outboxService);
+        assertThat(response).isSameAs(mockResponse);
+        verify(commandBus).execute(new UpdateCustomerCommand(id, request));
     }
 
     @Test
-    @DisplayName("updateCustomer should update details and record CustomerUpdated outbox event")
-    void updateCustomer_WhenValid_ShouldSucceed() {
-        UUID customerId = UUID.randomUUID();
-        Customer customer = Customer.builder()
-                .id(customerId)
-                .email("test@example.com")
-                .firstName("Old")
-                .lastName("Name")
-                .phoneNumber("+905550000000")
-                .status(CustomerStatus.ACTIVE)
-                .build();
+    @DisplayName("getCustomerById should delegate to query bus")
+    void getCustomerById_shouldDelegate() {
+        UUID id = UUID.randomUUID();
+        CustomerResponse mockResponse = mock(CustomerResponse.class);
+        when(queryBus.execute(any(GetCustomerByIdQuery.class))).thenReturn(mockResponse);
 
-        UpdateCustomerRequest updateRequest = new UpdateCustomerRequest(
-                "UpdatedFirst",
-                "UpdatedLast",
-                "+905559998877",
-                CustomerStatus.SUSPENDED
-        );
+        CustomerResponse response = customerService.getCustomerById(id);
 
-        when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
-
-        CustomerResponse response = customerService.updateCustomer(customerId, updateRequest);
-
-        assertThat(response).isNotNull();
-        assertThat(customer.getFirstName()).isEqualTo("UpdatedFirst");
-        assertThat(customer.getLastName()).isEqualTo("UpdatedLast");
-        assertThat(customer.getPhoneNumber()).isEqualTo("+905559998877");
-        assertThat(customer.getStatus()).isEqualTo(CustomerStatus.SUSPENDED);
-
-        verify(outboxService, times(1)).recordEvent(
-                eq("Customer"),
-                eq(customerId.toString()),
-                eq("CustomerUpdated"),
-                any(UUID.class),
-                isNull(),
-                any(CustomerUpdatedPayload.class)
-        );
+        assertThat(response).isSameAs(mockResponse);
+        verify(queryBus).execute(new GetCustomerByIdQuery(id));
     }
 
     @Test
-    @DisplayName("updateCustomer should throw CustomerNotFoundException when customer does not exist")
-    void updateCustomer_WhenNotFound_ShouldThrowException() {
-        UUID customerId = UUID.randomUUID();
-        UpdateCustomerRequest updateRequest = new UpdateCustomerRequest("A", "B", null, CustomerStatus.ACTIVE);
-
-        when(customerRepository.findById(customerId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> customerService.updateCustomer(customerId, updateRequest))
-                .isInstanceOf(CustomerNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("getCustomerById should return customer response when exists")
-    void getCustomerById_WhenExists_ShouldReturnResponse() {
-        UUID customerId = UUID.randomUUID();
-        Customer customer = Customer.builder()
-                .id(customerId)
-                .email("test@example.com")
-                .firstName("Test")
-                .lastName("User")
-                .status(CustomerStatus.ACTIVE)
-                .build();
-
-        when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
-
-        CustomerResponse response = customerService.getCustomerById(customerId);
-
-        assertThat(response).isNotNull();
-        assertThat(response.id()).isEqualTo(customerId);
-    }
-
-    @Test
-    @DisplayName("getCustomerByEmail should return customer response when email exists")
-    void getCustomerByEmail_WhenExists_ShouldReturnResponse() {
-        Customer customer = Customer.builder()
-                .id(UUID.randomUUID())
-                .email("test@example.com")
-                .firstName("Test")
-                .lastName("User")
-                .status(CustomerStatus.ACTIVE)
-                .build();
-
-        when(customerRepository.findByEmail("test@example.com")).thenReturn(Optional.of(customer));
+    @DisplayName("getCustomerByEmail should delegate to query bus")
+    void getCustomerByEmail_shouldDelegate() {
+        CustomerResponse mockResponse = mock(CustomerResponse.class);
+        when(queryBus.execute(any(GetCustomerByEmailQuery.class))).thenReturn(mockResponse);
 
         CustomerResponse response = customerService.getCustomerByEmail("test@example.com");
 
-        assertThat(response).isNotNull();
-        assertThat(response.email()).isEqualTo("test@example.com");
+        assertThat(response).isSameAs(mockResponse);
+        verify(queryBus).execute(new GetCustomerByEmailQuery("test@example.com"));
     }
 
     @Test
-    @DisplayName("updatePreferences should update preference flags and return PreferencesResponse")
-    void updatePreferences_WhenValid_ShouldUpdateAndReturnResponse() {
-        UUID customerId = UUID.randomUUID();
-        CustomerPreferences prefs = CustomerPreferences.builder()
-                .customerId(customerId)
-                .emailNotifications(true)
-                .smsNotifications(true)
-                .pushNotifications(true)
-                .language("tr")
-                .currency("TRY")
-                .build();
+    @DisplayName("getAllCustomers should delegate to query bus")
+    void getAllCustomers_shouldDelegate() {
+        PageRequest pageRequest = PageRequest.of(0, 10);
+        Page<CustomerResponse> mockPage = mock(Page.class);
+        when(queryBus.execute(any(GetAllCustomersQuery.class))).thenReturn(mockPage);
 
-        Customer customer = Customer.builder()
-                .id(customerId)
-                .email("test@example.com")
-                .preferences(prefs)
-                .build();
+        Page<CustomerResponse> response = customerService.getAllCustomers(pageRequest);
 
-        UpdatePreferencesRequest request = new UpdatePreferencesRequest(
-                false,
-                false,
-                true,
-                "en",
-                "USD"
-        );
+        assertThat(response).isSameAs(mockPage);
+        verify(queryBus).execute(new GetAllCustomersQuery(pageRequest));
+    }
 
-        when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
-        when(preferencesRepository.save(any(CustomerPreferences.class))).thenAnswer(i -> i.getArgument(0));
+    @Test
+    @DisplayName("updatePreferences should delegate to command bus")
+    void updatePreferences_shouldDelegate() {
+        UUID id = UUID.randomUUID();
+        UpdatePreferencesRequest request = new UpdatePreferencesRequest(true, true, true, "tr", "TRY");
+        PreferencesResponse mockResponse = mock(PreferencesResponse.class);
+        when(commandBus.execute(any(UpdatePreferencesCommand.class))).thenReturn(mockResponse);
 
-        PreferencesResponse response = customerService.updatePreferences(customerId, request);
+        PreferencesResponse response = customerService.updatePreferences(id, request);
 
-        assertThat(response).isNotNull();
-        assertThat(response.emailNotifications()).isFalse();
-        assertThat(response.smsNotifications()).isFalse();
-        assertThat(response.pushNotifications()).isTrue();
-        assertThat(response.language()).isEqualTo("en");
-        assertThat(response.currency()).isEqualTo("USD");
+        assertThat(response).isSameAs(mockResponse);
+        verify(commandBus).execute(new UpdatePreferencesCommand(id, request));
     }
 }

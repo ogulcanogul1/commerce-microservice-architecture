@@ -1,11 +1,18 @@
 package com.dgl.customer.controller;
 
+import com.dgl.customer.cqrs.CommandBus;
+import com.dgl.customer.cqrs.QueryBus;
+import com.dgl.customer.cqrs.command.CreateCustomerCommand;
+import com.dgl.customer.cqrs.command.UpdateCustomerCommand;
+import com.dgl.customer.cqrs.command.UpdatePreferencesCommand;
+import com.dgl.customer.cqrs.query.GetAllCustomersQuery;
+import com.dgl.customer.cqrs.query.GetCustomerByEmailQuery;
+import com.dgl.customer.cqrs.query.GetCustomerByIdQuery;
 import com.dgl.customer.dto.request.CreateCustomerRequest;
 import com.dgl.customer.dto.request.UpdateCustomerRequest;
 import com.dgl.customer.dto.request.UpdatePreferencesRequest;
 import com.dgl.customer.dto.response.CustomerResponse;
 import com.dgl.customer.dto.response.PreferencesResponse;
-import com.dgl.customer.service.CustomerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -27,7 +34,8 @@ import java.util.UUID;
 @Tag(name = "Customers", description = "Endpoints for customer profiles, email lookup, address book, and user preferences")
 public class CustomerController {
 
-    private final CustomerService customerService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Create customer profile", description = "Creates a new customer profile record directly")
@@ -37,7 +45,7 @@ public class CustomerController {
             @ApiResponse(responseCode = "409", description = "Email already registered")
     })
     public ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CreateCustomerRequest request) {
-        CustomerResponse response = customerService.createCustomer(request);
+        CustomerResponse response = commandBus.execute(new CreateCustomerCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -48,7 +56,7 @@ public class CustomerController {
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<CustomerResponse> getCustomerById(@PathVariable UUID id) {
-        return ResponseEntity.ok(customerService.getCustomerById(id));
+        return ResponseEntity.ok(queryBus.execute(new GetCustomerByIdQuery(id)));
     }
 
     @GetMapping("/by-email")
@@ -58,13 +66,13 @@ public class CustomerController {
             @ApiResponse(responseCode = "404", description = "Customer not found")
     })
     public ResponseEntity<CustomerResponse> getCustomerByEmail(@RequestParam String email) {
-        return ResponseEntity.ok(customerService.getCustomerByEmail(email));
+        return ResponseEntity.ok(queryBus.execute(new GetCustomerByEmailQuery(email)));
     }
 
     @GetMapping
     @Operation(summary = "List all customers", description = "Retrieves paginated list of registered customers")
     public ResponseEntity<Page<CustomerResponse>> getAllCustomers(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(customerService.getAllCustomers(pageable));
+        return ResponseEntity.ok(queryBus.execute(new GetAllCustomersQuery(pageable)));
     }
 
     @PutMapping("/{id}")
@@ -76,7 +84,7 @@ public class CustomerController {
     public ResponseEntity<CustomerResponse> updateCustomer(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateCustomerRequest request) {
-        return ResponseEntity.ok(customerService.updateCustomer(id, request));
+        return ResponseEntity.ok(commandBus.execute(new UpdateCustomerCommand(id, request)));
     }
 
     @PutMapping("/{id}/preferences")
@@ -88,6 +96,6 @@ public class CustomerController {
     public ResponseEntity<PreferencesResponse> updatePreferences(
             @PathVariable UUID id,
             @Valid @RequestBody UpdatePreferencesRequest request) {
-        return ResponseEntity.ok(customerService.updatePreferences(id, request));
+        return ResponseEntity.ok(commandBus.execute(new UpdatePreferencesCommand(id, request)));
     }
 }
