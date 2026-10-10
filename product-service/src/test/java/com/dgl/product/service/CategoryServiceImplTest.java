@@ -1,12 +1,16 @@
 package com.dgl.product.service;
 
-import com.dgl.product.domain.Category;
+import com.dgl.product.cqrs.CommandBus;
+import com.dgl.product.cqrs.QueryBus;
+import com.dgl.product.cqrs.command.CreateCategoryCommand;
+import com.dgl.product.cqrs.command.DeleteCategoryCommand;
+import com.dgl.product.cqrs.command.UpdateCategoryCommand;
+import com.dgl.product.cqrs.query.GetAllCategoriesQuery;
+import com.dgl.product.cqrs.query.GetCategoryByIdQuery;
+import com.dgl.product.cqrs.query.GetCategoryBySlugQuery;
 import com.dgl.product.dto.request.CreateCategoryRequest;
 import com.dgl.product.dto.request.UpdateCategoryRequest;
 import com.dgl.product.dto.response.CategoryResponse;
-import com.dgl.product.exception.CategoryAlreadyExistsException;
-import com.dgl.product.exception.CategoryNotFoundException;
-import com.dgl.product.repository.CategoryRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,13 +18,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -28,153 +29,88 @@ import static org.mockito.Mockito.*;
 class CategoryServiceImplTest {
 
     @Mock
-    private CategoryRepository categoryRepository;
+    private CommandBus commandBus;
+
+    @Mock
+    private QueryBus queryBus;
 
     @InjectMocks
     private CategoryServiceImpl categoryService;
 
     @Test
-    @DisplayName("createCategory should succeed and generate slug when valid request provided")
-    void createCategory_WhenValid_ShouldSucceed() {
-        CreateCategoryRequest request = new CreateCategoryRequest("Smart Phones", "All smart phones", null);
+    @DisplayName("createCategory: Should dispatch CreateCategoryCommand")
+    void createCategory_shouldDispatch() {
+        CreateCategoryRequest request = new CreateCategoryRequest("Electronics", "Desc", null);
+        CategoryResponse expected = mock(CategoryResponse.class);
 
-        when(categoryRepository.existsByName("Smart Phones")).thenReturn(false);
-        when(categoryRepository.existsBySlug("smart-phones")).thenReturn(false);
+        when(commandBus.execute(any(CreateCategoryCommand.class))).thenReturn(expected);
 
-        when(categoryRepository.save(any(Category.class))).thenAnswer(invocation -> {
-            Category c = invocation.getArgument(0);
-            c.setId(UUID.randomUUID());
-            c.setCreatedAt(Instant.now());
-            c.setUpdatedAt(Instant.now());
-            return c;
-        });
+        CategoryResponse actual = categoryService.createCategory(request);
 
-        CategoryResponse response = categoryService.createCategory(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.name()).isEqualTo("Smart Phones");
-        assertThat(response.slug()).isEqualTo("smart-phones");
-        verify(categoryRepository, times(1)).save(any(Category.class));
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new CreateCategoryCommand(request));
     }
 
     @Test
-    @DisplayName("createCategory should throw CategoryAlreadyExistsException when name exists")
-    void createCategory_WhenNameExists_ShouldThrowException() {
-        CreateCategoryRequest request = new CreateCategoryRequest("Existing Category", "Description", null);
+    @DisplayName("updateCategory: Should dispatch UpdateCategoryCommand")
+    void updateCategory_shouldDispatch() {
+        UUID id = UUID.randomUUID();
+        UpdateCategoryRequest request = new UpdateCategoryRequest("Books", "Desc", null);
+        CategoryResponse expected = mock(CategoryResponse.class);
 
-        when(categoryRepository.existsByName("Existing Category")).thenReturn(true);
+        when(commandBus.execute(any(UpdateCategoryCommand.class))).thenReturn(expected);
 
-        assertThatThrownBy(() -> categoryService.createCategory(request))
-                .isInstanceOf(CategoryAlreadyExistsException.class)
-                .hasMessageContaining("Existing Category");
+        CategoryResponse actual = categoryService.updateCategory(id, request);
 
-        verify(categoryRepository, never()).save(any(Category.class));
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new UpdateCategoryCommand(id, request));
     }
 
     @Test
-    @DisplayName("createCategory should throw CategoryNotFoundException when parent does not exist")
-    void createCategory_WhenParentNotFound_ShouldThrowException() {
-        UUID parentId = UUID.randomUUID();
-        CreateCategoryRequest request = new CreateCategoryRequest("Child Category", "Description", parentId);
+    @DisplayName("getCategoryById: Should dispatch GetCategoryByIdQuery")
+    void getCategoryById_shouldDispatch() {
+        UUID id = UUID.randomUUID();
+        CategoryResponse expected = mock(CategoryResponse.class);
 
-        when(categoryRepository.existsByName("Child Category")).thenReturn(false);
-        when(categoryRepository.existsBySlug("child-category")).thenReturn(false);
-        when(categoryRepository.findById(parentId)).thenReturn(Optional.empty());
+        when(queryBus.execute(any(GetCategoryByIdQuery.class))).thenReturn(expected);
 
-        assertThatThrownBy(() -> categoryService.createCategory(request))
-                .isInstanceOf(CategoryNotFoundException.class);
+        CategoryResponse actual = categoryService.getCategoryById(id);
+
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetCategoryByIdQuery(id));
     }
 
     @Test
-    @DisplayName("updateCategory should update category successfully")
-    void updateCategory_WhenValid_ShouldSucceed() {
-        UUID categoryId = UUID.randomUUID();
-        Category category = Category.builder()
-                .id(categoryId)
-                .name("Old Category")
-                .slug("old-category")
-                .description("Old Desc")
-                .build();
+    @DisplayName("getCategoryBySlug: Should dispatch GetCategoryBySlugQuery")
+    void getCategoryBySlug_shouldDispatch() {
+        CategoryResponse expected = mock(CategoryResponse.class);
 
-        UpdateCategoryRequest request = new UpdateCategoryRequest("Updated Category", "Updated Desc", null);
+        when(queryBus.execute(any(GetCategoryBySlugQuery.class))).thenReturn(expected);
 
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
-        when(categoryRepository.existsByName("Updated Category")).thenReturn(false);
+        CategoryResponse actual = categoryService.getCategoryBySlug("electronics");
 
-        CategoryResponse response = categoryService.updateCategory(categoryId, request);
-
-        assertThat(response).isNotNull();
-        assertThat(category.getName()).isEqualTo("Updated Category");
-        assertThat(category.getDescription()).isEqualTo("Updated Desc");
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetCategoryBySlugQuery("electronics"));
     }
 
     @Test
-    @DisplayName("updateCategory should throw IllegalArgumentException when category is set as its own parent")
-    void updateCategory_WhenSelfParenting_ShouldThrowException() {
-        UUID categoryId = UUID.randomUUID();
-        Category category = Category.builder()
-                .id(categoryId)
-                .name("Self Category")
-                .build();
+    @DisplayName("getAllCategories: Should dispatch GetAllCategoriesQuery")
+    void getAllCategories_shouldDispatch() {
+        when(queryBus.execute(any(GetAllCategoriesQuery.class))).thenReturn(List.of());
 
-        UpdateCategoryRequest request = new UpdateCategoryRequest("Self Category", "Desc", categoryId);
+        List<CategoryResponse> actual = categoryService.getAllCategories();
 
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
-
-        assertThatThrownBy(() -> categoryService.updateCategory(categoryId, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("cannot be its own parent");
+        assertThat(actual).isEmpty();
+        verify(queryBus).execute(new GetAllCategoriesQuery());
     }
 
     @Test
-    @DisplayName("getCategoryById should return response when category exists")
-    void getCategoryById_WhenExists_ShouldReturnResponse() {
-        UUID categoryId = UUID.randomUUID();
-        Category category = Category.builder()
-                .id(categoryId)
-                .name("Gadgets")
-                .slug("gadgets")
-                .build();
+    @DisplayName("deleteCategory: Should dispatch DeleteCategoryCommand")
+    void deleteCategory_shouldDispatch() {
+        UUID id = UUID.randomUUID();
 
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        categoryService.deleteCategory(id);
 
-        CategoryResponse response = categoryService.getCategoryById(categoryId);
-
-        assertThat(response).isNotNull();
-        assertThat(response.id()).isEqualTo(categoryId);
-        assertThat(response.name()).isEqualTo("Gadgets");
-    }
-
-    @Test
-    @DisplayName("getCategoryById should throw CategoryNotFoundException when category does not exist")
-    void getCategoryById_WhenNotFound_ShouldThrowException() {
-        UUID categoryId = UUID.randomUUID();
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> categoryService.getCategoryById(categoryId))
-                .isInstanceOf(CategoryNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("deleteCategory should delete category when exists")
-    void deleteCategory_WhenExists_ShouldDelete() {
-        UUID categoryId = UUID.randomUUID();
-        when(categoryRepository.existsById(categoryId)).thenReturn(true);
-
-        categoryService.deleteCategory(categoryId);
-
-        verify(categoryRepository, times(1)).deleteById(categoryId);
-    }
-
-    @Test
-    @DisplayName("deleteCategory should throw CategoryNotFoundException when category does not exist")
-    void deleteCategory_WhenNotFound_ShouldThrowException() {
-        UUID categoryId = UUID.randomUUID();
-        when(categoryRepository.existsById(categoryId)).thenReturn(false);
-
-        assertThatThrownBy(() -> categoryService.deleteCategory(categoryId))
-                .isInstanceOf(CategoryNotFoundException.class);
-
-        verify(categoryRepository, never()).deleteById(any(UUID.class));
+        verify(commandBus).execute(new DeleteCategoryCommand(id));
     }
 }

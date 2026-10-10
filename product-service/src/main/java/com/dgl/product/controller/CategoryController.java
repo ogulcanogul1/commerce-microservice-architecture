@@ -1,9 +1,16 @@
 package com.dgl.product.controller;
 
+import com.dgl.product.cqrs.CommandBus;
+import com.dgl.product.cqrs.QueryBus;
+import com.dgl.product.cqrs.command.CreateCategoryCommand;
+import com.dgl.product.cqrs.command.DeleteCategoryCommand;
+import com.dgl.product.cqrs.command.UpdateCategoryCommand;
+import com.dgl.product.cqrs.query.GetAllCategoriesQuery;
+import com.dgl.product.cqrs.query.GetCategoryByIdQuery;
+import com.dgl.product.cqrs.query.GetCategoryBySlugQuery;
 import com.dgl.product.dto.request.CreateCategoryRequest;
 import com.dgl.product.dto.request.UpdateCategoryRequest;
 import com.dgl.product.dto.response.CategoryResponse;
-import com.dgl.product.service.CategoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -23,7 +30,8 @@ import java.util.UUID;
 @Tag(name = "Categories", description = "Endpoints for managing product categories and hierarchy")
 public class CategoryController {
 
-    private final CategoryService categoryService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Create category", description = "Adds a new product category")
@@ -33,7 +41,7 @@ public class CategoryController {
             @ApiResponse(responseCode = "409", description = "Category name already exists")
     })
     public ResponseEntity<CategoryResponse> createCategory(@Valid @RequestBody CreateCategoryRequest request) {
-        CategoryResponse response = categoryService.createCategory(request);
+        CategoryResponse response = commandBus.execute(new CreateCategoryCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -44,7 +52,7 @@ public class CategoryController {
             @ApiResponse(responseCode = "404", description = "Category not found")
     })
     public ResponseEntity<CategoryResponse> getCategoryById(@PathVariable UUID id) {
-        CategoryResponse response = categoryService.getCategoryById(id);
+        CategoryResponse response = queryBus.execute(new GetCategoryByIdQuery(id));
         return ResponseEntity.ok(response);
     }
 
@@ -55,14 +63,14 @@ public class CategoryController {
             @ApiResponse(responseCode = "404", description = "Category not found")
     })
     public ResponseEntity<CategoryResponse> getCategoryBySlug(@PathVariable String slug) {
-        CategoryResponse response = categoryService.getCategoryBySlug(slug);
+        CategoryResponse response = queryBus.execute(new GetCategoryBySlugQuery(slug));
         return ResponseEntity.ok(response);
     }
 
     @GetMapping
     @Operation(summary = "List all categories", description = "Retrieves all categories from cache or database")
     public ResponseEntity<List<CategoryResponse>> getAllCategories() {
-        List<CategoryResponse> response = categoryService.getAllCategories();
+        List<CategoryResponse> response = queryBus.execute(new GetAllCategoriesQuery());
         return ResponseEntity.ok(response);
     }
 
@@ -74,7 +82,7 @@ public class CategoryController {
     })
     public ResponseEntity<CategoryResponse> updateCategory(
             @PathVariable UUID id, @Valid @RequestBody UpdateCategoryRequest request) {
-        CategoryResponse response = categoryService.updateCategory(id, request);
+        CategoryResponse response = commandBus.execute(new UpdateCategoryCommand(id, request));
         return ResponseEntity.ok(response);
     }
 
@@ -86,6 +94,6 @@ public class CategoryController {
             @ApiResponse(responseCode = "404", description = "Category not found")
     })
     public void deleteCategory(@PathVariable UUID id) {
-        categoryService.deleteCategory(id);
+        commandBus.execute(new DeleteCategoryCommand(id));
     }
 }

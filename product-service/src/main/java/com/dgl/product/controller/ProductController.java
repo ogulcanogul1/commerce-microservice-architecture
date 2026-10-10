@@ -1,9 +1,14 @@
 package com.dgl.product.controller;
 
+import com.dgl.product.cqrs.CommandBus;
+import com.dgl.product.cqrs.QueryBus;
+import com.dgl.product.cqrs.command.CreateProductCommand;
+import com.dgl.product.cqrs.command.DeleteProductCommand;
+import com.dgl.product.cqrs.command.UpdateProductCommand;
+import com.dgl.product.cqrs.query.*;
 import com.dgl.product.dto.request.CreateProductRequest;
 import com.dgl.product.dto.request.UpdateProductRequest;
 import com.dgl.product.dto.response.ProductResponse;
-import com.dgl.product.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -24,7 +29,8 @@ import java.util.UUID;
 @Tag(name = "Products", description = "Endpoints for managing products, categories, SKU, and stock")
 public class ProductController {
 
-    private final ProductService productService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Create a new product", description = "Adds a product to the catalog with SKU, initial stock, and category")
@@ -34,7 +40,7 @@ public class ProductController {
             @ApiResponse(responseCode = "409", description = "Duplicate SKU or slug")
     })
     public ResponseEntity<ProductResponse> createProduct(@Valid @RequestBody CreateProductRequest request) {
-        ProductResponse response = productService.createProduct(request);
+        ProductResponse response = commandBus.execute(new CreateProductCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -45,7 +51,7 @@ public class ProductController {
             @ApiResponse(responseCode = "404", description = "Product not found")
     })
     public ResponseEntity<ProductResponse> getProductById(@PathVariable UUID id) {
-        ProductResponse response = productService.getProductById(id);
+        ProductResponse response = queryBus.execute(new GetProductByIdQuery(id));
         return ResponseEntity.ok(response);
     }
 
@@ -56,7 +62,7 @@ public class ProductController {
             @ApiResponse(responseCode = "404", description = "Product not found")
     })
     public ResponseEntity<ProductResponse> getProductBySku(@PathVariable String sku) {
-        ProductResponse response = productService.getProductBySku(sku);
+        ProductResponse response = queryBus.execute(new GetProductBySkuQuery(sku));
         return ResponseEntity.ok(response);
     }
 
@@ -67,14 +73,14 @@ public class ProductController {
             @ApiResponse(responseCode = "404", description = "Product not found")
     })
     public ResponseEntity<ProductResponse> getProductBySlug(@PathVariable String slug) {
-        ProductResponse response = productService.getProductBySlug(slug);
+        ProductResponse response = queryBus.execute(new GetProductBySlugQuery(slug));
         return ResponseEntity.ok(response);
     }
 
     @GetMapping
     @Operation(summary = "List all products", description = "Retrieves a paginated list of catalog products")
     public ResponseEntity<Page<ProductResponse>> getAllProducts(Pageable pageable) {
-        Page<ProductResponse> response = productService.getAllProducts(pageable);
+        Page<ProductResponse> response = queryBus.execute(new GetAllProductsQuery(pageable));
         return ResponseEntity.ok(response);
     }
 
@@ -82,7 +88,7 @@ public class ProductController {
     @Operation(summary = "List products by category", description = "Retrieves a paginated list of products under a specific category")
     public ResponseEntity<Page<ProductResponse>> getProductsByCategory(
             @PathVariable UUID categoryId, Pageable pageable) {
-        Page<ProductResponse> response = productService.getProductsByCategory(categoryId, pageable);
+        Page<ProductResponse> response = queryBus.execute(new GetProductsByCategoryQuery(categoryId, pageable));
         return ResponseEntity.ok(response);
     }
 
@@ -94,7 +100,7 @@ public class ProductController {
     })
     public ResponseEntity<ProductResponse> updateProduct(
             @PathVariable UUID id, @Valid @RequestBody UpdateProductRequest request) {
-        ProductResponse response = productService.updateProduct(id, request);
+        ProductResponse response = commandBus.execute(new UpdateProductCommand(id, request));
         return ResponseEntity.ok(response);
     }
 
@@ -106,6 +112,6 @@ public class ProductController {
             @ApiResponse(responseCode = "404", description = "Product not found")
     })
     public void deleteProduct(@PathVariable UUID id) {
-        productService.deleteProduct(id);
+        commandBus.execute(new DeleteProductCommand(id));
     }
 }
