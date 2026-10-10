@@ -1,196 +1,116 @@
 package com.dgl.payment.service;
 
-import com.dgl.payment.domain.Payment;
-import com.dgl.payment.domain.PaymentRefund;
-import com.dgl.payment.domain.PaymentStatus;
-import com.dgl.payment.domain.RefundStatus;
+import com.dgl.payment.cqrs.CommandBus;
+import com.dgl.payment.cqrs.QueryBus;
+import com.dgl.payment.cqrs.command.ProcessPaymentCommand;
+import com.dgl.payment.cqrs.command.RefundPaymentCommand;
+import com.dgl.payment.cqrs.query.GetPaymentByIdQuery;
+import com.dgl.payment.cqrs.query.GetPaymentByOrderIdQuery;
+import com.dgl.payment.cqrs.query.GetPaymentsByCustomerQuery;
 import com.dgl.payment.dto.request.ProcessPaymentRequest;
 import com.dgl.payment.dto.request.RefundPaymentRequest;
 import com.dgl.payment.dto.response.PaymentRefundResponse;
 import com.dgl.payment.dto.response.PaymentResponse;
-import com.dgl.payment.exception.PaymentFailedException;
-import com.dgl.payment.exception.PaymentNotFoundException;
-import com.dgl.payment.messaging.event.PaymentAuthorizedPayload;
-import com.dgl.payment.messaging.event.PaymentRefundedPayload;
-import com.dgl.payment.outbox.OutboxService;
-import com.dgl.payment.repository.PaymentRefundRepository;
-import com.dgl.payment.repository.PaymentRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceImplTest {
 
     @Mock
-    private PaymentRepository paymentRepository;
+    private CommandBus commandBus;
 
     @Mock
-    private PaymentRefundRepository paymentRefundRepository;
-
-    @Mock
-    private OutboxService outboxService;
+    private QueryBus queryBus;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
 
-    private UUID paymentId;
-    private UUID orderId;
-    private UUID customerId;
-    private Payment samplePayment;
+    @Test
+    @DisplayName("processPayment: Should dispatch ProcessPaymentCommand")
+    void processPayment_shouldDispatch() {
+        ProcessPaymentRequest request = new ProcessPaymentRequest(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.TEN, "TRY", "CREDIT_CARD");
+        PaymentResponse expected = mock(PaymentResponse.class);
 
-    @BeforeEach
-    void setUp() {
-        paymentId = UUID.randomUUID();
-        orderId = UUID.randomUUID();
-        customerId = UUID.randomUUID();
+        when(commandBus.execute(any(ProcessPaymentCommand.class))).thenReturn(expected);
 
-        samplePayment = Payment.builder()
-                .id(paymentId)
-                .orderId(orderId)
-                .customerId(customerId)
-                .amount(new BigDecimal("200.00"))
-                .currency("TRY")
-                .paymentMethod("CREDIT_CARD")
-                .transactionReference("TXN-TEST1234")
-                .idempotencyKey("KEY-123")
-                .status(PaymentStatus.AUTHORIZED)
-                .refunds(new ArrayList<>())
-                .build();
+        PaymentResponse actual = paymentService.processPayment(request, "KEY-1");
+
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new ProcessPaymentCommand(request, "KEY-1"));
     }
 
     @Test
-    @DisplayName("processPayment: Should authorize payment and emit PaymentAuthorized outbox event")
-    void processPayment_newPayment_shouldAuthorizeAndEmitOutboxEvent() {
-        when(paymentRepository.findByIdempotencyKey("KEY-123")).thenReturn(Optional.empty());
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(i -> {
-            Payment p = i.getArgument(0);
-            p.setId(paymentId);
-            return p;
-        });
+    @DisplayName("getPaymentById: Should dispatch GetPaymentByIdQuery")
+    void getPaymentById_shouldDispatch() {
+        UUID id = UUID.randomUUID();
+        PaymentResponse expected = mock(PaymentResponse.class);
 
-        ProcessPaymentRequest request = new ProcessPaymentRequest(
-                orderId,
-                customerId,
-                new BigDecimal("200.00"),
-                "TRY",
-                "CREDIT_CARD"
-        );
+        when(queryBus.execute(any(GetPaymentByIdQuery.class))).thenReturn(expected);
 
-        PaymentResponse response = paymentService.processPayment(request, "KEY-123");
+        PaymentResponse actual = paymentService.getPaymentById(id);
 
-        assertThat(response).isNotNull();
-        assertThat(response.id()).isEqualTo(paymentId);
-        assertThat(response.status()).isEqualTo(PaymentStatus.AUTHORIZED);
-        assertThat(response.amount()).isEqualByComparingTo(new BigDecimal("200.00"));
-
-        verify(outboxService).recordEvent(
-                eq("Payment"),
-                eq(paymentId.toString()),
-                eq("PaymentAuthorized"),
-                isNull(),
-                isNull(),
-                any(PaymentAuthorizedPayload.class)
-        );
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetPaymentByIdQuery(id));
     }
 
     @Test
-    @DisplayName("processPayment: Idempotent call with existing key should return existing payment without re-saving")
-    void processPayment_existingIdempotencyKey_shouldReturnExisting() {
-        when(paymentRepository.findByIdempotencyKey("KEY-123")).thenReturn(Optional.of(samplePayment));
+    @DisplayName("getPaymentByOrderId: Should dispatch GetPaymentByOrderIdQuery")
+    void getPaymentByOrderId_shouldDispatch() {
+        UUID orderId = UUID.randomUUID();
+        PaymentResponse expected = mock(PaymentResponse.class);
 
-        ProcessPaymentRequest request = new ProcessPaymentRequest(
-                orderId,
-                customerId,
-                new BigDecimal("200.00"),
-                "TRY",
-                "CREDIT_CARD"
-        );
+        when(queryBus.execute(any(GetPaymentByOrderIdQuery.class))).thenReturn(expected);
 
-        PaymentResponse response = paymentService.processPayment(request, "KEY-123");
+        PaymentResponse actual = paymentService.getPaymentByOrderId(orderId);
 
-        assertThat(response.id()).isEqualTo(paymentId);
-        verify(paymentRepository, never()).save(any());
-        verifyNoInteractions(outboxService);
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetPaymentByOrderIdQuery(orderId));
     }
 
     @Test
-    @DisplayName("refundPayment: Valid refund should record refund, mark REFUNDED and emit PaymentRefunded")
-    void refundPayment_fullRefund_shouldMarkRefundedAndEmitOutboxEvent() {
-        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(samplePayment));
-        when(paymentRefundRepository.save(any(PaymentRefund.class))).thenAnswer(i -> {
-            PaymentRefund r = i.getArgument(0);
-            r.setId(UUID.randomUUID());
-            return r;
-        });
+    @DisplayName("getPaymentsByCustomer: Should dispatch GetPaymentsByCustomerQuery")
+    void getPaymentsByCustomer_shouldDispatch() {
+        UUID customerId = UUID.randomUUID();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<PaymentResponse> expected = new PageImpl<>(List.of());
 
-        RefundPaymentRequest request = new RefundPaymentRequest(new BigDecimal("200.00"), "Customer cancellation");
-        PaymentRefundResponse refundResponse = paymentService.refundPayment(paymentId, request);
+        when(queryBus.execute(any(GetPaymentsByCustomerQuery.class))).thenReturn(expected);
 
-        assertThat(refundResponse).isNotNull();
-        assertThat(refundResponse.amount()).isEqualByComparingTo(new BigDecimal("200.00"));
-        assertThat(refundResponse.status()).isEqualTo(RefundStatus.COMPLETED);
-        assertThat(samplePayment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        Page<PaymentResponse> actual = paymentService.getPaymentsByCustomer(customerId, pageable);
 
-        verify(outboxService).recordEvent(
-                eq("Payment"),
-                eq(paymentId.toString()),
-                eq("PaymentRefunded"),
-                isNull(),
-                isNull(),
-                any(PaymentRefundedPayload.class)
-        );
+        assertThat(actual).isSameAs(expected);
+        verify(queryBus).execute(new GetPaymentsByCustomerQuery(customerId, pageable));
     }
 
     @Test
-    @DisplayName("refundPayment: Amount exceeding remaining refundable should throw PaymentFailedException")
-    void refundPayment_amountExceeding_shouldThrowException() {
-        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(samplePayment));
+    @DisplayName("refundPayment: Should dispatch RefundPaymentCommand")
+    void refundPayment_shouldDispatch() {
+        UUID id = UUID.randomUUID();
+        RefundPaymentRequest request = new RefundPaymentRequest(BigDecimal.ONE, "Reason");
+        PaymentRefundResponse expected = mock(PaymentRefundResponse.class);
 
-        RefundPaymentRequest request = new RefundPaymentRequest(new BigDecimal("250.00"), "Too high");
+        when(commandBus.execute(any(RefundPaymentCommand.class))).thenReturn(expected);
 
-        assertThatThrownBy(() -> paymentService.refundPayment(paymentId, request))
-                .isInstanceOf(PaymentFailedException.class)
-                .hasMessageContaining("exceeds refundable amount");
+        PaymentRefundResponse actual = paymentService.refundPayment(id, request);
 
-        verifyNoInteractions(outboxService);
-    }
-
-    @Test
-    @DisplayName("refundPayment: Cannot refund a failed payment")
-    void refundPayment_failedPayment_shouldThrowException() {
-        samplePayment.setStatus(PaymentStatus.FAILED);
-        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(samplePayment));
-
-        RefundPaymentRequest request = new RefundPaymentRequest(new BigDecimal("100.00"), "Refund test");
-
-        assertThatThrownBy(() -> paymentService.refundPayment(paymentId, request))
-                .isInstanceOf(PaymentFailedException.class)
-                .hasMessageContaining("Cannot refund a failed payment");
-    }
-
-    @Test
-    @DisplayName("getPaymentById: Non-existent ID should throw PaymentNotFoundException")
-    void getPaymentById_notFound_shouldThrowException() {
-        UUID nonExistent = UUID.randomUUID();
-        when(paymentRepository.findById(nonExistent)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> paymentService.getPaymentById(nonExistent))
-                .isInstanceOf(PaymentNotFoundException.class);
+        assertThat(actual).isSameAs(expected);
+        verify(commandBus).execute(new RefundPaymentCommand(id, request));
     }
 }

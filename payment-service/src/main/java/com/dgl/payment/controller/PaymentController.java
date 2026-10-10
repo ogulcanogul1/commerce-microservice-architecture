@@ -1,10 +1,16 @@
 package com.dgl.payment.controller;
 
+import com.dgl.payment.cqrs.CommandBus;
+import com.dgl.payment.cqrs.QueryBus;
+import com.dgl.payment.cqrs.command.ProcessPaymentCommand;
+import com.dgl.payment.cqrs.command.RefundPaymentCommand;
+import com.dgl.payment.cqrs.query.GetPaymentByIdQuery;
+import com.dgl.payment.cqrs.query.GetPaymentByOrderIdQuery;
+import com.dgl.payment.cqrs.query.GetPaymentsByCustomerQuery;
 import com.dgl.payment.dto.request.ProcessPaymentRequest;
 import com.dgl.payment.dto.request.RefundPaymentRequest;
 import com.dgl.payment.dto.response.PaymentRefundResponse;
 import com.dgl.payment.dto.response.PaymentResponse;
-import com.dgl.payment.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -27,7 +33,8 @@ import java.util.UUID;
 @Tag(name = "Payments", description = "Endpoints for processing payments, idempotent charges, and issuing refunds")
 public class PaymentController {
 
-    private final PaymentService paymentService;
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
 
     @PostMapping
     @Operation(summary = "Process payment", description = "Authorizes or captures payment with mandatory Idempotency-Key header to prevent duplicate charges")
@@ -40,7 +47,7 @@ public class PaymentController {
             @Valid @RequestBody ProcessPaymentRequest request,
             @Parameter(description = "Unique client-generated idempotency key (UUID or random string)", required = true)
             @RequestHeader(name = "Idempotency-Key", required = true) String idempotencyKey) {
-        PaymentResponse response = paymentService.processPayment(request, idempotencyKey);
+        PaymentResponse response = commandBus.execute(new ProcessPaymentCommand(request, idempotencyKey));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -51,7 +58,7 @@ public class PaymentController {
             @ApiResponse(responseCode = "404", description = "Payment not found")
     })
     public ResponseEntity<PaymentResponse> getPaymentById(@PathVariable UUID id) {
-        return ResponseEntity.ok(paymentService.getPaymentById(id));
+        return ResponseEntity.ok(queryBus.execute(new GetPaymentByIdQuery(id)));
     }
 
     @GetMapping("/order/{orderId}")
@@ -61,7 +68,7 @@ public class PaymentController {
             @ApiResponse(responseCode = "404", description = "Payment not found")
     })
     public ResponseEntity<PaymentResponse> getPaymentByOrderId(@PathVariable UUID orderId) {
-        return ResponseEntity.ok(paymentService.getPaymentByOrderId(orderId));
+        return ResponseEntity.ok(queryBus.execute(new GetPaymentByOrderIdQuery(orderId)));
     }
 
     @GetMapping("/customer/{customerId}")
@@ -69,7 +76,7 @@ public class PaymentController {
     public ResponseEntity<Page<PaymentResponse>> getPaymentsByCustomer(
             @PathVariable UUID customerId,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(paymentService.getPaymentsByCustomer(customerId, pageable));
+        return ResponseEntity.ok(queryBus.execute(new GetPaymentsByCustomerQuery(customerId, pageable)));
     }
 
     @PostMapping("/{id}/refund")
@@ -82,7 +89,7 @@ public class PaymentController {
     public ResponseEntity<PaymentRefundResponse> refundPayment(
             @PathVariable UUID id,
             @Valid @RequestBody RefundPaymentRequest request) {
-        PaymentRefundResponse response = paymentService.refundPayment(id, request);
+        PaymentRefundResponse response = commandBus.execute(new RefundPaymentCommand(id, request));
         return ResponseEntity.ok(response);
     }
 }
