@@ -1,0 +1,258 @@
+### =============================================================================
+### COMMERCE PLATFORM - REST CLIENT / HTTP SPECIFICATION
+### Base URL: Spring Cloud Gateway (Port 8080)
+### =============================================================================
+
+@gatewayUrl = http://localhost:8080
+@contentType = application/json
+
+### -----------------------------------------------------------------------------
+### 1. HEALTH & OBSERVABILITY CHECKS
+### -----------------------------------------------------------------------------
+
+# @name gatewayHealth
+GET {{gatewayUrl}}/actuator/health
+Accept: {{contentType}}
+
+### Gateway Circuit Breakers Status
+GET {{gatewayUrl}}/actuator/circuitbreakers
+Accept: {{contentType}}
+
+### OpenAPI 3.0 Documentation & Swagger UI Aggregation
+GET {{gatewayUrl}}/v3/api-docs/order-service
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 2. CUSTOMER & AUTHENTICATION (customer-service via Gateway)
+### -----------------------------------------------------------------------------
+
+# @name registerCustomer
+POST {{gatewayUrl}}/api/v1/auth/register
+Content-Type: {{contentType}}
+
+{
+  "email": "ayse.yilmaz@example.com",
+  "password": "SecurePassword123!",
+  "firstName": "Ayşe",
+  "lastName": "Yılmaz",
+  "phoneNumber": "+905551234567"
+}
+
+###
+
+# @name loginCustomer
+POST {{gatewayUrl}}/api/v1/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "ayse.yilmaz@example.com",
+  "password": "SecurePassword123!"
+}
+
+### Capture JWT Token from Login Response
+@authToken = {{loginCustomer.response.body.accessToken}}
+@customerId = {{loginCustomer.response.body.customer.id}}
+
+
+### -----------------------------------------------------------------------------
+### 3. PRODUCT CATALOG (product-service via Gateway - Redis Cache-Aside)
+### -----------------------------------------------------------------------------
+
+# @name createCategory
+POST {{gatewayUrl}}/api/v1/categories
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Elektronik",
+  "description": "Bilgisayar, telefon ve çevre birimleri",
+  "parentId": null
+}
+
+### Capture Category ID
+@categoryId = {{createCategory.response.body.id}}
+
+###
+
+# @name createProduct
+POST {{gatewayUrl}}/api/v1/products
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+  "sku": "SKU-MACBOOK-M3-01",
+  "name": "Apple MacBook Pro M3 16-inch",
+  "description": "Apple Silicon M3 Max, 36GB RAM, 1TB SSD Space Gray",
+  "categoryId": "{{categoryId}}",
+  "basePrice": 89999.00,
+  "currency": "TRY",
+  "attributes": {
+    "color": "Space Gray",
+    "ram": "36GB",
+    "storage": "1TB"
+  }
+}
+
+###
+
+# @name listProducts (Public endpoint - cached in Redis)
+GET {{gatewayUrl}}/api/v1/products?page=0&size=10
+Accept: {{contentType}}
+
+###
+
+# @name getProductBySlug
+GET {{gatewayUrl}}/api/v1/products/slug/apple-macbook-pro-m3-16-inch
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 4. INVENTORY PROVISIONING (inventory-service via Gateway)
+### -----------------------------------------------------------------------------
+
+# @name addStock
+POST {{gatewayUrl}}/api/v1/inventory/add
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+  "sku": "SKU-MACBOOK-M3-01",
+  "quantity": 50
+}
+
+###
+
+# @name getInventory
+GET {{gatewayUrl}}/api/v1/inventory/SKU-MACBOOK-M3-01
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 5. ORDER CREATION & SAGA ORCHESTRATION (order-service via Gateway)
+### -----------------------------------------------------------------------------
+
+# @name createOrderHappyPath
+# This initiates the Saga: Order(PENDING) -> Inventory(RESERVED) -> Payment(AUTHORIZED) -> Shipping(CREATED) -> CONFIRMED
+POST {{gatewayUrl}}/api/v1/orders
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+X-Correlation-Id: {{$guid}}
+
+{
+  "customerId": "{{customerId}}",
+  "shippingAddress": "Bağdat Caddesi No:123 Kadıköy / İstanbul",
+  "currency": "TRY",
+  "items": [
+    {
+      "sku": "SKU-MACBOOK-M3-01",
+      "productName": "Apple MacBook Pro M3 16-inch",
+      "unitPrice": 89999.00,
+      "quantity": 1
+    }
+  ]
+}
+
+### Capture Created Order ID
+@orderId = {{createOrderHappyPath.response.body.id}}
+@orderNumber = {{createOrderHappyPath.response.body.orderNumber}}
+
+###
+
+# @name getOrderById (Poll until status is CONFIRMED)
+GET {{gatewayUrl}}/api/v1/orders/{{orderId}}
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+###
+
+# @name getOrderByOrderNumber
+GET {{gatewayUrl}}/api/v1/orders/by-number/{{orderNumber}}
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 6. DOWNSTREAM SAGA VERIFICATIONS (Payment, Shipping, Notification)
+### -----------------------------------------------------------------------------
+
+### Verify Payment Transaction Captured by Order ID
+GET {{gatewayUrl}}/api/v1/payments/order/{{orderId}}
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+###
+
+### Verify Shipment Dispatched & Tracking Code Created
+GET {{gatewayUrl}}/api/v1/shipments/order/{{orderId}}
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+###
+
+### Verify Customer Notification Received
+GET {{gatewayUrl}}/api/v1/notifications/customer/{{customerId}}
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 7. SAGA COMPENSATION PATH (Insufficient Stock -> Order Cancelled)
+### -----------------------------------------------------------------------------
+
+# @name createOrderExceedingStock
+# Demands 9999 units (exceeds available 50).
+# Saga triggers: inventory.failed -> Order CANCELLED (Compensation Path)
+POST {{gatewayUrl}}/api/v1/orders
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+X-Correlation-Id: {{$guid}}
+
+{
+  "customerId": "{{customerId}}",
+  "shippingAddress": "Kordon Boyu No:45 Alsancak / İzmir",
+  "currency": "TRY",
+  "items": [
+    {
+      "sku": "SKU-MACBOOK-M3-01",
+      "productName": "Apple MacBook Pro M3 16-inch",
+      "unitPrice": 89999.00,
+      "quantity": 9999
+    }
+  ]
+}
+
+### Capture Failed Order ID
+@failedOrderId = {{createOrderExceedingStock.response.body.id}}
+
+###
+
+# Verify Failed Order was Cancelled by Saga Orchestrator
+GET {{gatewayUrl}}/api/v1/orders/{{failedOrderId}}
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 8. EDGE SECURITY & RESILIENCE TESTS
+### -----------------------------------------------------------------------------
+
+### A. Missing Token on Protected Path (Expect HTTP 401 Unauthorized)
+POST {{gatewayUrl}}/api/v1/orders
+Content-Type: {{contentType}}
+
+{
+  "customerId": "00000000-0000-0000-0000-000000000000",
+  "shippingAddress": "No Auth Test",
+  "currency": "TRY",
+  "items": []
+}
+
+### B. Circuit Breaker Fallback Endpoint
+GET {{gatewayUrl}}/fallback/product
+Accept: {{contentType}}
+
+### C. Circuit Breaker Fallback for Order
+GET {{gatewayUrl}}/fallback/order
+Accept: {{contentType}}
