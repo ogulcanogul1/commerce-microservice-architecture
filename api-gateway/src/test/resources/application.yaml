@@ -1,0 +1,10 @@
+eureka:
+  client:
+    enabled: false
+    registerWithEureka: false
+    fetchRegistry: false
+
+spring:
+  cloud:
+    discovery:
+      enabled: false

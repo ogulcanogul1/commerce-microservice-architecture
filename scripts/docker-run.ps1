@@ -32,6 +32,7 @@ Start-Sleep -Seconds 5
 docker compose -f docker-compose.yml -f docker-compose.apps.yml ps
 
 Write-Host "`nPlatform Access URLs:" -ForegroundColor Cyan
+Write-Host "  Eureka Server Dashboard  : http://localhost:8761" -ForegroundColor White
 Write-Host "  API Gateway & Swagger UI : http://localhost:8080/swagger-ui.html" -ForegroundColor White
 Write-Host "  Kafka UI Web Console     : http://localhost:8090" -ForegroundColor White
 Write-Host "  Grafana Observability    : http://localhost:3000 (admin / admin)" -ForegroundColor White

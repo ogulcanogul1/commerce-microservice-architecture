@@ -13,7 +13,7 @@ spring:
       mvc:
         routes:
           - id: product-service-route
-            uri: ${SERVICES_PRODUCT_URL:http://localhost:8081}
+            uri: ${SERVICES_PRODUCT_URL:lb://product-service}
             predicates:
               - Path=/api/v1/products/**, /api/v1/categories/**
             filters:
@@ -21,7 +21,7 @@ spring:
               - Retry=3
 
           - id: order-service-route
-            uri: ${SERVICES_ORDER_URL:http://localhost:8082}
+            uri: ${SERVICES_ORDER_URL:lb://order-service}
             predicates:
               - Path=/api/v1/orders/**
             filters:
@@ -29,7 +29,7 @@ spring:
               - Retry=3
 
           - id: payment-service-route
-            uri: ${SERVICES_PAYMENT_URL:http://localhost:8083}
+            uri: ${SERVICES_PAYMENT_URL:lb://payment-service}
             predicates:
               - Path=/api/v1/payments/**
             filters:
@@ -37,7 +37,7 @@ spring:
               - Retry=3
 
           - id: inventory-service-route
-            uri: ${SERVICES_INVENTORY_URL:http://localhost:8084}
+            uri: ${SERVICES_INVENTORY_URL:lb://inventory-service}
             predicates:
               - Path=/api/v1/inventory/**
             filters:
@@ -45,7 +45,7 @@ spring:
               - Retry=3
 
           - id: shipping-service-route
-            uri: ${SERVICES_SHIPPING_URL:http://localhost:8085}
+            uri: ${SERVICES_SHIPPING_URL:lb://shipping-service}
             predicates:
               - Path=/api/v1/shipments/**, /api/v1/shipping/**
             filters:
@@ -53,7 +53,7 @@ spring:
               - Retry=3
 
           - id: customer-service-route
-            uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
+            uri: ${SERVICES_CUSTOMER_URL:lb://customer-service}
             predicates:
               - Path=/api/v1/customers/**
             filters:
@@ -61,7 +61,7 @@ spring:
               - Retry=3
 
           - id: auth-service-route
-            uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
+            uri: ${SERVICES_CUSTOMER_URL:lb://customer-service}
             predicates:
               - Path=/api/v1/auth/**
             filters:
@@ -69,7 +69,7 @@ spring:
               - Retry=3
 
           - id: notification-service-route
-            uri: ${SERVICES_NOTIFICATION_URL:http://localhost:8087}
+            uri: ${SERVICES_NOTIFICATION_URL:lb://notification-service}
             predicates:
               - Path=/api/v1/notifications/**
             filters:
@@ -77,53 +77,62 @@ spring:
               - Retry=3
 
           - id: product-service-docs
-            uri: ${SERVICES_PRODUCT_URL:http://localhost:8081}
+            uri: ${SERVICES_PRODUCT_URL:lb://product-service}
             predicates:
               - Path=/v3/api-docs/product-service
             filters:
               - SetPath=/v3/api-docs
 
           - id: order-service-docs
-            uri: ${SERVICES_ORDER_URL:http://localhost:8082}
+            uri: ${SERVICES_ORDER_URL:lb://order-service}
             predicates:
               - Path=/v3/api-docs/order-service
             filters:
               - SetPath=/v3/api-docs
 
           - id: payment-service-docs
-            uri: ${SERVICES_PAYMENT_URL:http://localhost:8083}
+            uri: ${SERVICES_PAYMENT_URL:lb://payment-service}
             predicates:
               - Path=/v3/api-docs/payment-service
             filters:
               - SetPath=/v3/api-docs
 
           - id: inventory-service-docs
-            uri: ${SERVICES_INVENTORY_URL:http://localhost:8084}
+            uri: ${SERVICES_INVENTORY_URL:lb://inventory-service}
             predicates:
               - Path=/v3/api-docs/inventory-service
             filters:
               - SetPath=/v3/api-docs
 
           - id: shipping-service-docs
-            uri: ${SERVICES_SHIPPING_URL:http://localhost:8085}
+            uri: ${SERVICES_SHIPPING_URL:lb://shipping-service}
             predicates:
               - Path=/v3/api-docs/shipping-service
             filters:
               - SetPath=/v3/api-docs
 
           - id: customer-service-docs
-            uri: ${SERVICES_CUSTOMER_URL:http://localhost:8086}
+            uri: ${SERVICES_CUSTOMER_URL:lb://customer-service}
             predicates:
               - Path=/v3/api-docs/customer-service
             filters:
               - SetPath=/v3/api-docs
 
           - id: notification-service-docs
-            uri: ${SERVICES_NOTIFICATION_URL:http://localhost:8087}
+            uri: ${SERVICES_NOTIFICATION_URL:lb://notification-service}
             predicates:
               - Path=/v3/api-docs/notification-service
             filters:
               - SetPath=/v3/api-docs
+
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:true}
+    serviceUrl:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
 
 resilience4j:
   circuitbreaker:

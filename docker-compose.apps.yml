@@ -4,6 +4,20 @@ version: '3.8'
 # Çalıştırma: docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d --build
 
 services:
+  # 0. Eureka Server (Port: 8761) - Service Registry & Discovery
+  eureka-server:
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
+    image: commerce/eureka-server:latest
+    container_name: commerce-eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      - EUREKA_HOSTNAME=eureka-server
+    networks:
+      - commerce-network
+
   # 1. Product Service (Port: 8081) - Ürün & Kategori Kataloğu, Redis Önbellek
   product-service:
     build:
@@ -20,8 +34,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
@@ -45,8 +62,11 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka:
@@ -68,8 +88,11 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka:
@@ -91,8 +114,11 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka:
@@ -114,8 +140,11 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka:
@@ -137,9 +166,12 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
       - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka:
@@ -161,8 +193,11 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
+      eureka-server:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka:
@@ -182,16 +217,11 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - SERVICES_PRODUCT_URL=http://product-service:8081
-      - SERVICES_ORDER_URL=http://order-service:8082
-      - SERVICES_PAYMENT_URL=http://payment-service:8083
-      - SERVICES_INVENTORY_URL=http://inventory-service:8084
-      - SERVICES_SHIPPING_URL=http://shipping-service:8085
-      - SERVICES_CUSTOMER_URL=http://customer-service:8086
-      - SERVICES_NOTIFICATION_URL=http://notification-service:8087
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
       - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
     depends_on:
+      - eureka-server
       - product-service
       - order-service
       - payment-service
