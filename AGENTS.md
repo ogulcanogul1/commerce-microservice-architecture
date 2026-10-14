@@ -86,6 +86,7 @@ Teknolojiler sadece popüler oldukları için eklenmez. Her mimari karar doğrud
 | Servis Dizini | Paket Adı | Varsayılan Port | Veritabanı | Birincil Görev |
 | :--- | :--- | :--- | :--- | :--- |
 | `eureka-server` | `com.dgl.eureka` | **8761** | - | Service Registry & Discovery Sunucusu, Servis Kaydı & Sağlık Kontrolü |
+| `config-server` | `com.dgl.config` | **8888** | - | Centralized Configuration Management Sunucusu, Ortam Profilleri (dev/qa/prod) |
 | `api-gateway` | `com.dgl.gateway` | **8080** | Redis (6379) | API Gateway, Yetkilendirme, Hız Sınırı (Rate Limit), Circuit Breaker |
 | `product-service` | `com.dgl.product` | **8081** | `product_db` (5432) | Ürün kataloğu, kategoriler, fiyatlandırma, Redis önbellek |
 | `order-service` | `com.dgl.order` | **8082** | `order_db` (5432) | Sipariş yönetimi, Saga Orkestratörü, Outbox olayları |

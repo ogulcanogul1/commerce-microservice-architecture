@@ -1,0 +1,16 @@
+server:
+  port: 8086
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/customer_db}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+
+jwt:
+  secret: ${JWT_SECRET:dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure}
+  expiration-ms: 86400000
+
+outbox:
+  poller:
+    interval-ms: 1000

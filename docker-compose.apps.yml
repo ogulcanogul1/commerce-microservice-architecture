@@ -18,6 +18,24 @@ services:
     networks:
       - commerce-network
 
+  # 0.1. Config Server (Port: 8888) - Merkezi Konfigürasyon Sunucusu (Spring Cloud Config)
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    image: commerce/config-server:latest
+    container_name: commerce-config-server
+    ports:
+      - "8888:8888"
+    environment:
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - SPRING_PROFILES_ACTIVE=native
+    depends_on:
+      eureka-server:
+        condition: service_started
+    networks:
+      - commerce-network
+
   # 1. Product Service (Port: 8081) - Ürün & Kategori Kataloğu, Redis Önbellek
   product-service:
     build:
@@ -35,9 +53,12 @@ services:
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -63,9 +84,12 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -89,9 +113,12 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -115,9 +142,12 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -141,9 +171,12 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -167,10 +200,13 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
       - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -194,9 +230,12 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgrespassword
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
     depends_on:
       eureka-server:
+        condition: service_started
+      config-server:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -218,10 +257,12 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
       - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
     depends_on:
       - eureka-server
+      - config-server
       - product-service
       - order-service
       - payment-service

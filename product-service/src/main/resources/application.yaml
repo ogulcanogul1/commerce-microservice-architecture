@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: product-service
+  config:
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/}"
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/product_db}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}

@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 
 $Services = @(
     "eureka-server",
+    "config-server",
     "api-gateway",
     "product-service",
     "order-service",

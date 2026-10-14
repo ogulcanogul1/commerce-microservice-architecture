@@ -97,6 +97,7 @@ Bu proje; teknolojileri popüler oldukları için eklemek yerine şu temel mühe
 | Servis Adı | Dizin | Port | Veritabanı | Sorumluluk |
 | :--- | :--- | :--- | :--- | :--- |
 | **Eureka Server** | `eureka-server` | `8761` | - | Service Registry & Discovery, Servis Kaydı ve Sağlık İzleme Paneli |
+| **Config Server** | `config-server` | `8888` | - | Centralized Configuration Management, Ortam Profilleri (dev/qa/prod) |
 | **API Gateway** | `api-gateway` | `8080` | Redis (6379) | Ters proxy, JWT doğrulama, Redis hız limiti, Resilience4j devre kesici, Correlation-ID enjeksiyonu, Eureka `lb://` Yönlendirmesi |
 | **Product Service** | `product-service` | `8081` | `product_db` / Redis | Ürün kataloğu, kategoriler, fiyatlandırma, Redis Cache-Aside önbelleği |
 | **Order Service** | `order-service` | `8082` | `order_db` | Sipariş yaşam döngüsü, Saga Orkestratörü, Transactional Outbox |

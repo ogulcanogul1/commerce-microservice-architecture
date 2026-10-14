@@ -155,6 +155,10 @@
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-config</artifactId>
+		</dependency>
 	</dependencies>
 
 	<dependencyManagement>
@@ -179,7 +183,7 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<argLine>-Duser.language=en -Duser.country=US -DDDL_AUTO=update -DFLYWAY_ENABLED=false -Deureka.client.enabled=false -Deureka.client.register-with-eureka=false -Deureka.client.fetch-registry=false</argLine>
+					<argLine>-Duser.language=en -Duser.country=US -DDDL_AUTO=update -DFLYWAY_ENABLED=false -Deureka.client.enabled=false -Deureka.client.register-with-eureka=false -Deureka.client.fetch-registry=false -Dspring.cloud.config.enabled=false</argLine>
 				</configuration>
 			</plugin>
 			<plugin>

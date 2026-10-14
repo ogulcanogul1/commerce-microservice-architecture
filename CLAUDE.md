@@ -14,6 +14,7 @@ Detaylı küresel mimari ve standartlar için [AGENTS.md](file:///D:/backend_pro
 | Servis Adı | Port | Veritabanı | Birincil Sorumluluk |
 | :--- | :--- | :--- | :--- |
 | `eureka-server` | `8761` | - | Service Registry & Discovery, dinamik servis kaydı ve kontrolü |
+| `config-server` | `8888` | - | Centralized Configuration Server, ortam bazlı konfigürasyon yönetimi |
 | `api-gateway` | `8080` | Redis | Dinamik yönlendirme, JWT doğrulama, hız sınırı (rate limit), circuit breaker |
 | `product-service` | `8081` | `product_db` / Redis | Ürün kataloğu, kategoriler, fiyat, Redis Cache-Aside önbellekleme |
 | `order-service` | `8082` | `order_db` | Sipariş yönetimi, Saga orkestrasyonu, Transactional Outbox |

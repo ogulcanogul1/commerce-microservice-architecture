@@ -1,0 +1,12 @@
+# ==============================================================================
+# QA / Testing Environment Configuration
+# ==============================================================================
+
+logging:
+  level:
+    root: INFO
+    com.dgl: INFO
+
+spring:
+  jpa:
+    show-sql: false

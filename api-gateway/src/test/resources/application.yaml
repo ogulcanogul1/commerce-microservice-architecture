@@ -8,3 +8,5 @@ spring:
   cloud:
     discovery:
       enabled: false
+    config:
+      enabled: false

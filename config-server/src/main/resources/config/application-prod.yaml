@@ -1,0 +1,13 @@
+# ==============================================================================
+# Production Environment Configuration
+# ==============================================================================
+
+logging:
+  level:
+    root: WARN
+    com.dgl: INFO
+    org.springframework: WARN
+
+spring:
+  jpa:
+    show-sql: false

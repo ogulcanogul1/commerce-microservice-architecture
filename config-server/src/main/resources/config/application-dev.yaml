@@ -1,0 +1,17 @@
+# ==============================================================================
+# Development Environment Configuration
+# ==============================================================================
+
+logging:
+  level:
+    root: INFO
+    com.dgl: DEBUG
+    org.springframework.web: INFO
+    org.springframework.kafka: INFO
+
+spring:
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
