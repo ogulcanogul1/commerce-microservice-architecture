@@ -1,0 +1,20 @@
+# ==============================================================================
+# API Gateway - Production Configuration
+# ==============================================================================
+
+gateway:
+  ratelimit:
+    anonymous-quota-per-minute: 10      # Sıkı üretim kotası (DDoS & Brute-force koruması)
+    authenticated-quota-per-minute: 60
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 50
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 10s
+
+logging:
+  level:
+    com.dgl.gateway: INFO

@@ -1,0 +1,19 @@
+# ==============================================================================
+# Inventory Service - Production Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      leak-detection-threshold: 2000
+
+inventory:
+  reservation:
+    ttl-seconds: 600           # 10 dakika kesin rezervasyon SLA süresi
+
+logging:
+  level:
+    com.dgl.inventory: INFO

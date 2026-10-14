@@ -1,0 +1,18 @@
+# ==============================================================================
+# Order Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+
+saga:
+  timeout:
+    duration-seconds: 60        # Geliştirme ortamında askıda sipariş testleri için hızlı zaman aşımı
+    check-interval-ms: 10000
+
+logging:
+  level:
+    com.dgl.order: DEBUG

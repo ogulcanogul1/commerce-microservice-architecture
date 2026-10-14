@@ -1,0 +1,19 @@
+# ==============================================================================
+# API Gateway - QA / Staging Configuration
+# ==============================================================================
+
+gateway:
+  ratelimit:
+    anonymous-quota-per-minute: 20
+    authenticated-quota-per-minute: 100
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 20
+        failure-rate-threshold: 50.0
+
+logging:
+  level:
+    com.dgl.gateway: INFO

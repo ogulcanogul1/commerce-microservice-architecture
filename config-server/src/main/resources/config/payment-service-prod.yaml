@@ -1,0 +1,19 @@
+# ==============================================================================
+# Payment Service - Production Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      leak-detection-threshold: 2000
+
+payment:
+  idempotency:
+    retention-days: 30         # Finansal tekilleştirme kayıt saklama süresi
+
+logging:
+  level:
+    com.dgl.payment: INFO

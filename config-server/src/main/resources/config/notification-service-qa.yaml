@@ -1,0 +1,16 @@
+# ==============================================================================
+# Notification Service - QA / Staging Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 15
+
+notification:
+  delivery-mode: MOCK_SMTP      # MailHog veya sahte SMTP
+
+logging:
+  level:
+    com.dgl.notification: INFO

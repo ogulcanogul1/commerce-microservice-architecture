@@ -1,0 +1,17 @@
+# ==============================================================================
+# Inventory Service - QA / Staging Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 15
+
+inventory:
+  reservation:
+    ttl-seconds: 300
+
+logging:
+  level:
+    com.dgl.inventory: INFO

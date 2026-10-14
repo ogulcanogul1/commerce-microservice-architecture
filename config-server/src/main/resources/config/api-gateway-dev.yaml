@@ -1,0 +1,19 @@
+# ==============================================================================
+# API Gateway - Development Configuration
+# ==============================================================================
+
+gateway:
+  ratelimit:
+    anonymous-quota-per-minute: 60      # Geliştirme ortamında bol limit (60 req/min)
+    authenticated-quota-per-minute: 300 # (300 req/min)
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        failure-rate-threshold: 50.0
+
+logging:
+  level:
+    com.dgl.gateway: DEBUG

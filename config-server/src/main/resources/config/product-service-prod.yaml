@@ -1,0 +1,20 @@
+# ==============================================================================
+# Product Service - Production Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      leak-detection-threshold: 2000
+
+cache:
+  redis:
+    product-ttl-seconds: 1800   # 30 dakika (yüksek önbellek isabet oranı)
+    category-ttl-seconds: 3600  # 60 dakika
+
+logging:
+  level:
+    com.dgl.product: INFO

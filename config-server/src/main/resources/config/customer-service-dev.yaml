@@ -1,0 +1,16 @@
+# ==============================================================================
+# Customer Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+
+jwt:
+  expiration-ms: 86400000      # 24 saat (geliştirici test kolaylığı)
+
+logging:
+  level:
+    com.dgl.customer: DEBUG

@@ -1,0 +1,18 @@
+# ==============================================================================
+# Shipping Service - QA / Staging Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 15
+
+shipping:
+  carrier:
+    mock-delivery-instant: false
+    mock-transit-delay-seconds: 10
+
+logging:
+  level:
+    com.dgl.shipping: INFO

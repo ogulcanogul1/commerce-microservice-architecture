@@ -1,0 +1,18 @@
+# ==============================================================================
+# Payment Service - QA / Staging Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 15
+
+payment:
+  gateway:
+    simulation-delay-ms: 300
+    mock-failure-rate: 0.05    # QA ortamında %5 hata simülasyonu ile telafi testleri
+
+logging:
+  level:
+    com.dgl.payment: INFO

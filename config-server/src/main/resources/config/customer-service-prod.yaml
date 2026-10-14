@@ -1,0 +1,18 @@
+# ==============================================================================
+# Customer Service - Production Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      leak-detection-threshold: 2000
+
+jwt:
+  expiration-ms: 3600000       # 1 saat (sıkı üretim güvenliği)
+
+logging:
+  level:
+    com.dgl.customer: INFO

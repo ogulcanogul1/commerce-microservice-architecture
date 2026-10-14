@@ -1,0 +1,16 @@
+# ==============================================================================
+# Notification Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+
+notification:
+  delivery-mode: LOG_CONSOLE    # Konsola basarak hızlı test
+
+logging:
+  level:
+    com.dgl.notification: DEBUG

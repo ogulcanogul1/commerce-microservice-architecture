@@ -1,0 +1,20 @@
+# ==============================================================================
+# Order Service - Production Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      leak-detection-threshold: 2000
+
+saga:
+  timeout:
+    duration-seconds: 300       # Üretim SLA süresi (5 dakika)
+    check-interval-ms: 30000
+
+logging:
+  level:
+    com.dgl.order: INFO

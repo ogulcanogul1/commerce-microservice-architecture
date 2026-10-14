@@ -1,0 +1,18 @@
+# ==============================================================================
+# Payment Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+
+payment:
+  gateway:
+    simulation-delay-ms: 100
+    mock-failure-rate: 0.0
+
+logging:
+  level:
+    com.dgl.payment: DEBUG

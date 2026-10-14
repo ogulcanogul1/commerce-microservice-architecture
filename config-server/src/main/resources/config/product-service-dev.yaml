@@ -1,0 +1,19 @@
+# ==============================================================================
+# Product Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+      connection-timeout: 20000
+
+cache:
+  redis:
+    product-ttl-seconds: 300    # 5 dakika (hızlı geliştirme testi için)
+    category-ttl-seconds: 600   # 10 dakika
+
+logging:
+  level:
+    com.dgl.product: DEBUG

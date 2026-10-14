@@ -1,0 +1,20 @@
+# ==============================================================================
+# Shipping Service - Production Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      leak-detection-threshold: 2000
+
+shipping:
+  carrier:
+    mock-delivery-instant: false
+    real-provider-enabled: true
+
+logging:
+  level:
+    com.dgl.shipping: INFO

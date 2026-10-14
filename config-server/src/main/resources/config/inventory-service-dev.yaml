@@ -1,0 +1,17 @@
+# ==============================================================================
+# Inventory Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+
+inventory:
+  reservation:
+    ttl-seconds: 120           # Hızlı geliştirme rezervasyon süresi
+
+logging:
+  level:
+    com.dgl.inventory: DEBUG

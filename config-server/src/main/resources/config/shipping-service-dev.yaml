@@ -1,0 +1,17 @@
+# ==============================================================================
+# Shipping Service - Development Configuration
+# ==============================================================================
+
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+
+shipping:
+  carrier:
+    mock-delivery-instant: true
+
+logging:
+  level:
+    com.dgl.shipping: DEBUG
