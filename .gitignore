@@ -1,2 +1,8 @@
 # Ignore project folder
 project/
+
+# Ignore local CV & Portfolio showcase guides
+CV_PROJECT_GUIDE.md
+CV_*.md
+RESUME_*.md
+
