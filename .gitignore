@@ -6,3 +6,7 @@ CV_PROJECT_GUIDE.md
 CV_*.md
 RESUME_*.md
 
+# Ignore planning and roadmap documents
+plan/
+
+
