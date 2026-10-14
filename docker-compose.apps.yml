@@ -1,0 +1,209 @@
+version: '3.8'
+
+# Commerce Platform - Mikroservis Uygulama Konteynerleri
+# Çalıştırma: docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d --build
+
+services:
+  # 1. Product Service (Port: 8081) - Ürün & Kategori Kataloğu, Redis Önbellek
+  product-service:
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    image: commerce/product-service:latest
+    container_name: commerce-product-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/product_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 2. Order Service (Port: 8082) - Sipariş Yaşam Döngüsü & Saga Orkestratörü
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    image: commerce/order-service:latest
+    container_name: commerce-order-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/order_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 3. Payment Service (Port: 8083) - Ödeme Provizyonu, Tahsilat & İade
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    image: commerce/payment-service:latest
+    container_name: commerce-payment-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/payment_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 4. Inventory Service (Port: 8084) - Stok Rezervasyonu & İyimser Kilitleme
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    image: commerce/inventory-service:latest
+    container_name: commerce-inventory-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/inventory_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 5. Shipping Service (Port: 8085) - Kargo Gönderimi & Takip Numarası
+  shipping-service:
+    build:
+      context: ./shipping-service
+      dockerfile: Dockerfile
+    image: commerce/shipping-service:latest
+    container_name: commerce-shipping-service
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/shipping_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 6. Customer Service (Port: 8086) - Müşteri Profilleri & JWT Kimlik Doğrulama
+  customer-service:
+    build:
+      context: ./customer-service
+      dockerfile: Dockerfile
+    image: commerce/customer-service:latest
+    container_name: commerce-customer-service
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/customer_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 7. Notification Service (Port: 8087) - E-Posta / SMS Bildirim Simülasyonu
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    image: commerce/notification-service:latest
+    container_name: commerce-notification-service
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/notification_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgrespassword
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 8. API Gateway (Port: 8080) - Ters Proxy, JWT Doğrulama, Rate Limiter & Circuit Breaker
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    image: commerce/api-gateway:latest
+    container_name: commerce-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SERVICES_PRODUCT_URL=http://product-service:8081
+      - SERVICES_ORDER_URL=http://order-service:8082
+      - SERVICES_PAYMENT_URL=http://payment-service:8083
+      - SERVICES_INVENTORY_URL=http://inventory-service:8084
+      - SERVICES_SHIPPING_URL=http://shipping-service:8085
+      - SERVICES_CUSTOMER_URL=http://customer-service:8086
+      - SERVICES_NOTIFICATION_URL=http://notification-service:8087
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
+    depends_on:
+      - product-service
+      - order-service
+      - payment-service
+      - inventory-service
+      - shipping-service
+      - customer-service
+      - notification-service
+      - redis
+    networks:
+      - commerce-network
+
+networks:
+  commerce-network:
+    name: commerce-network
+    driver: bridge

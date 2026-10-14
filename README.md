@@ -188,39 +188,53 @@ Kafka üzerinden iletilen tüm mesajlar ortak JSON zarf şemasına uyar:
 
 ---
 
-## 6. Altyapı ve Yerel Kurulum
+## 6. Altyapı, Konteynerizasyon ve Yerel Kurulum
 
-Platform; bağımsız çalışan PostgreSQL veritabanları, Redis, Apache Kafka (KRaft) ve Kafka UI bileşenlerini içeren bir Docker Compose mimarisine sahiptir.
+Platform; bağımsız çalışan PostgreSQL veritabanları, Redis, Apache Kafka (KRaft), LGTM gözlemlenebilirlik kümesi ve 8 Spring Boot mikroservisinin tamamını içeren iki katmanlı Docker Compose mimarisine sahiptir.
 
-### 6.1. Altyapı Konteynerlerini Başlatma
+### 6.1. Platformu Başlatma Seçenekleri
+
+#### Seçenek A: Tam Platformu Tek Komutla Başlatma (Altyapı + 8 Mikroservis)
+Tüm servisler multi-stage Dockerfile'lar ile derlenir ve tek ağda ayağa kaldırılır:
 ```powershell
-# Docker konteynerlerini arka planda başlatın
-docker compose up -d
+# PowerShell betiği ile:
+.\scripts\docker-run.ps1 -Build
 
-# Konteyner durumlarını kontrol edin
-docker compose ps
+# Veya doğrudan Docker Compose ile:
+docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d --build
 ```
 
-Başlatılan Servisler:
-- **PostgreSQL 16**: `localhost:5432` (`postgres` / `postgrespassword`) - Her servis veritabanı (`order_db`, `payment_db`, vb.) otomatik oluşturulur.
-- **Redis 7**: `localhost:6379`
-- **Apache Kafka (KRaft)**: `localhost:9092`
-- **Kafka UI**: `http://localhost:8090` (Mesajları ve topic'leri tarayıcıdan izleyebilirsiniz)
-- **Prometheus**: `http://localhost:9090` (Mikroservis Actuator metriklerini toplar)
-- **Grafana Tempo**: `localhost:3200` (HTTP: `4318`, gRPC: `4317` OTLP trace alıcıları)
-- **Grafana Loki**: `http://localhost:3100` (Yapısal log kümeleme)
-- **Grafana**: `http://localhost:3000` (`admin` / `admin`) - Önceden tanımlı gösterge panelleri (Dashboards)
-
-### 6.2. Mikroservisleri Derleme ve Çalıştırma
-Her servis kendi bağımsız Maven Wrapper'ına sahiptir:
-
+#### Seçenek B: Sadece Altyapıyı Başlatma (Geliştirici / IDE Modu)
+IDE üzerinden kod geliştirirken veritabanları, Kafka ve gözlemlenebilirlik araçlarını ayağa kaldırmak için:
 ```powershell
-# Örnek: order-service'i derleyin ve çalıştırın
-cd order-service
-.\mvnw clean package -DskipTests
-.\mvnw spring-boot:run
-cd ..
+# Sadece altyapıyı başlatın
+.\scripts\docker-run.ps1 -InfraOnly
+# Veya: docker compose up -d
 ```
+
+Konteynerleri ve ağları durdurmak için:
+```powershell
+.\scripts\docker-stop.ps1
+```
+
+### 6.2. Tüm Mikroservisleri Yerel Olarak Derleme
+8 mikroservisi tek komutla derlemek için:
+```powershell
+.\scripts\build-all.ps1 -SkipTests
+```
+
+### 6.3. Uçtan Uca (E2E) Duman Testi ve API Koleksiyonları
+Canlı çalışan platformu Gateway üzerinden test etmek için hazır 3 farklı araç sunulmuştur:
+
+1. **Otomatik PowerShell Test Koşucusu**:
+   Sistemin Gateway üzerinden canlı akışını (Kayıt ➔ Ürün ➔ Stok ➔ Sipariş Saga ➔ Ödeme ➔ Kargo ➔ Bildirim ➔ Telafi ➔ Rate Limiter) otomatik test eder:
+   ```powershell
+   .\scripts\e2e-smoke-test.ps1
+   ```
+2. **REST Client Koleksiyonu (`commerce-platform.http`)**:
+   VS Code REST Client veya IntelliJ HTTP Client ile tüm senaryoları adım adım test edebilirsiniz.
+3. **Postman / Bruno Koleksiyonu (`Commerce-Platform.postman_collection.json`)**:
+   Postman veya Bruno içine tek tıkla import edip otomatik ortam değişkenleriyle testleri çalıştırabilirsiniz.
 
 ---
 
