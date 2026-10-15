@@ -36,6 +36,7 @@ Write-Host "  Eureka Server Dashboard  : http://localhost:8761" -ForegroundColor
 Write-Host "  Config Server Endpoints  : http://localhost:8888" -ForegroundColor White
 Write-Host "  API Gateway & Swagger UI : http://localhost:8080/swagger-ui.html" -ForegroundColor White
 Write-Host "  Kafka UI Web Console     : http://localhost:8090" -ForegroundColor White
+Write-Host "  Debezium Kafka Connect   : http://localhost:8088" -ForegroundColor White
 Write-Host "  Grafana Observability    : http://localhost:3000 (admin / admin)" -ForegroundColor White
 Write-Host "  Prometheus Metrics       : http://localhost:9090" -ForegroundColor White
 Write-Host "======================================================================" -ForegroundColor Cyan

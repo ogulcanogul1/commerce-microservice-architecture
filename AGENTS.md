@@ -96,6 +96,19 @@ Teknolojiler sadece popüler oldukları için eklenmez. Her mimari karar doğrud
 | `customer-service` | `com.dgl.customer` | **8086** | `customer_db` (5432) | Müşteri profilleri, adresler, kullanıcı tercihleri |
 | `notification-service` | `com.dgl.notification` | **8087** | `notification_db` (5432) | Olay dinleme, E-posta / SMS bildirim simülasyonu |
 
+### Altyapı ve Destek Servisleri Port Dağılımı:
+| Altyapı Bileşeni | Varsayılan Port | Açıklama |
+| :--- | :--- | :--- |
+| `kafka-connect` (Debezium) | **8088** (Konteyner: 8083) | Change Data Capture (CDC) motoru, Transactional Outbox olay akışı (REST API) |
+| `kafka-ui` | **8090** | Apache Kafka web yönetim konsolu |
+| `prometheus` | **9090** | Mikroservis metrik toplayıcısı (`/actuator/prometheus`) |
+| `grafana` | **3000** | Görselleştirme paneli ve gözlemlenebilirlik (admin/admin) |
+| `loki` | **3100** | Log toplama sunucusu |
+| `tempo` | **3200** (OTLP: 4317/4318)| Dağıtık trace toplama sunucusu (OpenTelemetry) |
+| `postgres` | **5432** | İlişkisel veritabanı kümesi (Servis başına izole DB'ler) |
+| `redis` | **6379** | Dağıtık önbellek ve hız sınırı (Rate Limiter) |
+| `kafka` | **9092** (Dahili: 29092) | Dağıtık mesajlaşma omurgası (Broker) |
+
 ---
 
 ## 4. Kafka Konuları (Topics) ve İsimlendirme Standardı

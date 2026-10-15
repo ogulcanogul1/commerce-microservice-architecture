@@ -23,6 +23,10 @@ Detaylı küresel mimari ve standartlar için [AGENTS.md](file:///D:/backend_pro
 | `shipping-service` | `8085` | `shipping_db` | Kargo süreçleri, takip numarası üretimi, lojistik simülasyonu |
 | `customer-service` | `8086` | `customer_db` | Müşteri profili ve adres yönetimi |
 | `notification-service` | `8087` | `notification_db` | Asenkron e-posta / SMS bildirim simülasyonu |
+| `kafka-connect` (Debezium) | `8088` | - | CDC motoru, outbox olay akışı (REST API) |
+| `kafka-ui` | `8090` | - | Apache Kafka web konsolu |
+| `prometheus` | `9090` | - | Metrik toplama |
+| `grafana` | `3000` | - | Dashboard ve gözlemlenebilirlik (admin/admin) |
 
 ---
 
