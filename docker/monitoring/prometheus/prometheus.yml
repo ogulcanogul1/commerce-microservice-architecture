@@ -3,6 +3,22 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
+  - job_name: 'eureka-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8761']
+        labels:
+          application: 'eureka-server'
+          environment: 'development'
+
+  - job_name: 'config-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8888']
+        labels:
+          application: 'config-server'
+          environment: 'development'
+
   - job_name: 'api-gateway'
     metrics_path: '/actuator/prometheus'
     static_configs:

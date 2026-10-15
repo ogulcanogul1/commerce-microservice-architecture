@@ -23,6 +23,18 @@ management:
   endpoint:
     health:
       show-details: always
+    prometheus:
+      access: unrestricted
+  tracing:
+    sampling:
+      probability: 1.0       # 100% of traces captured for complete distributed observability
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  opentelemetry:
+    resource-attributes:
+      service.name: ${spring.application.name}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}] [%15.15t] %-40.40logger{39} : %m%n"
