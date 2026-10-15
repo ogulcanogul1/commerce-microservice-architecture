@@ -41,21 +41,33 @@ public class OutboxServiceImpl implements OutboxService {
 
         try {
             String jsonPayload = objectMapper.writeValueAsString(envelope);
+            String destination = resolveTopic(eventType);
 
             OutboxEvent outboxEvent = OutboxEvent.builder()
                     .aggregateType(aggregateType)
                     .aggregateId(aggregateId)
                     .type(eventType)
+                    .destination(destination)
                     .payload(jsonPayload)
                     .status(OutboxStatus.PENDING)
                     .build();
 
             outboxEventRepository.save(outboxEvent);
-            log.debug("Recorded shipping outbox event: {} for aggregate: {} [traceparent: {}]", eventType, aggregateId, traceparent);
+            log.debug("Recorded shipping outbox event: {} to destination: {} for aggregate: {} [traceparent: {}]",
+                    eventType, destination, aggregateId, traceparent);
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize shipping outbox event payload for eventType: {}", eventType, e);
             throw new IllegalStateException("Failed to serialize outbox event payload", e);
         }
+    }
+
+    private String resolveTopic(String eventType) {
+        return switch (eventType) {
+            case "ShipmentCreated" -> "shipments.created";
+            case "ShipmentCancelled" -> "shipments.cancelled";
+            case "ShipmentDelivered" -> "shipments.delivered";
+            default -> "shipments.events";
+        };
     }
 
     private String extractCurrentTraceparent() {

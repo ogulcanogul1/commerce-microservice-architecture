@@ -55,6 +55,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - OUTBOX_POLLER_ENABLED=false
     depends_on:
       eureka-server:
         condition: service_started
@@ -86,6 +87,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - OUTBOX_POLLER_ENABLED=false
     depends_on:
       eureka-server:
         condition: service_started
@@ -115,6 +117,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - OUTBOX_POLLER_ENABLED=false
     depends_on:
       eureka-server:
         condition: service_started
@@ -144,6 +147,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - OUTBOX_POLLER_ENABLED=false
     depends_on:
       eureka-server:
         condition: service_started
@@ -173,6 +177,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - OUTBOX_POLLER_ENABLED=false
     depends_on:
       eureka-server:
         condition: service_started
@@ -202,6 +207,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - CONFIG_SERVER_URL=http://config-server:8888/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - OUTBOX_POLLER_ENABLED=false
       - JWT_SECRET=dgl-super-secret-jwt-signing-key-commerce-platform-2026-secure
     depends_on:
       eureka-server:

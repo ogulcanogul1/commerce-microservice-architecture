@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,6 +20,7 @@ import java.util.List;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "outbox.poller.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class OutboxPoller {
 
@@ -41,7 +43,9 @@ public class OutboxPoller {
         }
 
         for (OutboxEvent event : pendingEvents) {
-            String topic = resolveTopic(event.getType());
+            String topic = (event.getDestination() != null && !event.getDestination().isBlank())
+                    ? event.getDestination()
+                    : resolveTopic(event.getType());
             try {
                 ProducerRecord<String, String> record = new ProducerRecord<>(topic, event.getAggregateId(), event.getPayload());
 
