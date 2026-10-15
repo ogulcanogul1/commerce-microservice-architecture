@@ -4,14 +4,22 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-postgres-cluster.internal}:5432/notification_db?sslmode=require
+    username: ${PROD_NOTIFICATION_DB_USER:notification_app}
+    password: ${PROD_NOTIFICATION_DB_PASSWORD}
     hikari:
       minimum-idle: 10
       maximum-pool-size: 50
       connection-timeout: 30000
       leak-detection-threshold: 2000
+  mail:
+    host: ${PROD_MAIL_HOST:smtp.sendgrid.net}
+    port: ${PROD_MAIL_PORT:587}
+    username: ${PROD_MAIL_USERNAME}
+    password: ${PROD_MAIL_PASSWORD}
 
 notification:
-  delivery-mode: AWS_SES_OR_SENDGRID  # Gerçek kurumsal e-posta sağlayıcısı
+  delivery-mode: SMTP_PROVIDER
 
 logging:
   level:

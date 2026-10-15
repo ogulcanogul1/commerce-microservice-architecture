@@ -1,9 +1,12 @@
 # ==============================================================================
-# Inventory Service - QA / Staging Configuration
+# Inventory Service - QA Configuration
 # ==============================================================================
 
 spring:
   datasource:
+    url: jdbc:postgresql://${QA_DB_HOST:qa-postgres.internal}:5432/inventory_db
+    username: ${QA_DB_USER:qa_inventory_user}
+    password: ${QA_DB_PASSWORD:qa_inventory_password}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 15

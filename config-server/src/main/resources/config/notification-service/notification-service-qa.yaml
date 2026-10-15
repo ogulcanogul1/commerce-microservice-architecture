@@ -1,15 +1,21 @@
 # ==============================================================================
-# Notification Service - QA / Staging Configuration
+# Notification Service - QA Configuration
 # ==============================================================================
 
 spring:
   datasource:
+    url: jdbc:postgresql://${QA_DB_HOST:qa-postgres.internal}:5432/notification_db
+    username: ${QA_DB_USER:qa_notification_user}
+    password: ${QA_DB_PASSWORD:qa_notification_password}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 15
+  mail:
+    host: ${QA_MAIL_HOST:qa-mailhog.internal}
+    port: ${QA_MAIL_PORT:1025}
 
 notification:
-  delivery-mode: MOCK_SMTP      # MailHog veya sahte SMTP
+  delivery-mode: SIMULATED_EMAIL
 
 logging:
   level:

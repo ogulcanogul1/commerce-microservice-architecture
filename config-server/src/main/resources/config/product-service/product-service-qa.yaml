@@ -1,18 +1,25 @@
 # ==============================================================================
-# Product Service - QA / Staging Configuration
+# Product Service - QA Configuration
 # ==============================================================================
 
 spring:
   datasource:
+    url: jdbc:postgresql://${QA_DB_HOST:qa-postgres.internal}:5432/product_db
+    username: ${QA_DB_USER:qa_product_user}
+    password: ${QA_DB_PASSWORD:qa_product_password}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 15
-      connection-timeout: 30000
+      connection-timeout: 20000
+  data:
+    redis:
+      host: ${QA_REDIS_HOST:qa-redis.internal}
+      port: ${QA_REDIS_PORT:6379}
 
 cache:
   redis:
-    product-ttl-seconds: 900    # 15 dakika
-    category-ttl-seconds: 1800  # 30 dakika
+    product-ttl-seconds: 600
+    category-ttl-seconds: 1800
 
 logging:
   level:

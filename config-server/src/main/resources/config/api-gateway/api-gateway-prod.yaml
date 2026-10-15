@@ -2,6 +2,13 @@
 # API Gateway - Production Configuration
 # ==============================================================================
 
+spring:
+  data:
+    redis:
+      host: ${PROD_REDIS_HOST:prod-redis-cluster.internal}
+      port: ${PROD_REDIS_PORT:6379}
+      password: ${PROD_REDIS_PASSWORD:}
+
 gateway:
   ratelimit:
     anonymous-quota-per-minute: 10      # Sıkı üretim kotası (DDoS & Brute-force koruması)

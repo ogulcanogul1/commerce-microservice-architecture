@@ -4,6 +4,9 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-postgres-cluster.internal}:5432/shipping_db?sslmode=require
+    username: ${PROD_SHIPPING_DB_USER:shipping_app}
+    password: ${PROD_SHIPPING_DB_PASSWORD}
     hikari:
       minimum-idle: 10
       maximum-pool-size: 50
@@ -13,7 +16,6 @@ spring:
 shipping:
   carrier:
     mock-delivery-instant: false
-    real-provider-enabled: true
 
 logging:
   level:

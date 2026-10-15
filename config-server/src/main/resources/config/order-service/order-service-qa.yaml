@@ -1,17 +1,20 @@
 # ==============================================================================
-# Order Service - QA / Staging Configuration
+# Order Service - QA Configuration
 # ==============================================================================
 
 spring:
   datasource:
+    url: jdbc:postgresql://${QA_DB_HOST:qa-postgres.internal}:5432/order_db
+    username: ${QA_DB_USER:qa_order_user}
+    password: ${QA_DB_PASSWORD:qa_order_password}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 15
 
 saga:
   timeout:
-    duration-seconds: 180
-    check-interval-ms: 20000
+    duration-seconds: 120
+    check-interval-ms: 15000
 
 logging:
   level:

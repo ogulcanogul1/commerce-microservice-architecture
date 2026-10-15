@@ -1,13 +1,29 @@
 # ==============================================================================
-# Production Environment Configuration
+# Production Environment Configuration (HA Cluster & Security Enforced)
 # ==============================================================================
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${PROD_EUREKA_SERVER_URL:http://eureka-node1.internal:8761/eureka/,http://eureka-node2.internal:8761/eureka/}
+
+spring:
+  kafka:
+    bootstrap-servers: ${PROD_KAFKA_BOOTSTRAP_SERVERS:prod-kafka-1.internal:9092,prod-kafka-2.internal:9092,prod-kafka-3.internal:9092}
+    properties:
+      security.protocol: ${PROD_KAFKA_SECURITY_PROTOCOL:SASL_SSL}
+      sasl.mechanism: ${PROD_KAFKA_SASL_MECHANISM:SCRAM-SHA-512}
+  jpa:
+    show-sql: false
+
+management:
+  otlp:
+    tracing:
+      endpoint: ${PROD_OTEL_ENDPOINT:http://prod-otel-collector.internal:4318/v1/traces}
 
 logging:
   level:
     root: WARN
     com.dgl: INFO
     org.springframework: WARN
-
-spring:
-  jpa:
-    show-sql: false
+    org.apache.kafka: WARN

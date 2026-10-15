@@ -4,6 +4,9 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-postgres-cluster.internal}:5432/inventory_db?sslmode=require
+    username: ${PROD_INVENTORY_DB_USER:inventory_app}
+    password: ${PROD_INVENTORY_DB_PASSWORD}
     hikari:
       minimum-idle: 10
       maximum-pool-size: 50
@@ -12,7 +15,7 @@ spring:
 
 inventory:
   reservation:
-    ttl-seconds: 600           # 10 dakika kesin rezervasyon SLA süresi
+    ttl-seconds: 900           # 15 dakika üretim rezervasyon süresi
 
 logging:
   level:

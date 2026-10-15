@@ -4,16 +4,24 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-postgres-cluster.internal}:5432/product_db?sslmode=require
+    username: ${PROD_PRODUCT_DB_USER:product_app}
+    password: ${PROD_PRODUCT_DB_PASSWORD}
     hikari:
       minimum-idle: 10
       maximum-pool-size: 50
       connection-timeout: 30000
       leak-detection-threshold: 2000
+  data:
+    redis:
+      host: ${PROD_REDIS_HOST:prod-redis-cluster.internal}
+      port: ${PROD_REDIS_PORT:6379}
+      password: ${PROD_REDIS_PASSWORD:}
 
 cache:
   redis:
-    product-ttl-seconds: 1800   # 30 dakika (yüksek önbellek isabet oranı)
-    category-ttl-seconds: 3600  # 60 dakika
+    product-ttl-seconds: 3600    # 1 saat (yüksek üretim önbellek verimliliği)
+    category-ttl-seconds: 86400  # 24 saat
 
 logging:
   level:

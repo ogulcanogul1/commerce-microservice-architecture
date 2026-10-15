@@ -4,6 +4,9 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-postgres-cluster.internal}:5432/payment_db?sslmode=require
+    username: ${PROD_PAYMENT_DB_USER:payment_app}
+    password: ${PROD_PAYMENT_DB_PASSWORD}
     hikari:
       minimum-idle: 10
       maximum-pool-size: 50
@@ -11,8 +14,9 @@ spring:
       leak-detection-threshold: 2000
 
 payment:
-  idempotency:
-    retention-days: 30         # Finansal tekilleştirme kayıt saklama süresi
+  gateway:
+    simulation-delay-ms: 0
+    mock-failure-rate: 0.0
 
 logging:
   level:

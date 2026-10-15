@@ -4,9 +4,15 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/notification_db
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     hikari:
       minimum-idle: 2
       maximum-pool-size: 5
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
 
 notification:
   delivery-mode: LOG_CONSOLE    # Konsola basarak hızlı test

@@ -1,9 +1,12 @@
 # ==============================================================================
-# Payment Service - QA / Staging Configuration
+# Payment Service - QA Configuration
 # ==============================================================================
 
 spring:
   datasource:
+    url: jdbc:postgresql://${QA_DB_HOST:qa-postgres.internal}:5432/payment_db
+    username: ${QA_DB_USER:qa_payment_user}
+    password: ${QA_DB_PASSWORD:qa_payment_password}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 15
@@ -11,7 +14,7 @@ spring:
 payment:
   gateway:
     simulation-delay-ms: 300
-    mock-failure-rate: 0.05    # QA ortamında %5 hata simülasyonu ile telafi testleri
+    mock-failure-rate: 0.1       # QA'de %10 hata simülasyonu ile telafi testleri
 
 logging:
   level:

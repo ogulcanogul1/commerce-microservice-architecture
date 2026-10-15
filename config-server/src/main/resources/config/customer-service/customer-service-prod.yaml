@@ -4,6 +4,9 @@
 
 spring:
   datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-postgres-cluster.internal}:5432/customer_db?sslmode=require
+    username: ${PROD_CUSTOMER_DB_USER:customer_app}
+    password: ${PROD_CUSTOMER_DB_PASSWORD}
     hikari:
       minimum-idle: 10
       maximum-pool-size: 50

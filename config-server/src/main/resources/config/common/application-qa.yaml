@@ -2,11 +2,25 @@
 # QA / Testing Environment Configuration
 # ==============================================================================
 
+eureka:
+  client:
+    service-url:
+      defaultZone: ${QA_EUREKA_SERVER_URL:http://qa-eureka.internal:8761/eureka/}
+
+spring:
+  kafka:
+    bootstrap-servers: ${QA_KAFKA_BOOTSTRAP_SERVERS:qa-kafka.internal:9092}
+  jpa:
+    show-sql: false
+
+management:
+  otlp:
+    tracing:
+      endpoint: ${QA_OTEL_ENDPOINT:http://qa-otel-collector.internal:4318/v1/traces}
+
 logging:
   level:
     root: INFO
     com.dgl: INFO
-
-spring:
-  jpa:
-    show-sql: false
+    org.springframework.web: WARN
+    org.springframework.kafka: INFO

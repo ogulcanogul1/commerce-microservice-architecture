@@ -1,11 +1,17 @@
 # ==============================================================================
-# API Gateway - QA / Staging Configuration
+# API Gateway - QA Configuration
 # ==============================================================================
+
+spring:
+  data:
+    redis:
+      host: ${QA_REDIS_HOST:qa-redis.internal}
+      port: ${QA_REDIS_PORT:6379}
 
 gateway:
   ratelimit:
-    anonymous-quota-per-minute: 20
-    authenticated-quota-per-minute: 100
+    anonymous-quota-per-minute: 30
+    authenticated-quota-per-minute: 120
 
 resilience4j:
   circuitbreaker:

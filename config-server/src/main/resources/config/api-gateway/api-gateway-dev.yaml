@@ -2,6 +2,12 @@
 # API Gateway - Development Configuration
 # ==============================================================================
 
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
 gateway:
   ratelimit:
     anonymous-quota-per-minute: 60      # Geliştirme ortamında bol limit (60 req/min)

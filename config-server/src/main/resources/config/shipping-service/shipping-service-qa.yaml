@@ -1,9 +1,12 @@
 # ==============================================================================
-# Shipping Service - QA / Staging Configuration
+# Shipping Service - QA Configuration
 # ==============================================================================
 
 spring:
   datasource:
+    url: jdbc:postgresql://${QA_DB_HOST:qa-postgres.internal}:5432/shipping_db
+    username: ${QA_DB_USER:qa_shipping_user}
+    password: ${QA_DB_PASSWORD:qa_shipping_password}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 15
@@ -11,7 +14,6 @@ spring:
 shipping:
   carrier:
     mock-delivery-instant: false
-    mock-transit-delay-seconds: 10
 
 logging:
   level:
