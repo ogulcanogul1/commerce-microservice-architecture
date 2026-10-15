@@ -9,4 +9,7 @@ RESUME_*.md
 # Ignore planning and roadmap documents
 plan/
 
+# Ignore personal learning notes
+note/
+notes/
 
