@@ -34,7 +34,11 @@ import static org.awaitility.Awaitility.await;
                 "payments.failed",
                 "shipments.created",
                 "orders.confirmed",
-                "orders.cancelled"
+                "orders.cancelled",
+                "orders.created.DLT",
+                "inventory.reserved.DLT",
+                "payments.authorized.DLT",
+                "shipments.created.DLT"
         }
 )
 class OrderSagaIntegrationTest {
