@@ -20,6 +20,11 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
+kafka:
+  topic:
+    partitions: ${KAFKA_TOPIC_PARTITIONS:3}
+    replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:1}
+
 management:
   endpoints:
     web:
