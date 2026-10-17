@@ -1,9 +1,12 @@
 server:
   port: 8761
+  shutdown: graceful
 
 spring:
   application:
     name: eureka-server
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
 eureka:
   instance:

@@ -1,9 +1,12 @@
 server:
   port: 8084
+  shutdown: graceful
 
 spring:
   application:
     name: inventory-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   config:

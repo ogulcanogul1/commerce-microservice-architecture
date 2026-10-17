@@ -1,9 +1,12 @@
 server:
   port: 8888
+  shutdown: graceful
 
 spring:
   application:
     name: config-server
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   profiles:
     active: native
   cloud:
