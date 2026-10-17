@@ -12,6 +12,7 @@ import com.dgl.order.domain.OrderStatus;
 import com.dgl.order.dto.request.CancelOrderRequest;
 import com.dgl.order.dto.request.CreateOrderRequest;
 import com.dgl.order.dto.response.OrderResponse;
+import com.dgl.order.exception.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -41,12 +42,16 @@ public class OrderController {
     @Operation(summary = "Create an order", description = "Submits a new order and triggers the Saga workflow")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Order created and Saga initiated"),
-            @ApiResponse(responseCode = "400", description = "Invalid order input")
+            @ApiResponse(responseCode = "400", description = "Invalid order input"),
+            @ApiResponse(responseCode = "403", description = "Access denied: cannot create order for another customer")
     })
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody CreateOrderRequest request,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles,
             @Parameter(description = "Distributed trace correlation ID")
             @RequestHeader(value = "X-Correlation-Id", required = false) UUID correlationId) {
+        enforceOwnership(request.customerId(), currentUserId, userRoles);
         OrderResponse response = commandBus.execute(new CreateOrderCommand(request, correlationId));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -55,27 +60,42 @@ public class OrderController {
     @Operation(summary = "Get order by ID", description = "Retrieves order details and item lines by order UUID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Order found"),
+            @ApiResponse(responseCode = "403", description = "Access denied: cannot access another customer's order"),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
-    public ResponseEntity<OrderResponse> getOrderById(@PathVariable UUID id) {
-        return ResponseEntity.ok(queryBus.execute(new GetOrderByIdQuery(id)));
+    public ResponseEntity<OrderResponse> getOrderById(
+            @PathVariable UUID id,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+        OrderResponse order = queryBus.execute(new GetOrderByIdQuery(id));
+        enforceOwnership(order.customerId(), currentUserId, userRoles);
+        return ResponseEntity.ok(order);
     }
 
     @GetMapping("/by-number/{orderNumber}")
     @Operation(summary = "Get order by order number", description = "Retrieves order details using human-readable order code (e.g. ORD-xxx)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Order found"),
+            @ApiResponse(responseCode = "403", description = "Access denied: cannot access another customer's order"),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
-    public ResponseEntity<OrderResponse> getOrderByOrderNumber(@PathVariable String orderNumber) {
-        return ResponseEntity.ok(queryBus.execute(new GetOrderByOrderNumberQuery(orderNumber)));
+    public ResponseEntity<OrderResponse> getOrderByOrderNumber(
+            @PathVariable String orderNumber,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+        OrderResponse order = queryBus.execute(new GetOrderByOrderNumberQuery(orderNumber));
+        enforceOwnership(order.customerId(), currentUserId, userRoles);
+        return ResponseEntity.ok(order);
     }
 
     @GetMapping("/customer/{customerId}")
     @Operation(summary = "List customer orders", description = "Retrieves paginated orders placed by a specific customer")
     public ResponseEntity<Page<OrderResponse>> getOrdersByCustomer(
             @PathVariable UUID customerId,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles,
             @PageableDefault(size = 20) Pageable pageable) {
+        enforceOwnership(customerId, currentUserId, userRoles);
         return ResponseEntity.ok(queryBus.execute(new GetOrdersByCustomerQuery(customerId, pageable)));
     }
 
@@ -84,12 +104,27 @@ public class OrderController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Order cancelled"),
             @ApiResponse(responseCode = "400", description = "Order cannot be cancelled in its current state"),
+            @ApiResponse(responseCode = "403", description = "Access denied: cannot cancel another customer's order"),
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<OrderResponse> cancelOrder(
             @PathVariable UUID id,
-            @Valid @RequestBody CancelOrderRequest request) {
+            @Valid @RequestBody CancelOrderRequest request,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+        OrderResponse order = queryBus.execute(new GetOrderByIdQuery(id));
+        enforceOwnership(order.customerId(), currentUserId, userRoles);
         return ResponseEntity.ok(commandBus.execute(new CancelOrderCommand(id, request)));
+    }
+
+    private void enforceOwnership(UUID resourceOwnerId, String currentUserId, String userRoles) {
+        if (currentUserId == null || currentUserId.isBlank() || resourceOwnerId == null) {
+            return;
+        }
+        boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
+        if (!isAdmin && !currentUserId.equalsIgnoreCase(resourceOwnerId.toString())) {
+            throw new AccessDeniedException("Access denied: you do not have permission to view or modify this order");
+        }
     }
 
     @PatchMapping("/{id}/status")

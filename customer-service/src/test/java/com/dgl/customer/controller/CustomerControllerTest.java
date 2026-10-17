@@ -14,6 +14,7 @@ import com.dgl.customer.dto.request.UpdateCustomerRequest;
 import com.dgl.customer.dto.request.UpdatePreferencesRequest;
 import com.dgl.customer.dto.response.CustomerResponse;
 import com.dgl.customer.dto.response.PreferencesResponse;
+import com.dgl.customer.exception.AccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -90,11 +92,12 @@ class CustomerControllerTest {
     }
 
     @Test
-    @DisplayName("getCustomerById: Should dispatch query and return 200 OK")
+    @DisplayName("getCustomerById: Should dispatch query and return 200 OK when owner requests")
     void getCustomerById_shouldReturn200() {
         when(queryBus.execute(any(GetCustomerByIdQuery.class))).thenReturn(mockCustomerResponse);
 
-        ResponseEntity<CustomerResponse> response = controller.getCustomerById(customerId);
+        ResponseEntity<CustomerResponse> response = controller.getCustomerById(
+                customerId, customerId.toString(), "ROLE_CUSTOMER");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isSameAs(mockCustomerResponse);
@@ -102,48 +105,90 @@ class CustomerControllerTest {
     }
 
     @Test
-    @DisplayName("getCustomerByEmail: Should dispatch query and return 200 OK")
+    @DisplayName("getCustomerById: Should throw AccessDeniedException when requesting another customer's profile")
+    void getCustomerById_shouldThrowAccessDenied_whenCustomerMismatch() {
+        String attackerUserId = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> controller.getCustomerById(customerId, attackerUserId, "ROLE_CUSTOMER"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Access denied");
+
+        verifyNoInteractions(queryBus);
+    }
+
+    @Test
+    @DisplayName("getCustomerByEmail: Should dispatch query and return 200 OK when owner requests")
     void getCustomerByEmail_shouldReturn200() {
         when(queryBus.execute(any(GetCustomerByEmailQuery.class))).thenReturn(mockCustomerResponse);
 
-        ResponseEntity<CustomerResponse> response = controller.getCustomerByEmail("john@example.com");
+        ResponseEntity<CustomerResponse> response = controller.getCustomerByEmail(
+                "john@example.com", customerId.toString(), "ROLE_CUSTOMER");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(queryBus).execute(new GetCustomerByEmailQuery("john@example.com"));
     }
 
     @Test
-    @DisplayName("getAllCustomers: Should dispatch query and return 200 OK")
-    void getAllCustomers_shouldReturn200() {
+    @DisplayName("getAllCustomers: Should allow admin and return 200 OK")
+    void getAllCustomers_shouldAllowAdmin() {
         PageRequest pageRequest = PageRequest.of(0, 20);
         Page<CustomerResponse> page = new PageImpl<>(List.of(mockCustomerResponse));
         when(queryBus.execute(any(GetAllCustomersQuery.class))).thenReturn(page);
 
-        ResponseEntity<Page<CustomerResponse>> response = controller.getAllCustomers(pageRequest);
+        ResponseEntity<Page<CustomerResponse>> response = controller.getAllCustomers(
+                UUID.randomUUID().toString(), "ROLE_ADMIN", pageRequest);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(queryBus).execute(new GetAllCustomersQuery(pageRequest));
     }
 
     @Test
-    @DisplayName("updateCustomer: Should dispatch command and return 200 OK")
+    @DisplayName("getAllCustomers: Should throw AccessDeniedException when regular customer tries to list all")
+    void getAllCustomers_shouldThrowAccessDenied_whenRegularCustomer() {
+        PageRequest pageRequest = PageRequest.of(0, 20);
+
+        assertThatThrownBy(() -> controller.getAllCustomers(
+                customerId.toString(), "ROLE_CUSTOMER", pageRequest))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Access denied");
+
+        verifyNoInteractions(queryBus);
+    }
+
+    @Test
+    @DisplayName("updateCustomer: Should dispatch command and return 200 OK when owner")
     void updateCustomer_shouldReturn200() {
         UpdateCustomerRequest request = new UpdateCustomerRequest("John2", "Doe2", null, null);
         when(commandBus.execute(any(UpdateCustomerCommand.class))).thenReturn(mockCustomerResponse);
 
-        ResponseEntity<CustomerResponse> response = controller.updateCustomer(customerId, request);
+        ResponseEntity<CustomerResponse> response = controller.updateCustomer(
+                customerId, customerId.toString(), "ROLE_CUSTOMER", request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(commandBus).execute(new UpdateCustomerCommand(customerId, request));
     }
 
     @Test
-    @DisplayName("updatePreferences: Should dispatch command and return 200 OK")
+    @DisplayName("updateCustomer: Should throw AccessDeniedException when updating another customer")
+    void updateCustomer_shouldThrowAccessDenied_whenMismatch() {
+        UpdateCustomerRequest request = new UpdateCustomerRequest("John2", "Doe2", null, null);
+        String attackerUserId = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> controller.updateCustomer(customerId, attackerUserId, "ROLE_CUSTOMER", request))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Access denied");
+
+        verifyNoInteractions(commandBus);
+    }
+
+    @Test
+    @DisplayName("updatePreferences: Should dispatch command and return 200 OK when owner")
     void updatePreferences_shouldReturn200() {
         UpdatePreferencesRequest request = new UpdatePreferencesRequest(false, false, true, "en", "USD");
         when(commandBus.execute(any(UpdatePreferencesCommand.class))).thenReturn(mockPreferencesResponse);
 
-        ResponseEntity<PreferencesResponse> response = controller.updatePreferences(customerId, request);
+        ResponseEntity<PreferencesResponse> response = controller.updatePreferences(
+                customerId, customerId.toString(), "ROLE_CUSTOMER", request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(commandBus).execute(new UpdatePreferencesCommand(customerId, request));
