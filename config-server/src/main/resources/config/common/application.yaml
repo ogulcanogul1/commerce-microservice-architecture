@@ -25,6 +25,18 @@ kafka:
     partitions: ${KAFKA_TOPIC_PARTITIONS:3}
     replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:1}
 
+outbox:
+  retention:
+    enabled: true
+    days: ${OUTBOX_RETENTION_DAYS:7}
+    cron: "${OUTBOX_RETENTION_CRON:0 0 3 * * ?}"
+
+idempotency:
+  retention:
+    enabled: true
+    days: ${IDEMPOTENCY_RETENTION_DAYS:7}
+    cron: "${IDEMPOTENCY_RETENTION_CRON:0 0 3 * * ?}"
+
 management:
   endpoints:
     web:
