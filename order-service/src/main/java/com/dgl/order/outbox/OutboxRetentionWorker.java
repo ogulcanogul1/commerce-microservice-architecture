@@ -1,5 +1,6 @@
 package com.dgl.order.outbox;
 
+import com.dgl.order.lock.DistributedLockService;
 import com.dgl.order.repository.ProcessedEventRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
@@ -18,8 +20,12 @@ import java.time.temporal.ChronoUnit;
 @ConditionalOnProperty(name = "outbox.retention.enabled", havingValue = "true", matchIfMissing = true)
 public class OutboxRetentionWorker {
 
+    public static final String LOCK_KEY = "lock:order-service:retention-cleanup";
+    public static final Duration LOCK_LEASE_TIME = Duration.ofMinutes(15);
+
     private final OutboxEventRepository outboxEventRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final DistributedLockService lockService;
 
     @Value("${outbox.retention.days:7}")
     private int outboxRetentionDays;
@@ -28,9 +34,13 @@ public class OutboxRetentionWorker {
     private int idempotencyRetentionDays;
 
     @Scheduled(cron = "${outbox.retention.cron:0 0 3 * * ?}")
-    @Transactional
     public void purgeExpiredEvents() {
-        log.info("Starting outbox and idempotency retention cleanup task...");
+        lockService.executeWithLock(LOCK_KEY, LOCK_LEASE_TIME, this::executePurge);
+    }
+
+    @Transactional
+    public void executePurge() {
+        log.info("Starting outbox and idempotency retention cleanup task under distributed lock...");
 
         Instant outboxCutoff = Instant.now().minus(outboxRetentionDays, ChronoUnit.DAYS);
         int deletedOutbox = outboxEventRepository.deleteByStatusAndCreatedAtBefore(OutboxStatus.PUBLISHED, outboxCutoff);
