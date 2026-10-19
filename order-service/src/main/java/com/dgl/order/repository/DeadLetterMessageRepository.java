@@ -13,4 +13,6 @@ import java.util.UUID;
 public interface DeadLetterMessageRepository extends JpaRepository<DeadLetterMessage, UUID> {
 
     Page<DeadLetterMessage> findByStatus(DeadLetterStatus status, Pageable pageable);
+
+    long countByStatus(DeadLetterStatus status);
 }
