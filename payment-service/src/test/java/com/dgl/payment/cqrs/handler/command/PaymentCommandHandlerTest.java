@@ -94,6 +94,23 @@ class PaymentCommandHandlerTest {
     }
 
     @Test
+    @DisplayName("ProcessPayment: Should throw PaymentFailedException when amount exceeds credit limit")
+    void processPayment_exceedsCreditLimit_shouldThrowPaymentFailedException() {
+        ProcessPaymentRequest request = new ProcessPaymentRequest(
+                orderId, customerId, new BigDecimal("60000.00"), "TRY", "CREDIT_CARD"
+        );
+
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> processHandler.handle(new ProcessPaymentCommand(request, "KEY-LIMIT-EXCEEDED")))
+                .isInstanceOf(PaymentFailedException.class)
+                .hasMessageContaining("INSUFFICIENT_FUNDS");
+
+        verify(paymentRepository, never()).save(any());
+        verify(outboxService, never()).recordEvent(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("ProcessPayment: Idempotent key should return existing payment")
     void processPayment_idempotentHit_shouldReturnExisting() {
         ProcessPaymentRequest request = new ProcessPaymentRequest(

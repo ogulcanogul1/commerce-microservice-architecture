@@ -7,6 +7,7 @@ import com.dgl.payment.domain.Payment;
 import com.dgl.payment.domain.PaymentStatus;
 import com.dgl.payment.dto.request.ProcessPaymentRequest;
 import com.dgl.payment.dto.response.PaymentResponse;
+import com.dgl.payment.exception.PaymentFailedException;
 import com.dgl.payment.messaging.event.PaymentAuthorizedPayload;
 import com.dgl.payment.outbox.OutboxService;
 import com.dgl.payment.repository.PaymentRepository;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.UUID;
 
@@ -39,6 +41,11 @@ public class ProcessPaymentCommandHandler implements CommandHandler<ProcessPayme
                 log.info("Idempotent hit for payment with key: {}", idempotencyKey);
                 return paymentResponseMapper.toResponse(existing.get());
             }
+        }
+
+        if (request.amount() != null && request.amount().compareTo(new BigDecimal("50000.00")) >= 0) {
+            log.warn("Payment authorization declined for orderId {}: Amount {} exceeds credit limit", request.orderId(), request.amount());
+            throw new PaymentFailedException("Bank declined transaction: INSUFFICIENT_FUNDS (Credit limit exceeded)");
         }
 
         String transactionReference = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
