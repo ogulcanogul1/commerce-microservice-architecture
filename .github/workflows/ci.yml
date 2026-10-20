@@ -1,0 +1,49 @@
+name: Microservices Continuous Integration (CI)
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  service-matrix-test:
+    name: Build & Test - ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - eureka-server
+          - config-server
+          - api-gateway
+          - product-service
+          - order-service
+          - payment-service
+          - inventory-service
+          - shipping-service
+          - customer-service
+          - notification-service
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Grant Execute Permission to Maven Wrapper
+        working-directory: ${{ matrix.service }}
+        run: chmod +x mvnw
+
+      - name: Run Service Unit & Integration Tests
+        working-directory: ${{ matrix.service }}
+        run: ./mvnw clean test -Duser.language=en -Duser.country=US

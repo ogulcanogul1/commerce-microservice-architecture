@@ -1,0 +1,66 @@
+name: End-to-End (E2E) Saga Verification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # Every night at 02:00 UTC
+
+jobs:
+  e2e-saga-tests:
+    name: Run Distributed E2E Black-Box Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Grant Execute Permission to All Maven Wrappers
+        run: |
+          find . -name "mvnw" -exec chmod +x {} +
+
+      - name: Start Core Infrastructure (PostgreSQL, Kafka KRaft, Redis)
+        run: |
+          docker compose -f docker-compose.yml up -d postgres redis kafka
+          echo "Waiting for core infrastructure health checks..."
+          sleep 15
+          docker compose -f docker-compose.yml ps
+
+      - name: Compile and Build All Microservice Containers
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.apps.yml build --parallel
+
+      - name: Launch Full Microservices Mesh
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d
+          echo "Waiting 45s for Eureka Service Registration and Gateway warmup..."
+          sleep 45
+          docker compose -f docker-compose.yml -f docker-compose.apps.yml ps
+
+      - name: Verify API Gateway Health Endpoint
+        run: |
+          curl --retry 10 --retry-delay 5 --retry-connrefused -f http://localhost:8080/actuator/health || exit 1
+
+      - name: Run E2E Distributed Saga Test Suite
+        working-directory: e2e-tests
+        run: |
+          ./mvnw test -DTARGET_GATEWAY_URL=http://localhost:8080
+
+      - name: Collect Microservice Logs on Failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.apps.yml logs --tail 200
+
+      - name: Upload Surefire Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-surefire-reports
+          path: e2e-tests/target/surefire-reports/
