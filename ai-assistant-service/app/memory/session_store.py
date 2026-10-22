@@ -30,28 +30,32 @@ class RedisSessionStore:
     def build_key(user_id: str, session_id: str) -> str:
         return f"chat:session:{user_id}:{session_id}"
 
-    def _get_redis(self) -> Any:
-        if self._redis is None:
-            self._redis = aioredis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                decode_responses=True,
-                socket_connect_timeout=1.5,
-                socket_timeout=1.5,
-            )
+    def _get_redis(self) -> Any | None:
+        if self._redis is not None:
+            return self._redis
+        if not settings.REDIS_ENABLED:
+            return None
+        self._redis = aioredis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            decode_responses=True,
+            socket_connect_timeout=1.5,
+            socket_timeout=1.5,
+        )
         return self._redis
 
     async def get_history(self, user_id: str, session_id: str) -> list[ChatMessage]:
         key = self.build_key(user_id, session_id)
-        try:
-            client = self._get_redis()
-            raw = await client.get(key)
-            if raw:
-                await client.expire(key, self.ttl_seconds)
-                items = json.loads(raw)
-                return [ChatMessage.model_validate(item) for item in items]
-        except Exception as exc:
-            logger.debug("Redis unavailable, reading session %s from fallback store: %s", key, exc)
+        client = self._get_redis()
+        if client is not None:
+            try:
+                raw = await client.get(key)
+                if raw:
+                    await client.expire(key, self.ttl_seconds)
+                    items = json.loads(raw)
+                    return [ChatMessage.model_validate(item) for item in items]
+            except Exception as exc:
+                logger.debug("Redis unavailable, reading session %s from fallback store: %s", key, exc)
 
         raw_list = self._fallback_memory.get(key, [])
         return [ChatMessage.model_validate(item) for item in raw_list]
@@ -68,22 +72,24 @@ class RedisSessionStore:
         key = self.build_key(user_id, session_id)
 
         self._fallback_memory[key] = serialized
-        try:
-            client = self._get_redis()
-            await client.set(key, json.dumps(serialized, ensure_ascii=False), ex=self.ttl_seconds)
-        except Exception as exc:
-            logger.debug("Redis unavailable, saved session %s to fallback store: %s", key, exc)
+        client = self._get_redis()
+        if client is not None:
+            try:
+                await client.set(key, json.dumps(serialized, ensure_ascii=False), ex=self.ttl_seconds)
+            except Exception as exc:
+                logger.debug("Redis unavailable, saved session %s to fallback store: %s", key, exc)
 
         return combined
 
     async def clear_session(self, user_id: str, session_id: str) -> None:
         key = self.build_key(user_id, session_id)
         self._fallback_memory.pop(key, None)
-        try:
-            client = self._get_redis()
-            await client.delete(key)
-        except Exception as exc:
-            logger.debug("Redis unavailable during clear_session for %s: %s", key, exc)
+        client = self._get_redis()
+        if client is not None:
+            try:
+                await client.delete(key)
+            except Exception as exc:
+                logger.debug("Redis unavailable during clear_session for %s: %s", key, exc)
 
 
 session_store = RedisSessionStore()

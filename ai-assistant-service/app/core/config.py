@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     PAYMENT_SERVICE_URL: str = "http://localhost:8083"
 
     # Redis Session Store
+    REDIS_ENABLED: bool = False
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     SESSION_TTL_SECONDS: int = 1800

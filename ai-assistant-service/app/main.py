@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI
 
-from app.api.v1.health_controller import health_router
+from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.eureka import eureka_manager
 from app.core.exceptions import register_exception_handlers
@@ -35,7 +35,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     setup_telemetry(app)
 
-    app.include_router(health_router)
+    app.include_router(api_router)
     return app
 
 
