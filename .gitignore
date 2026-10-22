@@ -8,6 +8,7 @@ RESUME_*.md
 
 # Ignore planning and roadmap documents
 plan/
+python_plan/
 
 # Ignore personal learning notes
 note/
