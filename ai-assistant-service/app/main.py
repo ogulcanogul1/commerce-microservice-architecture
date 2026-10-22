@@ -8,14 +8,17 @@ from app.core.eureka import eureka_manager
 from app.core.exceptions import register_exception_handlers
 from app.core.security import GatewaySecurityMiddleware
 from app.core.telemetry import setup_telemetry
+from app.messaging.kafka_producer import kafka_producer
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await eureka_manager.start()
+    await kafka_producer.start()
     try:
         yield
     finally:
+        await kafka_producer.stop()
         await eureka_manager.stop()
 
 

@@ -216,4 +216,54 @@ public class NotificationEventListener {
             throw new RuntimeException("Error processing ShipmentDelivered event in notification-service", ex);
         }
     }
+
+    @KafkaListener(topics = "support.ticket.created", groupId = CONSUMER_GROUP)
+    @Transactional
+    public void handleSupportTicketCreated(String message) {
+        try {
+            JsonNode root = objectMapper.readTree(message);
+            UUID eventId = UUID.fromString(root.path("eventId").asText());
+            String eventType = root.path("eventType").asText();
+
+            if (notificationService.isEventProcessed(CONSUMER_GROUP, eventId)) {
+                log.info("Duplicate support ticket escalation event ignored for eventId: {}", eventId);
+                return;
+            }
+
+            JsonNode payload = root.path("payload");
+            String ticketId = payload.hasNonNull("ticketId") ? payload.path("ticketId").asText() : "SUP-UNKNOWN";
+            UUID customerId = null;
+            if (payload.hasNonNull("customerId")) {
+                try {
+                    customerId = UUID.fromString(payload.path("customerId").asText());
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            String urgency = payload.hasNonNull("urgency") ? payload.path("urgency").asText() : "CRITICAL";
+            String reason = payload.hasNonNull("reason") ? payload.path("reason").asText() : "AI_ESCALATION";
+            String chatSummary = payload.hasNonNull("chatSummary") ? payload.path("chatSummary").asText() : "";
+            String suggestedAction = payload.hasNonNull("suggestedAction") ? payload.path("suggestedAction").asText() : "";
+
+            String subject = "[" + urgency + "] Support Escalation - " + ticketId;
+            String content = "Ticket: " + ticketId + " | Reason: " + reason
+                    + " | Summary: " + chatSummary + " | Action: " + suggestedAction;
+
+            SendNotificationRequest request = new SendNotificationRequest(
+                    customerId,
+                    NotificationChannel.EMAIL,
+                    "support-escalation@commerce.com",
+                    subject,
+                    content,
+                    eventId
+            );
+
+            notificationService.sendNotification(request);
+            notificationService.markEventProcessed(CONSUMER_GROUP, eventId, eventType);
+            log.info("AI support escalation notification dispatched for ticketId: {}", ticketId);
+
+        } catch (Exception ex) {
+            log.error("Failed to process SupportTicketCreated event in notification-service: {}", message, ex);
+            throw new RuntimeException("Error processing SupportTicketCreated event in notification-service", ex);
+        }
+    }
 }

@@ -34,7 +34,8 @@ import static org.awaitility.Awaitility.await;
                 "orders.cancelled",
                 "payments.failed",
                 "shipments.created",
-                "shipments.delivered"
+                "shipments.delivered",
+                "support.ticket.created"
         }
 )
 class NotificationEventListenerIntegrationTest {
@@ -227,6 +228,46 @@ class NotificationEventListenerIntegrationTest {
             assertThat(notification.getChannel()).isEqualTo(NotificationChannel.PUSH);
             assertThat(notification.getRecipient()).isEqualTo("customer-device-token");
             assertThat(notification.getContent()).contains("delivered");
+        });
+    }
+
+    @Test
+    @DisplayName("support.ticket.created event from ai-assistant-service should trigger support escalation email")
+    void handleSupportTicketCreated_ShouldSendEscalationNotification() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        Map<String, Object> payload = Map.of(
+                "ticketId", "SUP-7721",
+                "customerId", customerId.toString(),
+                "urgency", "CRITICAL",
+                "reason", "CUSTOMER_FRUSTRATION_AND_DELAYED_SHIPMENT",
+                "orderId", "ORD-9912",
+                "chatSummary", "Müşterinin kargosu 3 gündür gecikmede.",
+                "suggestedAction", "100 TL özür kuponu tanımlanmalı."
+        );
+
+        String message = createEventEnvelope(
+                eventId,
+                "SupportTicketCreated",
+                "SUP-7721",
+                "SupportTicket",
+                payload
+        );
+
+        kafkaTemplate.send("support.ticket.created", "SUP-7721", message).get();
+
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            List<Notification> notifications = notificationRepository.findAll();
+            assertThat(notifications).hasSize(1);
+
+            Notification notification = notifications.getFirst();
+            assertThat(notification.getChannel()).isEqualTo(NotificationChannel.EMAIL);
+            assertThat(notification.getRecipient()).isEqualTo("support-escalation@commerce.com");
+            assertThat(notification.getSubject()).contains("[CRITICAL] Support Escalation - SUP-7721");
+            assertThat(notification.getContent()).contains("CUSTOMER_FRUSTRATION_AND_DELAYED_SHIPMENT");
+            assertThat(notification.getCustomerId()).isEqualTo(customerId);
+            assertThat(notification.getEventId()).isEqualTo(eventId);
         });
     }
 
