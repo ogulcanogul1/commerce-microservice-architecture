@@ -1,5 +1,7 @@
 import logging
-import py_eureka_client.eureka_client as eureka_client
+
+from py_eureka_client import eureka_client
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

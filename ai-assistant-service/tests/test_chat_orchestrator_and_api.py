@@ -1,7 +1,8 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import patch
-from fastapi.testclient import TestClient
+
 import httpx
+from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.core.security import GATEWAY_SECRET_HEADER, USER_EMAIL_HEADER, USER_ID_HEADER

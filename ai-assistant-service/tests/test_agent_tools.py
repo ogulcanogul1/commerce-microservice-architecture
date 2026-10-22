@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
-import json
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 
@@ -181,7 +181,7 @@ async def test_scenario_a1_a2_a3_order_and_shipping_tools():
 
 @pytest.mark.asyncio
 async def test_scenario_b1_b2_b3_price_comparison_price_match_and_coupons():
-    recent_purchase_time = (datetime.now(timezone.utc) - timedelta(hours=20)).isoformat()
+    recent_purchase_time = (datetime.now(UTC) - timedelta(hours=20)).isoformat()
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path

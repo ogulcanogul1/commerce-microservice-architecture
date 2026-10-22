@@ -256,3 +256,44 @@ Accept: {{contentType}}
 ### C. Circuit Breaker Fallback for Order
 GET {{gatewayUrl}}/fallback/order
 Accept: {{contentType}}
+
+### D. Circuit Breaker Fallback for AI Assistant
+GET {{gatewayUrl}}/fallback/ai-assistant
+Accept: {{contentType}}
+
+
+### -----------------------------------------------------------------------------
+### 9. POLYGLOT AI ASSISTANT SERVICE (ai-assistant-service via Gateway - Port 8089)
+### -----------------------------------------------------------------------------
+
+# @name aiChatShipmentTracking
+POST {{gatewayUrl}}/api/v1/chat
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+X-Model-Provider: gemini
+X-Correlation-Id: {{$guid}}
+
+{
+  "session_id": "sess-demo-001",
+  "message": "Son siparişim nerede, bugün elime ulaşır mı?"
+}
+
+###
+
+# @name aiChatStreamSSE
+POST {{gatewayUrl}}/api/v1/chat/stream
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+X-Model-Provider: claude
+
+{
+  "session_id": "sess-demo-001",
+  "message": "Karanlık bir odada solmayacak ve kediye zarar vermeyen ev bitkisi önerir misiniz?"
+}
+
+###
+
+# @name listAiAssistantTools
+GET {{gatewayUrl}}/api/v1/chat/tools
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}

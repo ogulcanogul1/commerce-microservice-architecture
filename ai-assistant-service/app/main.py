@@ -1,9 +1,9 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+
 from fastapi import FastAPI
 
 from app.api.v1.router import api_router
-from app.core.config import settings
 from app.core.eureka import eureka_manager
 from app.core.exceptions import register_exception_handlers
 from app.core.security import GatewaySecurityMiddleware

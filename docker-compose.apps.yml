@@ -250,7 +250,51 @@ services:
     networks:
       - commerce-network
 
-  # 8. API Gateway (Port: 8080) - Ters Proxy, JWT Doğrulama, Rate Limiter & Circuit Breaker
+  # 8. AI Assistant Service (Port: 8089) - Poliglot Python FastAPI LLM Ajanı & Destek Motoru
+  ai-assistant-service:
+    build:
+      context: ./ai-assistant-service
+      dockerfile: Dockerfile
+    image: commerce/ai-assistant-service:latest
+    container_name: commerce-ai-assistant-service
+    ports:
+      - "8089:8089"
+    environment:
+      - SERVICE_NAME=ai-assistant-service
+      - SERVICE_HOST=ai-assistant-service
+      - SERVICE_PORT=8089
+      - EUREKA_ENABLED=true
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - GATEWAY_SECRET_ENABLED=true
+      - GATEWAY_INTERNAL_SECRET=dgl-internal-gateway-secret-token-2026
+      - ORDER_SERVICE_URL=http://order-service:8082
+      - PRODUCT_SERVICE_URL=http://product-service:8081
+      - SHIPPING_SERVICE_URL=http://shipping-service:8085
+      - INVENTORY_SERVICE_URL=http://inventory-service:8084
+      - PAYMENT_SERVICE_URL=http://payment-service:8083
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_ENABLED=true
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-gemini}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:11434/v1}
+    depends_on:
+      eureka-server:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - commerce-network
+
+  # 9. API Gateway (Port: 8080) - Ters Proxy, JWT Doğrulama, Rate Limiter & Circuit Breaker
   api-gateway:
     build:
       context: ./api-gateway
@@ -276,6 +320,7 @@ services:
       - shipping-service
       - customer-service
       - notification-service
+      - ai-assistant-service
       - redis
     networks:
       - commerce-network

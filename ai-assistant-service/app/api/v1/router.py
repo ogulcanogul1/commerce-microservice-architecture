@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from app.api.v1.chat_controller import chat_router
 from app.api.v1.health_controller import health_router
 

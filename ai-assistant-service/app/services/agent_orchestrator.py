@@ -1,16 +1,22 @@
 import json
 import logging
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from app.core.exceptions import AccessDeniedException, BusinessRuleException, ResourceNotFoundException
+import app.tools  # noqa: F401 - ensures all agentic tools are registered
+from app.core.exceptions import (
+    AccessDeniedException,
+    BusinessRuleException,
+    ResourceNotFoundException,
+)
 from app.core.pii_masker import PIIMasker
 from app.core.security import get_request_context, require_authenticated_user
 from app.llm.base import BaseLLMProvider, ChatMessage, ImageAttachment
 from app.llm.factory import LLMFactory
 from app.memory.rag_engine import RAGEngine, rag_engine
 from app.memory.session_store import RedisSessionStore, session_store
-import app.tools  # noqa: F401 - ensures all agentic tools are registered
 from app.tools.base_tool import ToolRegistry, tool_registry
 
 logger = logging.getLogger(__name__)

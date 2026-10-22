@@ -1,6 +1,7 @@
 import json
-from unittest.mock import AsyncMock
 import uuid
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.core.config import settings

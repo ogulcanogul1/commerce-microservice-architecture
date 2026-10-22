@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+
 import pytest
 
 from app.core.pii_masker import PIIMasker

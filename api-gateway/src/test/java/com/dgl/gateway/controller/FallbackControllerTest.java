@@ -84,6 +84,16 @@ class FallbackControllerTest {
     }
 
     @Test
+    @DisplayName("aiAssistantFallback should return 503 SERVICE_UNAVAILABLE with ProblemDetail")
+    void aiAssistantFallback_ShouldReturn503() {
+        ResponseEntity<ProblemDetail> response = controller.aiAssistantFallback();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).contains("AI Assistant Service");
+    }
+
+    @Test
     @DisplayName("defaultFallback should return 503 SERVICE_UNAVAILABLE with ProblemDetail")
     void defaultFallback_ShouldReturn503() {
         ResponseEntity<ProblemDetail> response = controller.defaultFallback();

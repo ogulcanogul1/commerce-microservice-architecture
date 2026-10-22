@@ -10,8 +10,8 @@ from app.memory.session_store import RedisSessionStore, session_store
 __all__ = [
     "KnowledgeDocument",
     "RAGEngine",
+    "RedisSessionStore",
     "rag_engine",
     "search_policy_and_product_knowledge",
-    "RedisSessionStore",
     "session_store",
 ]

@@ -83,6 +83,13 @@ spring:
               - CircuitBreaker=notificationCircuitBreaker,forward:/fallback/notification
               - Retry=3
 
+          - id: ai-assistant-service-route
+            uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
+            predicates:
+              - Path=/api/v1/chat/**
+            filters:
+              - CircuitBreaker=aiAssistantCircuitBreaker,forward:/fallback/ai-assistant
+
           - id: product-service-docs
             uri: ${SERVICES_PRODUCT_URL:lb://product-service}
             predicates:
@@ -132,6 +139,13 @@ spring:
             filters:
               - SetPath=/v3/api-docs
 
+          - id: ai-assistant-service-docs
+            uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
+            predicates:
+              - Path=/v3/api-docs/ai-assistant-service
+            filters:
+              - SetPath=/v3/api-docs
+
 eureka:
   client:
     enabled: ${EUREKA_CLIENT_ENABLED:true}
@@ -164,6 +178,8 @@ resilience4j:
       customerCircuitBreaker:
         baseConfig: default
       notificationCircuitBreaker:
+        baseConfig: default
+      aiAssistantCircuitBreaker:
         baseConfig: default
   timelimiter:
     configs:
@@ -225,4 +241,6 @@ springdoc:
         url: /v3/api-docs/shipping-service
       - name: 7. Bildirim Servisi (Notification Service)
         url: /v3/api-docs/notification-service
+      - name: 8. Poliglot Yapay Zeka Asistanı (AI Assistant Service)
+        url: /v3/api-docs/ai-assistant-service
 

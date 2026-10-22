@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Literal
+from collections.abc import AsyncGenerator
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 

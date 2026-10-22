@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
+
 from app.core.config import settings
 from app.core.exceptions import BusinessRuleException
-import app.tools.base_tool as base_tool
+from app.tools import base_tool
 from app.tools.base_tool import tool_registry
 from app.tools.order_tools import fetch_order_by_identifier
 
@@ -45,11 +46,11 @@ ACTIVE_CAMPAIGNS = [
 
 def _parse_iso_datetime(value: str | None) -> datetime:
     if not value:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     cleaned = value.replace("Z", "+00:00")
     dt = datetime.fromisoformat(cleaned)
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -153,7 +154,7 @@ async def evaluate_price_match_refund(
     purchased_price = float(item.get("unitPrice", 0))
     current_price = float(product.get("basePrice", 0))
     created_at = _parse_iso_datetime(order.get("createdAt"))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     hours_elapsed = round(max(0.0, (now - created_at).total_seconds() / 3600.0), 2)
 
     if current_price >= purchased_price:

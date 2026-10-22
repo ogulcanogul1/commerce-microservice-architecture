@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -105,7 +106,7 @@ def build_problem_detail(
         "status": status_code,
         "detail": detail,
         "instance": instance,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     if correlation_id:
         problem["correlationId"] = correlation_id

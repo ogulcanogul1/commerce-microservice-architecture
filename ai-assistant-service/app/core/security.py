@@ -2,6 +2,7 @@ import contextvars
 import logging
 import uuid
 from dataclasses import dataclass, field
+
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint

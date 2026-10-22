@@ -1,6 +1,8 @@
 import json
 import uuid
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from openai import AsyncOpenAI
 
 from app.core.config import settings

@@ -1,6 +1,8 @@
 import base64
 import uuid
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from google import genai
 from google.genai import types
 

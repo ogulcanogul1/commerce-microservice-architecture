@@ -1,13 +1,14 @@
-from datetime import datetime, timezone
-from typing import Any
 import uuid
+from datetime import UTC, datetime
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from app.core.security import get_request_context
 
 
 def _utc_iso_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _new_uuid_str() -> str:

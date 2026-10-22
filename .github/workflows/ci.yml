@@ -47,3 +47,23 @@ jobs:
       - name: Run Service Unit & Integration Tests
         working-directory: ${{ matrix.service }}
         run: ./mvnw clean test -Duser.language=en -Duser.country=US
+
+  ai-assistant-python-test:
+    name: Build & Test - ai-assistant-service (Python 3.12 / uv)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Astral uv & Python 3.12
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Run Ruff Linter & Pytest Suite
+        working-directory: ai-assistant-service
+        run: |
+          uv sync --locked
+          uv run ruff check .
+          uv run pytest -v

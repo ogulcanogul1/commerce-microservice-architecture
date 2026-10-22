@@ -1,5 +1,7 @@
 import uuid
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from app.core.security import get_request_context, require_authenticated_user
 from app.tools.base_tool import tool_registry
 

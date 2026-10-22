@@ -1,8 +1,9 @@
 import uuid
 from typing import Any
+
 from app.core.config import settings
 from app.core.exceptions import BusinessRuleException
-import app.tools.base_tool as base_tool
+from app.tools import base_tool
 from app.tools.base_tool import tool_registry
 from app.tools.order_tools import fetch_order_by_identifier
 

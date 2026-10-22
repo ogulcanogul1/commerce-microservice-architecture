@@ -52,6 +52,11 @@ public class FallbackController {
         return buildFallbackResponse("Notification Service", "https://api.commerce.com/errors/notification-service-unavailable");
     }
 
+    @RequestMapping("/ai-assistant")
+    public ResponseEntity<ProblemDetail> aiAssistantFallback() {
+        return buildFallbackResponse("AI Assistant Service", "https://api.commerce.com/errors/ai-assistant-service-unavailable");
+    }
+
     @RequestMapping("/default")
     public ResponseEntity<ProblemDetail> defaultFallback() {
         return buildFallbackResponse("Downstream Service", "https://api.commerce.com/errors/downstream-service-unavailable");
