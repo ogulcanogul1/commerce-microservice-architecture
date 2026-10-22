@@ -13,6 +13,7 @@ from app.tools import (
     shipping_tools,
     support_tools,
 )
+from app.memory import rag_engine as _rag_tools  # noqa: F401
 
 __all__ = [
     "CommerceHttpClient",
