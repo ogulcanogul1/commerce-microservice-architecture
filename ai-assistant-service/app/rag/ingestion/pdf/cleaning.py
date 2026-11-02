@@ -25,6 +25,8 @@ def normalize(text: str) -> str:
 def remove_repeated_lines(pages: list[str]) -> list[str]:
     """Detects and removes repeating headers and footers across pages.
 
+    Excludes Markdown table rows and table separators (|---|) from repeated lines removal,
+    as tables frequently repeat separator patterns legitimately across multiple pages.
     Replaces digits with '#' to match patterns like 'Page 1' and 'Page 2' as 'Page #'.
     Lines that appear in at least max(2, 0.6 * page_count) pages are removed.
     """
@@ -33,17 +35,23 @@ def remove_repeated_lines(pages: list[str]) -> list[str]:
 
     threshold = max(2, int(0.6 * len(pages)))
 
+    def is_table_line(line: str) -> bool:
+        """Determines if a line is part of a markdown table."""
+        stripped = line.strip()
+        return stripped.startswith("|")
+
     def line_pattern(line: str) -> str:
         # Normalize digits to '#' and strip whitespace
         return re.sub(r"\d+", "#", line.strip())
 
-    # Count pattern occurrences across distinct pages
+    # Count pattern occurrences across distinct pages (excluding table rows)
     pattern_page_counts: Counter[str] = Counter()
     for page_text in pages:
         seen_in_this_page: set[str] = set()
         for line in page_text.splitlines():
             clean = line.strip()
-            if not clean:
+            # Do not treat blank lines or table rows/separators as header/footer candidates
+            if not clean or is_table_line(clean):
                 continue
             pattern = line_pattern(clean)
             seen_in_this_page.add(pattern)
@@ -58,11 +66,16 @@ def remove_repeated_lines(pages: list[str]) -> list[str]:
         if count >= threshold
     }
 
-    # Filter out repeated lines from each page
+    # Filter out repeated lines from each page (table rows are always preserved)
     cleaned_pages: list[str] = []
     for page_text in pages:
         retained_lines: list[str] = []
         for line in page_text.splitlines():
+            # Always preserve table lines regardless of repetition
+            if is_table_line(line):
+                retained_lines.append(line)
+                continue
+
             pattern = line_pattern(line)
             if pattern in repeated_patterns:
                 continue
