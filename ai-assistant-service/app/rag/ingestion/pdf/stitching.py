@@ -7,6 +7,8 @@ TERMINAL_PUNCTUATION = {".", "!", "?", ":"}
 def stitch_elements(elements: list[Element]) -> list[Element]:
     """Stitches consecutive elements across page boundaries at Element level.
 
+    Guarantees immutability: the input `elements` list is never mutated in-place.
+
     Rules applied:
     1. Consecutive Pages Invariant: Only stitches if curr.page_end + 1 == next.page_start.
        If an intermediate page was empty or skipped, elements are never merged across the gap.
@@ -20,20 +22,22 @@ def stitch_elements(elements: list[Element]) -> list[Element]:
         elements: List of raw Element objects from individual pages.
 
     Returns:
-        List of stitched Element objects preserving exact page boundaries for untouched elements.
+        New list of stitched Element objects preserving exact page boundaries for untouched elements.
     """
     if len(elements) < 2:
         return list(elements)
 
+    # Work on a copy to avoid mutating caller's input list
+    working: list[Element] = list(elements)
     stitched: list[Element] = []
     idx = 0
 
-    while idx < len(elements):
-        curr = elements[idx]
+    while idx < len(working):
+        curr = working[idx]
 
         # Check if we can stitch with subsequent element
-        if idx + 1 < len(elements):
-            next_el = elements[idx + 1]
+        if idx + 1 < len(working):
+            next_el = working[idx + 1]
 
             # Invariant: Must be strictly consecutive pages
             if curr.page_end + 1 == next_el.page_start:
@@ -52,7 +56,7 @@ def stitch_elements(elements: list[Element]) -> list[Element]:
                         else:
                             merged_text = f"{curr_stripped} {next_stripped}"
 
-                        # Merge into curr and extend page_end
+                        # Merge into new element and extend page_end
                         curr = Element(
                             type=ElementType.PARAGRAPH,
                             text=merged_text,
@@ -60,8 +64,8 @@ def stitch_elements(elements: list[Element]) -> list[Element]:
                             page_end=next_el.page_end,
                             heading_path=curr.heading_path,
                         )
-                        elements[idx] = curr
-                        elements.pop(idx + 1)
+                        working[idx] = curr
+                        working.pop(idx + 1)
                         continue
 
                 # --- Rule 2: Table Continuation ---
@@ -81,8 +85,8 @@ def stitch_elements(elements: list[Element]) -> list[Element]:
                             page_end=next_el.page_end,
                             heading_path=curr.heading_path,
                         )
-                        elements[idx] = curr
-                        elements.pop(idx + 1)
+                        working[idx] = curr
+                        working.pop(idx + 1)
                         continue
 
         stitched.append(curr)

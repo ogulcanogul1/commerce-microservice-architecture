@@ -136,3 +136,28 @@ def test_table_continuation_stitching():
     assert stitched[0].page_start == 1 and stitched[0].page_end == 2
     assert "| Elma | 10 TL |" in stitched[0].text
     assert "| Armut | 20 TL |" in stitched[0].text
+
+
+def test_stitch_elements_does_not_mutate_input_list():
+    """stitch_elements must not modify the caller's list in place."""
+    e1 = Element(
+        type=ElementType.PARAGRAPH,
+        text="Paragraf bir",
+        page_start=1,
+        page_end=1,
+    )
+    e2 = Element(
+        type=ElementType.PARAGRAPH,
+        text="ve devam eden cumle.",
+        page_start=2,
+        page_end=2,
+    )
+    original_list = [e1, e2]
+    original_len = len(original_list)
+
+    result = stitch_elements(original_list)
+
+    assert len(result) == 1
+    assert len(original_list) == original_len, "Caller's list was mutated in place!"
+    assert original_list[0] is e1
+    assert original_list[1] is e2
