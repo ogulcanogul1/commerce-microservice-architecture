@@ -19,4 +19,9 @@ notes/
 *.env
 !.env.example
 
+# Local Agent & Assistant configs
+.claude/
+.claude/skills/ai-not-yazari/
+
+
 
