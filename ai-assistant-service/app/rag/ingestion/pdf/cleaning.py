@@ -22,13 +22,22 @@ def normalize(text: str) -> str:
     return collapsed.strip()
 
 
-def remove_repeated_lines(pages: list[str]) -> list[str]:
-    """Detects and removes repeating headers and footers across pages.
+def remove_repeated_lines(pages: list[str], margin_lines: int = 3) -> list[str]:
+    """Detects and removes repeating headers and footers strictly at page margins.
 
-    Excludes Markdown table rows and table separators (|---|) from repeated lines removal,
-    as tables frequently repeat separator patterns legitimately across multiple pages.
-    Replaces digits with '#' to match patterns like 'Page 1' and 'Page 2' as 'Page #'.
-    Lines that appear in at least max(2, 0.6 * page_count) pages are removed.
+    Crucial Invariants:
+    1. Margin Scoping: Only the first `margin_lines` (headers) and last `margin_lines` (footers)
+       of each page are examined for repetition. Body text in the middle is NEVER removed,
+       even if repeated across pages (e.g. repeated notices or disclaimers).
+    2. Table Exemption: Markdown table rows and separators (|) are never removed.
+    3. Digits Masking: Numbers are masked to '#' so 'Page 1' and 'Page 2' match 'Page #'.
+
+    Args:
+        pages: List of raw page text strings.
+        margin_lines: Number of lines at page top and bottom considered margins (default 3).
+
+    Returns:
+        Cleaned list of page text strings with headers/footers removed from margins.
     """
     if len(pages) < 2:
         return pages
@@ -36,50 +45,64 @@ def remove_repeated_lines(pages: list[str]) -> list[str]:
     threshold = max(2, int(0.6 * len(pages)))
 
     def is_table_line(line: str) -> bool:
-        """Determines if a line is part of a markdown table."""
-        stripped = line.strip()
-        return stripped.startswith("|")
+        return line.strip().startswith("|")
 
     def line_pattern(line: str) -> str:
-        # Normalize digits to '#' and strip whitespace
         return re.sub(r"\d+", "#", line.strip())
 
-    # Count pattern occurrences across distinct pages (excluding table rows)
+    def get_margin_indices(total_lines: int) -> tuple[set[int], set[int]]:
+        """Returns sets of line indices belonging to (top_margin, bottom_margin)."""
+        if total_lines <= margin_lines * 2:
+            # For very short pages, only the very first and very last non-empty lines can be margins
+            top_set = {0} if total_lines > 0 else set()
+            bot_set = {total_lines - 1} if total_lines > 1 else set()
+            return top_set, bot_set
+        top_set = set(range(margin_lines))
+        bot_set = set(range(total_lines - margin_lines, total_lines))
+        return top_set, bot_set
+
+    # Step 1: Count pattern occurrences ONLY in page margins
     pattern_page_counts: Counter[str] = Counter()
     for page_text in pages:
+        lines = page_text.splitlines()
+        top_idx, bot_idx = get_margin_indices(len(lines))
+        margin_indices = top_idx | bot_idx
+
         seen_in_this_page: set[str] = set()
-        for line in page_text.splitlines():
-            clean = line.strip()
-            # Do not treat blank lines or table rows/separators as header/footer candidates
-            if not clean or is_table_line(clean):
+        for idx in margin_indices:
+            line = lines[idx].strip()
+            if not line or is_table_line(line):
                 continue
-            pattern = line_pattern(clean)
+            pattern = line_pattern(line)
             seen_in_this_page.add(pattern)
 
         for pattern in seen_in_this_page:
             pattern_page_counts[pattern] += 1
 
-    # Identify recurring patterns
+    # Step 2: Identify recurring patterns that meet the threshold
     repeated_patterns = {
         pattern
         for pattern, count in pattern_page_counts.items()
         if count >= threshold
     }
 
-    # Filter out repeated lines from each page (table rows are always preserved)
+    # Step 3: Remove repeated patterns ONLY from margins (body lines remain untouched)
     cleaned_pages: list[str] = []
     for page_text in pages:
-        retained_lines: list[str] = []
-        for line in page_text.splitlines():
-            # Always preserve table lines regardless of repetition
-            if is_table_line(line):
-                retained_lines.append(line)
-                continue
+        lines = page_text.splitlines()
+        top_idx, bot_idx = get_margin_indices(len(lines))
+        margin_indices = top_idx | bot_idx
 
-            pattern = line_pattern(line)
-            if pattern in repeated_patterns:
-                continue
+        retained_lines: list[str] = []
+        for idx, line in enumerate(lines):
+            clean = line.strip()
+            # If line is in margins and matches a repeated pattern (and is not table), drop it
+            if idx in margin_indices and not is_table_line(clean):
+                pattern = line_pattern(clean)
+                if pattern in repeated_patterns:
+                    continue
             retained_lines.append(line)
+
         cleaned_pages.append("\n".join(retained_lines))
 
     return cleaned_pages

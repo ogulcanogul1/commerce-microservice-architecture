@@ -49,6 +49,38 @@ def test_remove_repeated_lines_cleans_headers_and_footers():
     assert "Kargo şartları gövde metni." in cleaned[1]
 
 
+def test_remove_repeated_lines_preserves_repeated_body_text_in_middle():
+    """Repeated body notes in the middle of pages must never be removed as headers/footers."""
+    page1 = (
+        "Kuzey Market Politika Kılavuzu\n"  # Top margin line 0 (header -> removed)
+        "# Bolum 1\n"
+        "Giris aciklamasi.\n"
+        "Not: iade 14 gun.\n"  # Body line (repeated -> PRESERVED!)
+        "Detayli sartlar burada anlatilmistir.\n"
+        "Sayfa 1"  # Bottom margin (footer -> removed)
+    )
+    page2 = (
+        "Kuzey Market Politika Kılavuzu\n"  # Top margin line 0 (header -> removed)
+        "# Bolum 2\n"
+        "Kargo aciklamasi.\n"
+        "Not: iade 14 gun.\n"  # Body line (repeated -> PRESERVED!)
+        "Ekstra sartlar burada anlatilmistir.\n"
+        "Sayfa 2"  # Bottom margin (footer -> removed)
+    )
+
+    cleaned = remove_repeated_lines([page1, page2])
+    assert len(cleaned) == 2
+
+    # Headers and footers must be stripped
+    for page in cleaned:
+        assert "Kuzey Market Politika Kılavuzu" not in page
+        assert "Sayfa" not in page
+
+    # Body note must be preserved on both pages
+    assert "Not: iade 14 gun." in cleaned[0]
+    assert "Not: iade 14 gun." in cleaned[1]
+
+
 def test_remove_repeated_lines_preserves_table_separators_across_pages():
     """Table separators like |---|---| appear identically on every page but must never be removed."""
     page1 = (
