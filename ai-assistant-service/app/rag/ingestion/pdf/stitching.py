@@ -1,89 +1,91 @@
-import re                                                                                                                  
-                                                                                                                               
-# Terminal punctuation marks that indicate a complete sentence                                                             
-TERMINAL_PUNCTUATION = {".", "!", "?", ":"}                                                                                
-                                                                                                                            
-                                                                                                                            
-def stitch_pages(pages: list[tuple[int, str]]) -> list[tuple[str, int, int]]:                                              
-    """Stitches paragraphs and tables that are broken across page boundaries.                                              
-                                                                                                                            
-    Args:                                                                                                                  
-        pages: List of (page_number, cleaned_page_text) tuples.                                                            
-                                                                                                                            
-    Returns:                                                                                                               
-        A list of stitched blocks as (text, page_start, page_end) tuples.                                                  
-    """                                                                                                                    
-    if not pages:                                                                                                          
-        return []                                                                                                          
-                                                                                                                            
-    # Initial block representations: (text, page_start, page_end)                                                          
-    blocks: list[list] = [                                                                                                 
-        [text.strip(), page_num, page_num]                                                                                 
-        for page_num, text in pages                                                                                        
-        if text.strip()                                                                                                    
-    ]                                                                                                                      
-                                                                                                                            
-    if len(blocks) < 2:                                                                                                    
-        return [(b[0], b[1], b[2]) for b in blocks]                                                                        
-                                                                                                                            
-    idx = 0                                                                                                                
-    while idx < len(blocks) - 1:                                                                                           
-        curr_text = blocks[idx][0]                                                                                         
-        next_text = blocks[idx + 1][0]                                                                                     
-                                                                                                                            
-        # Split current and next blocks into paragraphs                                                                    
-        curr_paragraphs = [p.strip() for p in curr_text.split("\n\n") if p.strip()]                                        
-        next_paragraphs = [p.strip() for p in next_text.split("\n\n") if p.strip()]                                        
-                                                                                                                            
-        if not curr_paragraphs or not next_paragraphs:                                                                     
-            idx += 1                                                                                                       
-            continue                                                                                                       
-                                                                                                                            
-        last_p = curr_paragraphs[-1]                                                                                       
-        first_p = next_paragraphs[0]                                                                                       
-                                                                                                                            
-        # --- Rule 1: Paragraph Stitching ---                                                                              
-        # If current page does not end with terminal punctuation                                                           
-        # and next page starts with a lowercase letter or continuation:                                                    
-        last_char = last_p[-1] if last_p else ""                                                                           
-        first_char = first_p[0] if first_p else ""                                                                         
-                                                                                                                            
-        if last_char not in TERMINAL_PUNCTUATION and first_char.islower():                                                 
-            # Merge incomplete paragraph from current page with beginning of next page                                     
-            merged_p = f"{last_p} {first_p}"                                                                               
-            curr_paragraphs[-1] = merged_p                                                                                 
-            # Remove the merged first paragraph from next page                                                             
-            next_paragraphs.pop(0)                                                                                         
-                                                                                                                            
-            blocks[idx][0] = "\n\n".join(curr_paragraphs)                                                                  
-            blocks[idx][2] = blocks[idx + 1][1]  # Extend page_end                                                         
-                                                                                                                            
-            if next_paragraphs:                                                                                            
-                blocks[idx + 1][0] = "\n\n".join(next_paragraphs)                                                          
-            else:                                                                                                          
-                # If next block had only that paragraph, remove it                                                         
-                blocks.pop(idx + 1)                                                                                        
-                continue                                                                                                   
-                                                                                                                            
-        # --- Rule 2: Table Header Continuation ---                                                                        
-        # If current page ends with a markdown table row and next page starts                                              
-        # with table rows but lacks a header separator (|---|):                                                            
-        curr_lines = [l.strip() for l in blocks[idx][0].splitlines() if l.strip()]                                         
-        next_lines = [l.strip() for l in blocks[idx + 1][0].splitlines() if l.strip()]                                     
-                                                                                                                            
-        if curr_lines and next_lines:                                                                                      
-            if curr_lines[-1].startswith("|") and next_lines[0].startswith("|"):                                           
-                # Check if next page table is missing a header separator (e.g. |---|)                                      
-                has_separator = any("|---" in line or "|:--" in line for line in next_lines[:3])                           
-                if not has_separator:                                                                                      
-                    # Find table header and separator from the end of current page                                         
-                    table_lines = [l for l in curr_lines if l.startswith("|")]                                             
-                    if len(table_lines) >= 2:                                                                              
-                        header_line = table_lines[0]                                                                       
-                        sep_line = table_lines[1]                                                                          
-                        # Inject header and separator to the beginning of next page's table                                
-                        blocks[idx + 1][0] = f"{header_line}\n{sep_line}\n" + blocks[idx + 1][0]                           
-                                                                                                                            
-        idx += 1                                                                                                           
-                                                                                                                            
-    return [(b[0], b[1], b[2]) for b in blocks]
+from app.rag.ingestion.models import Element, ElementType
+from app.rag.ingestion.pdf.cleaning import dehyphenate
+
+TERMINAL_PUNCTUATION = {".", "!", "?", ":"}
+
+
+def stitch_elements(elements: list[Element]) -> list[Element]:
+    """Stitches consecutive elements across page boundaries at Element level.
+
+    Rules applied:
+    1. Consecutive Pages Invariant: Only stitches if curr.page_end + 1 == next.page_start.
+       If an intermediate page was empty or skipped, elements are never merged across the gap.
+    2. Paragraph Stitching: Strictly between two PARAGRAPH elements. Checks that current
+       paragraph does not end with terminal punctuation ('.', '!', '?', ':') and next starts with
+       lowercase. Merges cross-page hyphens (e.g. 'karsi-\\n' + 'lanir' -> 'karsilanir').
+    3. Table Stitching: Strictly between two consecutive TABLE elements. Drops duplicate table
+       separators (|---|) and merges data rows into a single continuous TABLE element.
+
+    Args:
+        elements: List of raw Element objects from individual pages.
+
+    Returns:
+        List of stitched Element objects preserving exact page boundaries for untouched elements.
+    """
+    if len(elements) < 2:
+        return list(elements)
+
+    stitched: list[Element] = []
+    idx = 0
+
+    while idx < len(elements):
+        curr = elements[idx]
+
+        # Check if we can stitch with subsequent element
+        if idx + 1 < len(elements):
+            next_el = elements[idx + 1]
+
+            # Invariant: Must be strictly consecutive pages
+            if curr.page_end + 1 == next_el.page_start:
+
+                # --- Rule 1: Paragraph Stitching ---
+                if curr.type == ElementType.PARAGRAPH and next_el.type == ElementType.PARAGRAPH:
+                    curr_stripped = curr.text.rstrip()
+                    next_stripped = next_el.text.lstrip()
+
+                    last_char = curr_stripped[-1] if curr_stripped else ""
+                    first_char = next_stripped[0] if next_stripped else ""
+
+                    if last_char not in TERMINAL_PUNCTUATION and first_char.islower():
+                        if curr_stripped.endswith("-"):
+                            merged_text = dehyphenate(f"{curr_stripped}\n{next_stripped}")
+                        else:
+                            merged_text = f"{curr_stripped} {next_stripped}"
+
+                        # Merge into curr and extend page_end
+                        curr = Element(
+                            type=ElementType.PARAGRAPH,
+                            text=merged_text,
+                            page_start=curr.page_start,
+                            page_end=next_el.page_end,
+                            heading_path=curr.heading_path,
+                        )
+                        elements[idx] = curr
+                        elements.pop(idx + 1)
+                        continue
+
+                # --- Rule 2: Table Continuation ---
+                if curr.type == ElementType.TABLE and next_el.type == ElementType.TABLE:
+                    next_lines = [l.strip() for l in next_el.text.splitlines() if l.strip()]
+                    # Filter out duplicate table separator if generated by parser
+                    filtered_next = [
+                        l for l in next_lines
+                        if not (l.startswith("|---") or l.startswith("|:--"))
+                    ]
+                    if filtered_next:
+                        merged_table_text = f"{curr.text}\n" + "\n".join(filtered_next)
+                        curr = Element(
+                            type=ElementType.TABLE,
+                            text=merged_table_text,
+                            page_start=curr.page_start,
+                            page_end=next_el.page_end,
+                            heading_path=curr.heading_path,
+                        )
+                        elements[idx] = curr
+                        elements.pop(idx + 1)
+                        continue
+
+        stitched.append(curr)
+        idx += 1
+
+    return stitched

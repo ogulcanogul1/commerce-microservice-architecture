@@ -6,7 +6,7 @@ from app.rag.ingestion.models import ParsedDocument
 from app.rag.ingestion.pdf.cleaning import dehyphenate, normalize, remove_repeated_lines
 from app.rag.ingestion.pdf.elements import parse_markdown_to_elements
 from app.rag.ingestion.pdf.quality import build_report
-from app.rag.ingestion.pdf.stitching import stitch_pages
+from app.rag.ingestion.pdf.stitching import stitch_elements
 from app.rag.ingestion.pdf.triage import find_empty_pages, page_char_counts
 
 
@@ -31,10 +31,9 @@ class PDFLoader:
 
         Steps:
         1. Validates file existence.
-        2. Runs triage to detect empty/scanned pages.
-        3. Calls pymupdf4llm.to_markdown(..., page_chunks=True) to extract markdown pages.
-        4. Cleans repeated headers/footers, hyphenation, and normalizes unicode/newlines.
-        5. Returns a list of (page_number, cleaned_text) pairs.
+        2. Calls pymupdf4llm.to_markdown(..., page_chunks=True) to extract markdown pages.
+        3. Cleans repeated headers/footers, hyphenation, and normalizes unicode/newlines.
+        4. Returns a list of (page_number, cleaned_text) pairs.
 
         Args:
             path: Path to the target PDF file.
@@ -49,18 +48,14 @@ class PDFLoader:
         if not file_path.exists():
             raise FileNotFoundError(f"PDF file not found at: {file_path}")
 
-        # 1. Triage inspection
-        char_counts = page_char_counts(file_path)
-        _empty_pages = find_empty_pages(char_counts)
-
-        # 2. Extract page chunks as Markdown using pymupdf4llm
+        # Extract page chunks as Markdown using pymupdf4llm
         chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True)
         raw_pages: list[str] = [chunk.get("text", "") for chunk in chunks]
 
-        # 3. Pipeline Step A: Remove cross-page repeating headers & footers
+        # Pipeline Step A: Remove cross-page repeating headers & footers
         no_repeat_pages = remove_repeated_lines(raw_pages)
 
-        # 4. Pipeline Step B: Dehyphenate and normalize each page
+        # Pipeline Step B: Dehyphenate and normalize each page
         cleaned_pages: list[tuple[int, str]] = []
         for idx, text in enumerate(no_repeat_pages):
             page_num = idx + 1
@@ -80,8 +75,8 @@ class PDFLoader:
         Pipeline Stages:
         1. Validation & Triage (detect empty/scanned pages)
         2. Markdown Extraction & Text Cleaning (headers/footers, hyphenation, normalization)
-        3. Cross-page Stitching (broken sentences and tables)
-        4. Element Parsing (typed Element objects with heading breadcrumb paths)
+        3. Element Parsing (typed Element objects initialized with exact page boundaries)
+        4. Cross-page Stitching at Element Level (merges broken sentences and tables between consecutive pages)
         5. Quality Assessment (health evaluation and quarantine checks)
         6. Encapsulation into ParsedDocument
 
@@ -98,7 +93,7 @@ class PDFLoader:
         if not file_path.exists():
             raise FileNotFoundError(f"PDF file not found at: {file_path}")
 
-        # Stage 1: Triage
+        # Stage 1: Triage (single execution to avoid redundant file opens)
         char_counts = page_char_counts(file_path)
         page_count = len(char_counts)
         empty_pages = find_empty_pages(char_counts)
@@ -106,11 +101,11 @@ class PDFLoader:
         # Stage 2: Extract & Clean Pages
         clean_pages = self.load_clean_pages(file_path)
 
-        # Stage 3: Stitch cross-page boundaries
-        stitched_blocks = stitch_pages(clean_pages)
+        # Stage 3: Structure into Elements with isolated page boundaries
+        raw_elements = parse_markdown_to_elements(clean_pages)
 
-        # Stage 4: Structure into Elements with heading paths
-        elements = parse_markdown_to_elements(stitched_blocks)
+        # Stage 4: Stitch Cross-Page Elements (element-level stitching)
+        elements = stitch_elements(raw_elements)
 
         # Stage 5: Evaluate Quality
         full_text = " ".join(element.text for element in elements)

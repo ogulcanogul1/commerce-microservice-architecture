@@ -3,24 +3,28 @@ from app.rag.ingestion.models import Element, ElementType
 
 
 def parse_markdown_to_elements(
-    blocks: list[tuple[str, int, int]]
+    pages: list[tuple[int, str]]
 ) -> list[Element]:
-    """Converts stitched Markdown blocks into typed, structured Element objects.
+    """Converts cleaned page markdown texts into typed, structured Element objects.
 
-    Tracks heading hierarchy to assign `heading_path` to each element.
-    Recognizes HEADING, TABLE, LIST, and PARAGRAPH blocks.
+    Each element is initialized with page_start = page_number and page_end = page_number,
+    preventing page range explosion across entire pages.
+    Maintains a continuous heading hierarchy stack across pages.
 
     Args:
-        blocks: List of (text, page_start, page_end) tuples.
+        pages: List of (page_number, cleaned_page_text) tuples.
 
     Returns:
         List of structured Element instances.
     """
     elements: list[Element] = []
-    # Heading hierarchy stack: list of (level, title) tuples
+    # Heading hierarchy stack: list of (level, title) tuples preserved across pages
     heading_stack: list[tuple[int, str]] = []
 
-    for text, page_start, page_end in blocks:
+    for page_num, text in pages:
+        if not text.strip():
+            continue
+
         lines = text.splitlines()
         idx = 0
 
@@ -43,15 +47,14 @@ def parse_markdown_to_elements(
                 while heading_stack and heading_stack[-1][0] >= level:
                     heading_stack.pop()
 
-                # For this heading, the path is the stack after popping
                 heading_parent_path = [t for _, t in heading_stack]
 
                 elements.append(
                     Element(
                         type=ElementType.HEADING,
                         text=title,
-                        page_start=page_start,
-                        page_end=page_end,
+                        page_start=page_num,
+                        page_end=page_num,
                         heading_path=heading_parent_path,
                     )
                 )
@@ -73,8 +76,8 @@ def parse_markdown_to_elements(
                     Element(
                         type=ElementType.TABLE,
                         text="\n".join(table_lines),
-                        page_start=page_start,
-                        page_end=page_end,
+                        page_start=page_num,
+                        page_end=page_num,
                         heading_path=list(current_path),
                     )
                 )
@@ -98,8 +101,8 @@ def parse_markdown_to_elements(
                     Element(
                         type=ElementType.LIST,
                         text="\n".join(list_lines),
-                        page_start=page_start,
-                        page_end=page_end,
+                        page_start=page_num,
+                        page_end=page_num,
                         heading_path=list(current_path),
                     )
                 )
@@ -111,7 +114,6 @@ def parse_markdown_to_elements(
                 l = lines[idx].strip()
                 if not l:
                     break
-                # If a new structure starts, end the paragraph
                 if (
                     re.match(r"^#[\s#]*\s+", l)
                     or l.startswith("|")
@@ -126,8 +128,8 @@ def parse_markdown_to_elements(
                     Element(
                         type=ElementType.PARAGRAPH,
                         text=" ".join(para_lines),
-                        page_start=page_start,
-                        page_end=page_end,
+                        page_start=page_num,
+                        page_end=page_num,
                         heading_path=list(current_path),
                     )
                 )

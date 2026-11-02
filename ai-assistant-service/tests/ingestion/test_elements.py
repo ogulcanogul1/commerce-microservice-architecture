@@ -19,18 +19,8 @@ def test_parse_markdown_to_elements_types_and_heading_path():
         "Ikinci bolum icerigi buradadir."
     )
 
-    blocks = [(markdown, 1, 1)]
-    elements = parse_markdown_to_elements(blocks)
-
-    # Expected element types in sequence:
-    # 0: HEADING (1. Ana Bolum)
-    # 1: PARAGRAPH (Bu ana bolumun...)
-    # 2: HEADING (1.1 Alt Baslik)
-    # 3: PARAGRAPH (Alt baslik altindaki...)
-    # 4: TABLE (| Urun | Fiyat |...)
-    # 5: LIST (- Madde 1...)
-    # 6: HEADING (2. Ikinci Bolum)
-    # 7: PARAGRAPH (Ikinci bolum icerigi...)
+    pages = [(1, markdown)]
+    elements = parse_markdown_to_elements(pages)
 
     assert len(elements) == 8
 
@@ -38,6 +28,8 @@ def test_parse_markdown_to_elements_types_and_heading_path():
     assert elements[0].type == ElementType.HEADING
     assert elements[0].text == "1. Ana Bolum"
     assert elements[0].heading_path == []
+    assert elements[0].page_start == 1
+    assert elements[0].page_end == 1
 
     # 1. Paragraph under H1
     assert elements[1].type == ElementType.PARAGRAPH
@@ -73,13 +65,20 @@ def test_parse_markdown_to_elements_types_and_heading_path():
     assert elements[7].heading_path == ["2. Ikinci Bolum"]
 
 
-def test_elements_preserve_page_range_from_stitched_block():
-    """Elements created from a stitched block spanning multiple pages retain page_start and page_end."""
-    stitched_text = "Bu cumle birden fazla sayfaya yayilmistir."
-    blocks = [(stitched_text, 1, 3)]
+def test_elements_preserve_independent_page_numbers():
+    """Elements on different pages receive their respective page number without explosion."""
+    pages = [
+        (1, "# Sayfa 1 Baslik\n\nSayfa 1 paragraf."),
+        (2, "Sayfa 2 paragraf.\n\n| Tablo | 2 |"),
+    ]
 
-    elements = parse_markdown_to_elements(blocks)
-    assert len(elements) == 1
-    assert elements[0].type == ElementType.PARAGRAPH
-    assert elements[0].page_start == 1
-    assert elements[0].page_end == 3
+    elements = parse_markdown_to_elements(pages)
+    assert len(elements) == 4
+
+    # Page 1 elements must be 1->1
+    assert elements[0].page_start == 1 and elements[0].page_end == 1
+    assert elements[1].page_start == 1 and elements[1].page_end == 1
+
+    # Page 2 elements must be 2->2
+    assert elements[2].page_start == 2 and elements[2].page_end == 2
+    assert elements[3].page_start == 2 and elements[3].page_end == 2

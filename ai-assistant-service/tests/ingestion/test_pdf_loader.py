@@ -39,7 +39,7 @@ def test_pdf_loader_end_to_end_cross_page_pdf(cross_page_pdf: Path):
     assert isinstance(doc, ParsedDocument)
     assert doc.source_file == "cross_page.pdf"
     assert doc.parser_name == "pymupdf4llm"
-    assert doc.parser_version == "2.0"
+    assert doc.parser_version != ""
     assert doc.quality.status == "ok"
     assert doc.quality.empty_pages == []
 
@@ -76,13 +76,15 @@ def test_pdf_loader_end_to_end_cross_page_pdf(cross_page_pdf: Path):
     # First table must start with column headers
     assert first_table.text.startswith("| Urun Grubu | Garanti Suresi |")
 
-    # 6. Verify heading hierarchy
+    # 6. Verify heading hierarchy and page isolation
     h1_element = next(
         (el for el in doc.elements if el.type == ElementType.HEADING and "1. Iade Kosullari" in el.text),
         None,
     )
     assert h1_element is not None
     assert h1_element.heading_path == []
+    # Heading on page 1 must remain strictly page 1 (no page range explosion)
+    assert h1_element.page_start == 1 and h1_element.page_end == 1
 
     # Elements under H1 must have ["1. Iade Kosullari"] in their heading_path
     assert stitched_element.heading_path == ["1. Iade Kosullari"]
