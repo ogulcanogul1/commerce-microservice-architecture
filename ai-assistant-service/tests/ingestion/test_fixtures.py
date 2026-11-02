@@ -20,3 +20,12 @@ def test_scanned_like_pdf_creation(scanned_like_pdf: Path):
     text = doc[0].get_text().strip()
     assert text == ""
     doc.close()
+
+
+def test_visual_layout_pdf_creation(visual_layout_pdf: Path):
+    doc = pymupdf.open(str(visual_layout_pdf))
+    assert doc.page_count == 1
+    text = doc[0].get_text()
+    assert "1. Kurumsal Politika" in text
+    assert "Laptop" in text
+    doc.close()

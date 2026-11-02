@@ -88,3 +88,32 @@ def test_pdf_loader_end_to_end_cross_page_pdf(cross_page_pdf: Path):
 
     # Elements under H1 must have ["1. Iade Kosullari"] in their heading_path
     assert stitched_element.heading_path == ["1. Iade Kosullari"]
+
+
+def test_pdf_loader_extracts_visual_heading_and_drawn_table(visual_layout_pdf: Path):
+    """End-to-end test verifying visual layout parsing (fontsize=20 as H1, grid lines as TABLE)."""
+    loader = PDFLoader()
+    doc = loader.load(visual_layout_pdf)
+
+    assert doc.quality.status == "ok"
+    assert len(doc.elements) >= 3
+
+    # 1. Heading element extracted from fontsize=20
+    heading_el = next((el for el in doc.elements if el.type == ElementType.HEADING), None)
+    assert heading_el is not None
+    assert "1. Kurumsal Politika" in heading_el.text
+    assert heading_el.heading_path == []
+
+    # 2. Paragraph element with heading breadcrumb
+    para_el = next((el for el in doc.elements if el.type == ElementType.PARAGRAPH), None)
+    assert para_el is not None
+    assert "sirket politikalarini" in para_el.text
+    assert "1. Kurumsal Politika" in para_el.heading_path
+
+    # 3. Table element extracted from drawn vector lines
+    table_el = next((el for el in doc.elements if el.type == ElementType.TABLE), None)
+    assert table_el is not None
+    assert "Urun" in table_el.text
+    assert "Laptop" in table_el.text
+    assert "2 Yil" in table_el.text
+    assert "1. Kurumsal Politika" in table_el.heading_path

@@ -101,3 +101,46 @@ def scanned_like_pdf(tmp_path: Path) -> Path:
     doc.save(str(pdf_path))
     doc.close()
     return pdf_path
+
+
+@pytest.fixture
+def visual_layout_pdf(tmp_path: Path) -> Path:
+    """Creates a single-page PDF with visual styling (fontsize=20 heading and drawn table lines).
+
+    Tests pymupdf4llm's actual layout engine recognizing headings by font size
+    and tables by visual grid lines.
+    """
+    pdf_path = tmp_path / "visual_layout.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+
+    # 1. Heading with large visual font size (fontsize=20)
+    page.insert_text((50, 80), "1. Kurumsal Politika", fontsize=20, fontname="helv")
+
+    # 2. Standard body paragraph
+    page.insert_text(
+        (50, 120),
+        "Bu dokuman sirket politikalarini ve kurallarini icerir.",
+        fontsize=11,
+        fontname="helv",
+    )
+
+    # 3. Drawn table grid lines
+    # Horizontal grid lines
+    for y in [160, 190, 220, 250]:
+        page.draw_line(pymupdf.Point(50, y), pymupdf.Point(450, y), width=1)
+    # Vertical grid lines
+    for x in [50, 250, 450]:
+        page.draw_line(pymupdf.Point(x, 160), pymupdf.Point(x, 250), width=1)
+
+    # Insert cell texts inside the grid
+    page.insert_text((60, 180), "Urun", fontsize=11, fontname="helv")
+    page.insert_text((260, 180), "Garanti", fontsize=11, fontname="helv")
+    page.insert_text((60, 210), "Laptop", fontsize=11, fontname="helv")
+    page.insert_text((260, 210), "2 Yil", fontsize=11, fontname="helv")
+    page.insert_text((60, 240), "Telefon", fontsize=11, fontname="helv")
+    page.insert_text((260, 240), "1 Yil", fontsize=11, fontname="helv")
+
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
