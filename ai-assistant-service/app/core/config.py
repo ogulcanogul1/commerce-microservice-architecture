@@ -9,10 +9,13 @@ class Settings(BaseSettings):
     DEBUG: bool = True           
     # API Keys
     
-    OPENAI_API_KEY: str = ""                                                                                                   
-    ANTHROPIC_API_KEY: str = ""                                                                                                
-    GEMINI_API_KEY: str = ""   
-    DEFAULT_LLM_PROVIDER: str = "gemini" # "gemini", "openai", "claude" 
+    OPENAI_API_KEY: str = ""                                                                                            
+    ANTHROPIC_API_KEY: str = ""                                                                                               
+    GEMINI_API_KEY: str  = ""
+    DEFAULT_LLM_PROVIDER: str = "gemini"
+
+    LOCAL_LLM_BASE_URL: str                                
+    LOCAL_LLM_MODEL: str     
 
     # Pydantic Settings
     model_config = SettingsConfigDict(                                                                                         

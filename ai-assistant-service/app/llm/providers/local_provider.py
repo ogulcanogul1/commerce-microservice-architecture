@@ -1,0 +1,109 @@
+import json
+import logging
+from typing import Any
+
+from openai import AsyncOpenAI
+
+from app.core.config import settings
+from app.llm.base import (
+    BaseLLMProvider,
+    ChatMessage,
+    LLMResponse,
+    ToolCallRequest,
+    ToolDefinition,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class LocalProvider(BaseLLMProvider):
+    """
+    Local LLM provider supporting Ollama, vLLM, LM Studio, etc.
+    Communicates via OpenAI-compatible REST API endpoints.
+    """
+
+    def __init__(
+        self,
+        model_name: str | None = None,
+        api_key: str = "ollama",
+        base_url: str | None = None,
+    ) -> None:
+        resolved_model = model_name or settings.LOCAL_LLM_MODEL
+        resolved_base_url = base_url or settings.LOCAL_LLM_BASE_URL
+
+        super().__init__(model_name=resolved_model, api_key=api_key, base_url=resolved_base_url)
+        self.client = AsyncOpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key,
+        )
+
+    def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
+        """Convert standard ToolDefinition objects into OpenAI-compatible tool schemas."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in tools
+        ]
+
+    async def generate(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ToolDefinition] | None = None,
+        temperature: float = 0.7,
+    ) -> LLMResponse:
+        """
+        Execute an asynchronous chat completion request against the local LLM endpoint.
+        """
+        formatted_messages = [
+            {"role": msg.role, "content": msg.content}
+            for msg in messages
+        ]
+
+        kwargs: dict[str, Any] = {
+            "model": self.model_name,
+            "messages": formatted_messages,
+            "temperature": temperature,
+        }
+
+        if tools:
+            kwargs["tools"] = self._convert_tools(tools)
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = await self.client.chat.completions.create(**kwargs)
+        except Exception as e:
+            logger.error("Local LLM call failed (%s): %s", self.base_url, e)
+            raise e
+
+        choice = response.choices[0]
+        message = choice.message
+        content = message.content or ""
+        tool_calls: list[ToolCallRequest] = []
+
+        if message.tool_calls:
+            for call in message.tool_calls:
+                try:
+                    args = json.loads(call.function.arguments)
+                except Exception:
+                    args = {}
+
+                tool_calls.append(
+                    ToolCallRequest(
+                        call_id=call.id,
+                        tool_name=call.function.name,
+                        arguments=args,
+                    )
+                )
+
+        return LLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            provider="local",
+            model=self.model_name,
+        )
