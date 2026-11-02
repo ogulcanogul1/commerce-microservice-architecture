@@ -5,6 +5,7 @@ from app.llm.base import (
     ToolCallRequest,
     ToolDefinition,
 )
+from app.llm.factory import LLMFactory, LLMProviderType
 
 __all__ = [
     "BaseLLMProvider",
@@ -12,4 +13,6 @@ __all__ = [
     "ToolDefinition",
     "ToolCallRequest",
     "LLMResponse",
+    "LLMFactory",
+    "LLMProviderType",
 ]
