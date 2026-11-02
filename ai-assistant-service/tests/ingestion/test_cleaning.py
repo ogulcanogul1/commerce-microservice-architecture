@@ -1,0 +1,49 @@
+from app.rag.ingestion.pdf.cleaning import dehyphenate, normalize, remove_repeated_lines                     
+                                                                                                                 
+                                                                                                                 
+def test_dehyphenate_merges_split_word_across_lines():                                                       
+    text = "Müşteri memnuniyeti karşı-\nlanır ve süreç başlar."                                              
+    result = dehyphenate(text)                                                                               
+    assert "karşılanır" in result                                                                            
+    assert "karşı-" not in result                                                                            
+                                                                                                                
+                                                                                                                
+def test_dehyphenate_preserves_intra_word_hyphen():                                                          
+    text = "Türkiye genelinde e-ticaret hacmi büyüyor."                                                      
+    result = dehyphenate(text)                                                                               
+    assert result == text                                                                                    
+                                                                                                                
+                                                                                                                
+def test_normalize_collapses_blank_lines_and_nfc():                                                          
+    raw_text = "Başlık\n\n\n\n\nParagraf metni.\n\n\n"                                                       
+    result = normalize(raw_text)                                                                             
+    assert result == "Başlık\n\nParagraf metni."                                                             
+                                                                                                                
+                                                                                                                
+def test_remove_repeated_lines_cleans_headers_and_footers():                                                 
+    page1 = (                                                                                                
+        "Kuzey Market Politika Kılavuzu\n"                                                                   
+        "# 1. İade\n"                                                                                        
+        "İade şartları gövde metni.\n"                                                                       
+        "Sayfa 1"                                                                                            
+    )                                                                                                        
+    page2 = (                                                                                                
+        "Kuzey Market Politika Kılavuzu\n"                                                                   
+        "# 2. Kargo\n"                                                                                       
+        "Kargo şartları gövde metni.\n"                                                                      
+        "Sayfa 2"                                                                                            
+    )                                                                                                        
+                                                                                                                
+    cleaned = remove_repeated_lines([page1, page2])                                                          
+    assert len(cleaned) == 2                                                                                 
+                                                                                                                
+    # Check headers and footers are gone                                                                     
+    for page in cleaned:                                                                                     
+        assert "Kuzey Market Politika Kılavuzu" not in page                                                  
+        assert "Sayfa" not in page                                                                           
+                                                                                                                
+    # Check actual body text remains                                                                         
+    assert "# 1. İade" in cleaned[0]                                                                         
+    assert "İade şartları gövde metni." in cleaned[0]                                                        
+    assert "# 2. Kargo" in cleaned[1]                                                                        
+    assert "Kargo şartları gövde metni." in cleaned[1]
