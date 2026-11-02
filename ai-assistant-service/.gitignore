@@ -1,15 +1,11 @@
-# Python & uv
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-env/
+# Environment & Secrets
 .env
+*.env
+!.env.example
+
+# Python virtual environments & cache
+.venv/
+__pycache__/
+*.pyc
 .pytest_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-dist/
-build/
-*.egg-info/

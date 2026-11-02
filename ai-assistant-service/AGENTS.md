@@ -2,7 +2,7 @@
 
 ## 1. Servis Rolü ve Sorumlulukları
 - **Servis Adı:** `ai-assistant-service`
-- **Teknoloji Yığını:** Python 3.12, FastAPI, Paket Yöneticisi: **Astral `uv`**, OpenTelemetry, Redis, `aiokafka`, `py-eureka-client`.
+- **Teknoloji Yığını:** Python 3.12+, FastAPI, Astral `uv`, OpenTelemetry, Redis, `aiokafka`, `py-eureka-client`.
 - **Varsayılan Port:** `8089` (Debezium Kafka Connect `8088` ile çakışmaması için).
 - **Veritabanı Kuralı (Non-Negotiable):** Bu servis **KESİNLİKLE** diğer mikroservislerin PostgreSQL veritabanlarına doğrudan bağlanamaz. Tüm veri okuma/yazma işlemleri HTTP (`order-service`, `product-service`, `shipping-service`, `inventory-service`) ve Apache Kafka (`support.ticket.created`) üzerinden gerçekleştirilir.
 

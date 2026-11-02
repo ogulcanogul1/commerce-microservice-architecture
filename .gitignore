@@ -14,3 +14,9 @@ python_plan/
 note/
 notes/
 
+# Environment & Secrets (Security)
+.env
+*.env
+!.env.example
+
+

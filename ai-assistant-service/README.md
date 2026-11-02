@@ -1,18 +1,25 @@
 # AI Assistant Service (`ai-assistant-service`)
 
-Commerce Platform'un Java 21 / Spring Boot mikroservis ekosistemine entegre, **Python 3.12 + FastAPI + `uv`** tabanlı Poliglot Yapay Zeka Ajan Servisi.
+Commerce Platform Poliglot Yapay Zeka Alışveriş ve Destek Asistanı Servisi.
 
-## Hızlı Başlangıç (`uv` ile)
+## Teknoloji Yığını
+- **Python 3.14+**
+- **FastAPI**
+- **Pydantic & Pydantic Settings**
+- **Uvicorn**
+- Paket Yöneticisi: **Astral `uv`**
+
+## Yerel Geliştirme
 
 ```powershell
 cd ai-assistant-service
 
-# Bağımlılıkları senkronize et ve sanal ortamı oluştur (.venv)
+# Bağımlılıkları senkronize et
 uv sync
 
-# Uygulamayı yerel ortamda başlat (Port: 8089)
+# Servisi başlat (Port: 8089)
 uv run uvicorn app.main:app --reload --port 8089
-
-# Testleri çalıştır
-uv run pytest
 ```
+
+- Sağlık Kontrolü: `http://localhost:8089/health`
+- Swagger UI Dokümantasyonu: `http://localhost:8089/docs`
