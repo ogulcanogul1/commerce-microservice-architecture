@@ -32,16 +32,18 @@ def build_report(
     page_count: int,
     empty_pages: list[int],
     full_text: str,
+    element_count: int = 1,
 ) -> QualityReport:
     """Evaluates document quality metrics and builds a QualityReport.
 
-    Quarantines documents if empty page ratio exceeds 30% or suspect character
-    ratio exceeds 2%.
+    Quarantines documents if empty page ratio exceeds 30%, suspect character
+    ratio exceeds 2%, or if no structural elements were extracted.
 
     Args:
         page_count: Total number of pages in document.
         empty_pages: List of 1-based page indices identified as empty.
         full_text: Concatenated text content of the entire document.
+        element_count: Total number of structural elements parsed from document.
 
     Returns:
         A QualityReport instance with status 'ok' or 'quarantine'.
@@ -60,6 +62,10 @@ def build_report(
     # 2. Check corrupt/garbled text ratio
     if suspect_ratio > MAX_SUSPECT_CHAR_RATIO:
         reasons.append("garbled_text")
+
+    # 3. Check for absence of extracted elements
+    if element_count == 0:
+        reasons.append("no_elements")
 
     status = "quarantine" if reasons else "ok"
 

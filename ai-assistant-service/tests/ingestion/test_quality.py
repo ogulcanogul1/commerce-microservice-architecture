@@ -20,7 +20,7 @@ def test_calculate_suspect_char_ratio_with_corrupt_chars():
 
 
 def test_build_report_quarantines_scanned_pdf(scanned_like_pdf: Path):
-    """Scanned-like PDF (100% empty pages) is quarantined with 'too_many_empty_pages'."""
+    """Scanned-like PDF (100% empty pages) is quarantined with 'too_many_empty_pages' and 'no_elements'."""
     counts = page_char_counts(scanned_like_pdf)
     empty_pages = find_empty_pages(counts)
 
@@ -28,10 +28,12 @@ def test_build_report_quarantines_scanned_pdf(scanned_like_pdf: Path):
         page_count=len(counts),
         empty_pages=empty_pages,
         full_text="",
+        element_count=0,
     )
 
     assert report.status == "quarantine"
     assert "too_many_empty_pages" in report.reasons
+    assert "no_elements" in report.reasons
     assert report.empty_pages == [1]
 
 
@@ -44,6 +46,7 @@ def test_build_report_ok_for_two_column_pdf(two_column_pdf: Path):
         page_count=len(counts),
         empty_pages=empty_pages,
         full_text="Two column text content without corrupt characters.",
+        element_count=2,
     )
 
     assert report.status == "ok"
@@ -54,13 +57,26 @@ def test_build_report_ok_for_two_column_pdf(two_column_pdf: Path):
 
 def test_build_report_quarantines_garbled_text():
     """Document with suspect characters exceeding 2% is quarantined with 'garbled_text'."""
-    # 100 characters, 5 of which are replacement characters (5% > 2%)
     corrupted_text = ("A" * 95) + ("\ufffd" * 5)
     report = build_report(
         page_count=1,
         empty_pages=[],
         full_text=corrupted_text,
+        element_count=1,
     )
 
     assert report.status == "quarantine"
     assert "garbled_text" in report.reasons
+
+
+def test_build_report_quarantines_when_no_elements_produced():
+    """Document that yields zero elements is quarantined with 'no_elements'."""
+    report = build_report(
+        page_count=1,
+        empty_pages=[],
+        full_text="",
+        element_count=0,
+    )
+
+    assert report.status == "quarantine"
+    assert "no_elements" in report.reasons

@@ -113,6 +113,7 @@ class PDFLoader:
             page_count=page_count,
             empty_pages=empty_pages,
             full_text=full_text,
+            element_count=len(elements),
         )
 
         # Stage 6: Return complete ParsedDocument
