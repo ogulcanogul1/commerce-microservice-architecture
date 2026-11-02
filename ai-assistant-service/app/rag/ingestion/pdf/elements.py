@@ -33,11 +33,11 @@ def parse_markdown_to_elements(
                 continue
 
             # 1. Heading (#, ##, ###, ...)
-            heading_match = re.match(r"^(#{1,6})\s+(.*)$", line)
+            heading_match = re.match(r"^(#[\s#]*)\s+(.*)$", line)
             if heading_match:
-                hashes, title = heading_match.groups()
-                level = len(hashes)
-                title = title.strip()
+                hashes_part, raw_title = heading_match.groups()
+                level = hashes_part.count("#")
+                title = raw_title.lstrip("#").strip()
 
                 # Pop headings of equal or deeper level from the stack
                 while heading_stack and heading_stack[-1][0] >= level:
@@ -113,7 +113,7 @@ def parse_markdown_to_elements(
                     break
                 # If a new structure starts, end the paragraph
                 if (
-                    re.match(r"^#{1,6}\s+", l)
+                    re.match(r"^#[\s#]*\s+", l)
                     or l.startswith("|")
                     or re.match(r"^(\*|-|\d+\.)\s+", l)
                 ):
