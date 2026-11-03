@@ -370,9 +370,9 @@ def main():
     ]
 
     if args.sweep:
-        # Sweep: max_tokens ∈ {200, 350, 500}, overlap ∈ {0%, 15%}
+        # Sweep planı: max_tokens ∈ {200, 350, 500}, overlap ∈ {0%, 10%, 20%}
         for m in [200, 350, 500]:
-            for ov_pct in [0.0, 0.15]:
+            for ov_pct in [0.0, 0.10, 0.20]:
                 ov = int(m * ov_pct)
                 configs_to_run.append(
                     (
@@ -386,7 +386,7 @@ def main():
                         ChunkingConfig(max_tokens=m, overlap_tokens=ov, min_tokens=10),
                     )
                 )
-            # Structure-Aware uses natural section boundaries, no sliding overlap
+            # Structure-Aware doğal semantik bölüm sınırlarını kullanır; kayan pencere overlap'i 0'dır
             configs_to_run.append(
                 (
                     ChunkStrategy.STRUCTURE,
