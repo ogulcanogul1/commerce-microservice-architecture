@@ -174,3 +174,34 @@ def test_recursive_merges_tiny_tail_chunk():
     chunks = chunker.chunk(doc)
     assert len(chunks) == 1
     assert "tail4" in chunks[0].text
+
+
+def test_recursive_strips_trailing_newlines():
+    """Chunk metinlerinin sonunda gereksiz \\n\\n veya boşluk kalmamalıdır."""
+    tokenizer = WhitespaceTokenizer()
+    text = "Paragraf bir burada bitiyor.\n\n\n\nİkinci paragraf burada başlıyor.\n\n"
+    doc = ParsedDocument(
+        source_file="doc_newlines.pdf",
+        elements=[
+            Element(
+                type=ElementType.PARAGRAPH,
+                text=text,
+                page_start=1,
+                page_end=1,
+            )
+        ],
+        quality=QualityReport(page_count=1, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=6, overlap_tokens=0, min_tokens=2)
+    chunker = RecursiveChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    assert len(chunks) >= 2
+    for c in chunks:
+        assert not c.text.endswith("\n")
+        assert not c.text.endswith(" ")
+        assert c.text == c.text.rstrip()
+

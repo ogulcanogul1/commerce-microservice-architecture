@@ -160,18 +160,21 @@ class StructureAwareChunker:
         return chunks
 
     def _build_sections(self, elements: list[Element]) -> list[_Section]:
-        """Elementleri HEADING elementlerine göre hiyerarşik bölümlere ayırır."""
-        sections: list[_Section] = []
+        """Elementleri HEADING elementlerine göre hiyerarşik bölümlere ayırır.
+
+        Yetim Başlık (Orphan Heading) Kuralları:
+        - İçeriği olmayan bir başlık, sonraki bölümün önüne kronolojik sırayla eklenir.
+        - Art arda birden fazla yetim başlık gelirse hepsi sırasıyla birikir (hiçbiri kaybolmaz).
+        - Doküman sonunda yalnız kalan içeriksiz başlık, önceki bölüme dahil edilir.
+        """
+        raw_sections: list[_Section] = []
         current_section = _Section(heading_path=[], elements=[])
 
         for idx, elem in enumerate(elements):
             if elem.type == ElementType.HEADING:
-                # Yeni bir başlık geldiğinde önceki bölüm doluysa kaydet
                 if current_section.elements or current_section.heading_element:
-                    sections.append(current_section)
+                    raw_sections.append(current_section)
 
-                # Ingestion kuralı: HEADING'in heading_path'i kendisini içermez,
-                # bu bölümün aktif yolu için başlığın kendi metnini ekleriz.
                 path = list(elem.heading_path)
                 heading_text = elem.text.strip()
                 if not path or path[-1] != heading_text:
@@ -186,22 +189,47 @@ class StructureAwareChunker:
                 current_section.elements.append((idx, elem))
 
         if current_section.elements or current_section.heading_element:
-            sections.append(current_section)
+            raw_sections.append(current_section)
 
-        # Yetim başlık (orphan heading) yönetimi:
-        # İçeriği olmayan bir başlık varsa sonraki bölümle birleştir
+        # Yetim başlıkları (içeriksiz başlıkları) kronolojik sırayla konsolide et
         consolidated: list[_Section] = []
-        orphan_heading: Optional[tuple[int, Element]] = None
+        accumulated_orphans: list[tuple[int, Element]] = []
 
-        for sec in sections:
+        for sec in raw_sections:
             if not sec.elements and sec.heading_element:
-                orphan_heading = sec.heading_element
+                # Bu başlığın altında içerik yok, biriktir
+                accumulated_orphans.append(sec.heading_element)
                 continue
-            if orphan_heading:
-                # Önceki yetim başlığı bu bölümün başına ekle
-                sec.elements.insert(0, orphan_heading)
-                orphan_heading = None
+
+            if accumulated_orphans:
+                # Birikmiş yetim başlıkları bu bölümün BAŞINA kronolojik sırayla ekle
+                # sec.heading_element'ten önce gelsinler ki hiyerarşi bozulmasın
+                all_headings = accumulated_orphans.copy()
+                accumulated_orphans.clear()
+
+                if sec.heading_element:
+                    all_headings.append(sec.heading_element)
+                    sec.heading_element = None
+
+                # Bölümün elementlerinin en başına başlıkları koy
+                sec.elements = all_headings + sec.elements
+
             consolidated.append(sec)
+
+        # Eğer dokümanın EN SONUNDA yetim başlıklar kaldıysa:
+        if accumulated_orphans:
+            if consolidated:
+                # Önceki bölümün sonuna ekle
+                consolidated[-1].elements.extend(accumulated_orphans)
+            else:
+                # Tüm doküman sadece yetim başlıklardan oluşuyorsa tek bölüm yap
+                consolidated.append(
+                    _Section(
+                        heading_path=list(accumulated_orphans[0][1].heading_path),
+                        elements=accumulated_orphans,
+                        heading_element=None,
+                    )
+                )
 
         return consolidated
 

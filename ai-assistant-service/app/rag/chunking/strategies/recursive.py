@@ -182,6 +182,13 @@ class RecursiveChunker:
         chunks: list[Chunk] = []
         for idx, (c_start, c_end) in enumerate(chunk_spans):
             chunk_text = flat.text[c_start:c_end]
+
+            # Chunk sonundaki gereksiz satır sonlarını ve boşlukları kırp
+            trailing_ws = len(chunk_text) - len(chunk_text.rstrip())
+            if trailing_ws > 0:
+                c_end = c_end - trailing_ws
+                chunk_text = chunk_text.rstrip()
+
             token_count = self.tokenizer.count(chunk_text)
             page_start, page_end, heading_path, element_types = flat.metadata_for(
                 c_start, c_end

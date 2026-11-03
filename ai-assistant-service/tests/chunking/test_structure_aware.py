@@ -280,3 +280,112 @@ def test_isolate_tables_enabled():
     assert len(chunks) == 2
     assert chunks[0].text == "Aşağıdaki tablo garanti sürelerini listeler."
     assert "| Cihaz | Yıl |" in chunks[1].text
+
+
+def test_consecutive_orphan_headings_preserve_order_and_content():
+    """Art arda gelen içeriksiz (yetim) başlıklar kaybolmamalı ve kronolojik sırada paketlenmelidir."""
+    tokenizer = WhitespaceTokenizer()
+    elements = [
+        Element(
+            type=ElementType.HEADING,
+            text="1. Ana Bölüm",
+            page_start=1,
+            page_end=1,
+            heading_path=[],
+        ),
+        Element(
+            type=ElementType.HEADING,
+            text="1.1 Alt Bölüm",
+            page_start=1,
+            page_end=1,
+            heading_path=["1. Ana Bölüm"],
+        ),
+        Element(
+            type=ElementType.HEADING,
+            text="1.1.1 Detay Başlık",
+            page_start=1,
+            page_end=1,
+            heading_path=["1. Ana Bölüm", "1.1 Alt Bölüm"],
+        ),
+        Element(
+            type=ElementType.PARAGRAPH,
+            text="Bu en alt seviyedeki detayın gövde metnidir.",
+            page_start=1,
+            page_end=1,
+            heading_path=["1. Ana Bölüm", "1.1 Alt Bölüm", "1.1.1 Detay Başlık"],
+        ),
+    ]
+    doc = ParsedDocument(
+        source_file="orphan_hierarchy.pdf",
+        elements=elements,
+        quality=QualityReport(page_count=1, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=100, min_tokens=10)
+    chunker = StructureAwareChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    assert len(chunks) == 1
+    text = chunks[0].text
+
+    # Tüm başlıklar metinde yer almalı
+    assert "1. Ana Bölüm" in text
+    assert "1.1 Alt Bölüm" in text
+    assert "1.1.1 Detay Başlık" in text
+    assert "Bu en alt seviyedeki detayın gövde metnidir." in text
+
+    # Sıralama hiyerarşik ve kronolojik olmalı: 1. Ana Bölüm < 1.1 Alt Bölüm < 1.1.1 Detay Başlık < Metin
+    idx_h1 = text.index("1. Ana Bölüm")
+    idx_h2 = text.index("1.1 Alt Bölüm")
+    idx_h3 = text.index("1.1.1 Detay Başlık")
+    idx_p = text.index("Bu en alt seviyedeki detayın gövde metnidir.")
+
+    assert idx_h1 < idx_h2 < idx_h3 < idx_p
+
+
+def test_trailing_orphan_heading_at_end_of_document_preserved():
+    """Dokümanın en sonunda kalan içeriksiz başlık çöpe atılmamalı, son chunk'a dahil edilmelidir."""
+    tokenizer = WhitespaceTokenizer()
+    elements = [
+        Element(
+            type=ElementType.HEADING,
+            text="Giriş",
+            page_start=1,
+            page_end=1,
+            heading_path=[],
+        ),
+        Element(
+            type=ElementType.PARAGRAPH,
+            text="Giriş bölümü metni burada yer almaktadır.",
+            page_start=1,
+            page_end=1,
+            heading_path=["Giriş"],
+        ),
+        Element(
+            type=ElementType.HEADING,
+            text="Son Notlar ve Ekler",
+            page_start=2,
+            page_end=2,
+            heading_path=[],
+        ),
+    ]
+    doc = ParsedDocument(
+        source_file="trailing_orphan.pdf",
+        elements=elements,
+        quality=QualityReport(page_count=2, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=100, min_tokens=10)
+    chunker = StructureAwareChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    # Dokümanın en sonundaki içeriksiz başlık kaybolmamalı
+    all_text = " ".join(c.text for c in chunks)
+    assert "Son Notlar ve Ekler" in all_text
+    # En son chunk'ın içinde bulunmalı
+    assert "Son Notlar ve Ekler" in chunks[-1].text
+
