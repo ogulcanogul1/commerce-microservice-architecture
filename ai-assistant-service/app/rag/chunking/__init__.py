@@ -9,6 +9,9 @@ from app.rag.chunking.strategies import (
     StructureAwareChunker,
 )
 
+# E-ticaret belgelerindeki yoğun tablo ve başlık hiyerarşisi nedeniyle varsayılan chunker
+DefaultChunker = StructureAwareChunker
+
 __all__ = [
     "Chunker",
     "Chunk",
@@ -24,4 +27,5 @@ __all__ = [
     "FixedSizeChunker",
     "RecursiveChunker",
     "StructureAwareChunker",
+    "DefaultChunker",
 ]
