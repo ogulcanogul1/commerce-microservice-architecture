@@ -15,12 +15,14 @@ dependencies = [
     "pymupdf>=2.0",
     "pymupdf4llm>=2.0",
     "qdrant-client>=1.20.0",
+    "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "rank-bm25>=0.2.2",
 ]
 
 [tool.pytest.ini_options]
