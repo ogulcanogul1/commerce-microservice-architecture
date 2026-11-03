@@ -1,0 +1,430 @@
+[
+  {
+    "id": "Q01",
+    "question": "Müşteriler teslim aldıkları bir siparişi kaç gün içinde iade edebilir?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Tüketiciler, satın aldıkları ürünleri teslim tarihinden itibaren 14 gün içinde herhangi bir gerekçe göstermeksizin iade edebilirler."
+    ],
+    "category": "single_fact",
+    "notes": "14 gün iade süresi"
+  },
+  {
+    "id": "Q02",
+    "question": "İade edilecek bir ürünün kabul edilmesi için temel fiziki şart nedir?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "İade edilecek ürünün ticari vasfını kaybetmemiş ve tekrar satılabilir durumda olması şarttır."
+    ],
+    "category": "single_fact",
+    "notes": "Ticari vasfını kaybetmemiş olması"
+  },
+  {
+    "id": "Q03",
+    "question": "Anlaşmalı lojistik şirketleri üzerinden gönderilen iadelerde taşıma ücretini kim karşılar?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Anlaşmalı kargo firmalarımız ile yapılan iade gönderilerinde kargo ücreti tamamen şirketimiz tarafından karşılanır."
+    ],
+    "category": "single_fact",
+    "notes": "Şirket tarafından karşılanır"
+  },
+  {
+    "id": "Q04",
+    "question": "Standart kargo siparişleri kaç saat içerisinde kargo firmasına verilir?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Standart siparişler 24 saat içerisinde hazırlanıp anlaşmalı lojistik şirketlerine teslim edilir. Hızlı teslimat seçeneği sadece İstanbul, Ankara ve İzmir merkez ilçelerinde geçerlidir."
+    ],
+    "category": "single_fact",
+    "notes": "24 saat teslimat"
+  },
+  {
+    "id": "Q05",
+    "question": "Yetkisiz teknik servis onarımı veya sıvı teması durumunda cihaz garantisi geçerli kalır mı?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "Yetkisiz müdahale, sıvı teması ve ekran kırılmaları garanti kapsamı dışındadır. Yüksek voltaj sebebiyle oluşan anakart yanmaları kullanıcı hatası kabul edilir."
+    ],
+    "category": "single_fact",
+    "notes": "Garanti dışı haller"
+  },
+  {
+    "id": "Q06",
+    "question": "Sistem üzerinden adres değişikliği yapmak kargo teslim edildikten sonra mümkün müdür?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargoya teslim edilen siparişlerde sistem üzerinden adres değişikliği yapılamamaktadır. Müşterinin doğrudan kargo şubesiyle iletişime geçerek şubeden teslim alması gerekir."
+    ],
+    "category": "single_fact",
+    "notes": "Kargo sonrası adres değiştirilemez"
+  },
+  {
+    "id": "Q07",
+    "question": "Platformdaki elektronik aletlerin garanti türü ve distribütör durumu nasıldır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "Platformumuzda satılan tüm elektronik cihazlar resmi distribütör garantisi altındadır."
+    ],
+    "category": "single_fact",
+    "notes": "Resmi distribütör garantisi"
+  },
+  {
+    "id": "Q08",
+    "question": "Ambalajı açılmış kozmetik ve kişisel bakım malzemelerinin geri gönderimi kabul edilir mi?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Kozmetik ve kişisel bakım ürünleri ambalajı açıldığı takdirde hijyen kuralları gereği kesinlikle iade alınamaz."
+    ],
+    "category": "exception",
+    "notes": "Hijyen istisnası"
+  },
+  {
+    "id": "Q09",
+    "question": "Müşteri beyaz eşya paketini yetkili servis gelmeden kendisi açarsa iade hakkı ne olur?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Kurulumu yetkili servis tarafından yapılması gereken beyaz eşyalarda ambalajın müşteri tarafından açılması iade hakkını geçersiz kılar."
+    ],
+    "category": "exception",
+    "notes": "Yetkili servis açma istisnası"
+  },
+  {
+    "id": "Q10",
+    "question": "Anlaşmasız kargo firmasıyla alıcı ödemeli olarak depoya yollanan paketlere ne yapılır?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Anlaşmasız kargo ile gönderilen paketlerde alıcı ödemeli kargolar depomuz tarafından kabul edilmeyecektir."
+    ],
+    "category": "exception",
+    "notes": "Anlaşmasız kargo kabul edilmez"
+  },
+  {
+    "id": "Q11",
+    "question": "Şebeke yüksek voltajı sebebiyle anakartı arızalanan cihazlar ücretsiz garantiye girer mi?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "Yetkisiz müdahale, sıvı teması ve ekran kırılmaları garanti kapsamı dışındadır. Yüksek voltaj sebebiyle oluşan anakart yanmaları kullanıcı hatası kabul edilir."
+    ],
+    "category": "exception",
+    "notes": "Voltaj yanması kullanıcı hatası"
+  },
+  {
+    "id": "Q12",
+    "question": "Kozmetik ürünü ambalajı açılmadan orijinal paketinde iade edilebilir mi?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Tüketiciler, satın aldıkları ürünleri teslim tarihinden itibaren 14 gün içinde herhangi bir gerekçe göstermeksizin iade edebilirler.",
+      "Kozmetik ve kişisel bakım ürünleri ambalajı açıldığı takdirde hijyen kuralları gereği kesinlikle iade alınamaz."
+    ],
+    "category": "exception",
+    "notes": "Genel kural ve hijyen istisnası birlikte"
+  },
+  {
+    "id": "Q13",
+    "question": "Kırık ekran arızası garanti kapsamında ücretsiz tamir edilir mi?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "Yetkisiz müdahale, sıvı teması ve ekran kırılmaları garanti kapsamı dışındadır. Yüksek voltaj sebebiyle oluşan anakart yanmaları kullanıcı hatası kabul edilir."
+    ],
+    "category": "exception",
+    "notes": "Ekran kırılması istisnası"
+  },
+  {
+    "id": "Q14",
+    "question": "Beyaz eşyada servis gelmeden kutuyu açmanın doğuracağı hukuki sonuç nedir?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "Kurulumu yetkili servis tarafından yapılması gereken beyaz eşyalarda ambalajın müşteri tarafından açılması iade hakkını geçersiz kılar."
+    ],
+    "category": "exception",
+    "notes": "İade hakkının düşmesi"
+  },
+  {
+    "id": "Q15",
+    "question": "Dizüstü bilgisayarlar için sunulan servis türü ve garanti periyodu nedir?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Dizüstü Bilgisayar | 2 Yıl | Yerinde Servis |"
+    ],
+    "category": "table_lookup",
+    "notes": "Dizüstü bilgisayar tablosu"
+  },
+  {
+    "id": "Q16",
+    "question": "Akıllı telefonların yetkili servis güvencesi kaç sene geçerlidir?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Akıllı Telefon | 2 Yıl | Yetkili Servis |"
+    ],
+    "category": "table_lookup",
+    "notes": "Akıllı telefon tablosu"
+  },
+  {
+    "id": "Q17",
+    "question": "Televizyon modellerinde kurulum hizmeti evde mi yapılır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_lookup",
+    "notes": "Televizyon evde kurulum"
+  },
+  {
+    "id": "Q18",
+    "question": "Tabloya göre bilgisayarlar için belirlenen garanti müddeti kaç yıldır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Dizüstü Bilgisayar | 2 Yıl | Yerinde Servis |"
+    ],
+    "category": "table_lookup",
+    "notes": "Tablo satırı eşleşmesi"
+  },
+  {
+    "id": "Q19",
+    "question": "Akıllı telefon için servis tipi yerinde servis midir yoksa yetkili servis mi?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Akıllı Telefon | 2 Yıl | Yetkili Servis |"
+    ],
+    "category": "table_lookup",
+    "notes": "Sütun eşleşmesi"
+  },
+  {
+    "id": "Q20",
+    "question": "Televizyon ürün grubunun garanti süresi kaç yıldır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_lookup",
+    "notes": "TV 3 yıl"
+  },
+  {
+    "id": "Q21",
+    "question": "Dizüstü bilgisayar arızalandığında servise kargoyla mı gönderilir yoksa yerinde mi bakılır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Dizüstü Bilgisayar | 2 Yıl | Yerinde Servis |"
+    ],
+    "category": "table_lookup",
+    "notes": "Yerinde servis sorgusu"
+  },
+  {
+    "id": "Q22",
+    "question": "Sayfa 2'deki devam tablosuna göre beyaz eşyaların garanti süresi kaç senedir?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "İkinci sayfadaki tablo satırı"
+  },
+  {
+    "id": "Q23",
+    "question": "Elektronik aksesuarlar için sunulan değişim servisinin süresi ne kadardır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "Aksesuar satırı"
+  },
+  {
+    "id": "Q24",
+    "question": "Küçük ev aletleri arızalandığında servise nasıl ulaştırılır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "Kargo ile teslim"
+  },
+  {
+    "id": "Q25",
+    "question": "Beyaz eşyalar için yetkili servis eve gelip kurulum yapar mı?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "Evde kurulum"
+  },
+  {
+    "id": "Q26",
+    "question": "Aksesuar kategorisindeki ürünlerin değişim hakkı kaç aydır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "1 yıl / 12 ay"
+  },
+  {
+    "id": "Q27",
+    "question": "Küçük ev aletlerinin garanti kapsamı kaç yıl sürmektedir?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "2 yıl"
+  },
+  {
+    "id": "Q28",
+    "question": "Tablonun ikinci yarısında yer alan ve evde kurulum desteği olan kategori hangisidir?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "| Televizyon | 3 Yıl | Evde Kurulum |\n| Beyaz Eşya | 3 Yıl | Evde Kurulum | | Küçük Ev Aleti | 2 Yıl | Kargo ile Teslim | | Aksesuar | 1 Yıl | Değişim Servisi |"
+    ],
+    "category": "table_cross_page",
+    "notes": "Beyaz eşya"
+  },
+  {
+    "id": "Q29",
+    "question": "Kargo tesliminde kutu hasarlı veya ıslak çıktığında kurye eşliğinde ne yapılmalıdır?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Sayfa geçişli cümle"
+  },
+  {
+    "id": "Q30",
+    "question": "Hasarlı koliyi teslim almadan önce hangi evrağın düzenlenmesi şarttır?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Hasar tespit tutanağı"
+  },
+  {
+    "id": "Q31",
+    "question": "Kargo görevlisi eşliğinde kutu açılarak tutanak tutulduktan sonra ürün kabul edilir mi?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Teslim alınmadan iade edilir"
+  },
+  {
+    "id": "Q32",
+    "question": "Ezik veya yırtık ambalajlı kargoların teslim sürecinde izlenmesi gereken yasal prosedür nedir?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Tutanak ve iade"
+  },
+  {
+    "id": "Q33",
+    "question": "Kargo paketi ıslaksa tutanak tutulmadan teslim alınırsa ne olur?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Hasar tespiti zorunluluğu"
+  },
+  {
+    "id": "Q34",
+    "question": "Kargo teslim tutanağını kimin huzurunda açıp tanzim ettirmek gerekir?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Kargo görevlisi huzurunda"
+  },
+  {
+    "id": "Q35",
+    "question": "Kargo hasar tespitinde tutanak hazırlandıktan sonra müşteri ürünü almalı mıdır?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "cross_page_sentence",
+    "notes": "Teslim alınmadan geri gönderilmeli"
+  },
+  {
+    "id": "Q36",
+    "question": "Alıcı ödemeli paketlerin kabul edilmeme kuralı hangi kargo başlığı altındadır?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "2.1 İade Kargo Ücretleri",
+      "Anlaşmasız kargo ile gönderilen paketlerde alıcı ödemeli kargolar depomuz tarafından kabul edilmeyecektir."
+    ],
+    "category": "heading_dependent",
+    "notes": "İade Kargo Ücretleri başlığına bağımlı"
+  },
+  {
+    "id": "Q37",
+    "question": "Hijyen kuralları gereği iade edilmeyen ürünler hangi ana başlıkta toplanmıştır?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "2. İstisnai Durumlar ve Hijyen Kuralları",
+      "Kozmetik ve kişisel bakım ürünleri ambalajı açıldığı takdirde hijyen kuralları gereği kesinlikle iade alınamaz."
+    ],
+    "category": "heading_dependent",
+    "notes": "İstisnai Durumlar başlığı"
+  },
+  {
+    "id": "Q38",
+    "question": "Yetkisiz müdahale ve ekran kırılması kuralı hangi garanti başlığı altında tanımlanmıştır?",
+    "doc": "garanti_ve_servis.pdf",
+    "evidence": [
+      "2. Garanti Dışı Haller",
+      "Yetkisiz müdahale, sıvı teması ve ekran kırılmaları garanti kapsamı dışındadır. Yüksek voltaj sebebiyle oluşan anakart yanmaları kullanıcı hatası kabul edilir."
+    ],
+    "category": "heading_dependent",
+    "notes": "Garanti Dışı Haller başlığı"
+  },
+  {
+    "id": "Q39",
+    "question": "Adres değişikliği yapılamayacağı bildirimi hangi süreç başlığında geçer?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "3. Adres Değişikliği",
+      "Kargoya teslim edilen siparişlerde sistem üzerinden adres değişikliği yapılamamaktadır. Müşterinin doğrudan kargo şubesiyle iletişime geçerek şubeden teslim alması gerekir."
+    ],
+    "category": "heading_dependent",
+    "notes": "Adres Değişikliği başlığı"
+  },
+  {
+    "id": "Q40",
+    "question": "Yetkili servisin beyaz eşya kutusunu açma kuralı hangi iade alt maddesindedir?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "2. İstisnai Durumlar ve Hijyen Kuralları",
+      "Kurulumu yetkili servis tarafından yapılması gereken beyaz eşyalarda ambalajın müşteri tarafından açılması iade hakkını geçersiz kılar."
+    ],
+    "category": "heading_dependent",
+    "notes": "İstisnai Durumlar başlığı altında"
+  },
+  {
+    "id": "Q41",
+    "question": "Kargo hasar tutanağı tutma prosedürü dokümanda hangi başlık altında yer alır?",
+    "doc": "teslimat_ve_kargo.pdf",
+    "evidence": [
+      "2. Kargo Hasar Tespiti",
+      "Kargo paketi teslim alınırken ezik, yırtık veya ıslak olan kutular kargo görevlisi huzurunda açılarak hasar tespit tutanağı tutturulmalı ve ürün teslim alınmadan iade edilmelidir."
+    ],
+    "category": "heading_dependent",
+    "notes": "Kargo Hasar Tespiti başlığı"
+  },
+  {
+    "id": "Q42",
+    "question": "Anlaşmalı kargo ücretinin şirketçe karşılanacağı hangi kargo başlığında belirtilir?",
+    "doc": "iade_politikasi.pdf",
+    "evidence": [
+      "2.1 İade Kargo Ücretleri",
+      "Anlaşmalı kargo firmalarımız ile yapılan iade gönderilerinde kargo ücreti tamamen şirketimiz tarafından karşılanır."
+    ],
+    "category": "heading_dependent",
+    "notes": "İade Kargo Ücretleri başlığı"
+  }
+]
