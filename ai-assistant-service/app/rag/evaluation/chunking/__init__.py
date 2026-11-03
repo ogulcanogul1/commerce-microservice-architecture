@@ -13,6 +13,10 @@ from app.rag.evaluation.chunking.retrieval import (
     RetrievalEvalSummary,
     evaluate_retrieval,
 )
+from app.rag.evaluation.chunking.compare import (
+    run_single_experiment,
+    format_markdown_report,
+)
 
 __all__ = [
     "ChunkStats",
@@ -27,4 +31,6 @@ __all__ = [
     "QuestionResult",
     "RetrievalEvalSummary",
     "evaluate_retrieval",
+    "run_single_experiment",
+    "format_markdown_report",
 ]
