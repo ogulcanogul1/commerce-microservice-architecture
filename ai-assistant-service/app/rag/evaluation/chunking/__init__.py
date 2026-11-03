@@ -6,6 +6,13 @@ from app.rag.evaluation.chunking.dataset import (
     load_golden_set,
     validate_golden_set,
 )
+from app.rag.evaluation.chunking.retrieval import (
+    Retriever,
+    BM25Retriever,
+    QuestionResult,
+    RetrievalEvalSummary,
+    evaluate_retrieval,
+)
 
 __all__ = [
     "ChunkStats",
@@ -15,4 +22,9 @@ __all__ = [
     "normalize_for_match",
     "load_golden_set",
     "validate_golden_set",
+    "Retriever",
+    "BM25Retriever",
+    "QuestionResult",
+    "RetrievalEvalSummary",
+    "evaluate_retrieval",
 ]
