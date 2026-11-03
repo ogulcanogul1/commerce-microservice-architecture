@@ -13,4 +13,6 @@ scratch/
 
 # Evaluation reports
 eval/chunking/reports/
+eval/embedding/cache/
+eval/embedding/reports/
 
