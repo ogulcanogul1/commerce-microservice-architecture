@@ -386,6 +386,107 @@ def test_trailing_orphan_heading_at_end_of_document_preserved():
     # Dokümanın en sonundaki içeriksiz başlık kaybolmamalı
     all_text = " ".join(c.text for c in chunks)
     assert "Son Notlar ve Ekler" in all_text
-    # En son chunk'ın içinde bulunmalı
+    # En son chunk'ın içinde bulunmalı ve heading_path'i doğru olmalı
     assert "Son Notlar ve Ekler" in chunks[-1].text
+    assert chunks[-1].heading_path == ["Son Notlar ve Ekler"]
+    assert chunks[-1].context_prefix == "Son Notlar ve Ekler"
+
+
+def test_trailing_orphan_headings_have_correct_breadcrumbs():
+    """Doküman sonundaki yetim başlıklar önceki bölümün breadcrumb'ını (A) almamalı; B ve C kendi başlık yollarını taşımalıdır."""
+    tokenizer = WhitespaceTokenizer()
+    elements = [
+        Element(
+            type=ElementType.HEADING,
+            text="Bölüm A",
+            page_start=1,
+            page_end=1,
+            heading_path=[],
+        ),
+        Element(
+            type=ElementType.PARAGRAPH,
+            text="Bölüm A metni burada.",
+            page_start=1,
+            page_end=1,
+            heading_path=["Bölüm A"],
+        ),
+        Element(
+            type=ElementType.HEADING,
+            text="Bölüm B",
+            page_start=2,
+            page_end=2,
+            heading_path=[],
+        ),
+        Element(
+            type=ElementType.HEADING,
+            text="Alt Başlık C",
+            page_start=2,
+            page_end=2,
+            heading_path=["Bölüm B"],
+        ),
+    ]
+    doc = ParsedDocument(
+        source_file="trailing_bc.pdf",
+        elements=elements,
+        quality=QualityReport(page_count=2, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=100, min_tokens=5, include_breadcrumb=True)
+    chunker = StructureAwareChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    # 3 bölüm olmalı: Bölüm A, Bölüm B, Alt Başlık C
+    assert len(chunks) == 3
+
+    assert chunks[0].heading_path == ["Bölüm A"]
+    assert "Bölüm A metni" in chunks[0].text
+
+    assert chunks[1].heading_path == ["Bölüm B"]
+    assert chunks[1].context_prefix == "Bölüm B"
+    assert "Bölüm B" in chunks[1].text
+
+    assert chunks[2].heading_path == ["Bölüm B", "Alt Başlık C"]
+    assert chunks[2].context_prefix == "Bölüm B > Alt Başlık C"
+    assert "Alt Başlık C" in chunks[2].text
+
+
+def test_document_with_only_headings_has_valid_breadcrumbs():
+    """Yalnızca başlıklardan oluşan dokümanda heading_path ve breadcrumb'lar boş kalmamalıdır."""
+    tokenizer = WhitespaceTokenizer()
+    elements = [
+        Element(
+            type=ElementType.HEADING,
+            text="Ana Başlık",
+            page_start=1,
+            page_end=1,
+            heading_path=[],
+        ),
+        Element(
+            type=ElementType.HEADING,
+            text="Alt Başlık",
+            page_start=1,
+            page_end=1,
+            heading_path=["Ana Başlık"],
+        ),
+    ]
+    doc = ParsedDocument(
+        source_file="only_headings.pdf",
+        elements=elements,
+        quality=QualityReport(page_count=1, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=100, min_tokens=5, include_breadcrumb=True)
+    chunker = StructureAwareChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    assert len(chunks) == 2
+    assert chunks[0].heading_path == ["Ana Başlık"]
+    assert chunks[0].context_prefix == "Ana Başlık"
+    assert chunks[1].heading_path == ["Ana Başlık", "Alt Başlık"]
+    assert chunks[1].context_prefix == "Ana Başlık > Alt Başlık"
+
 

@@ -217,19 +217,20 @@ class StructureAwareChunker:
             consolidated.append(sec)
 
         # Eğer dokümanın EN SONUNDA yetim başlıklar kaldıysa:
-        if accumulated_orphans:
-            if consolidated:
-                # Önceki bölümün sonuna ekle
-                consolidated[-1].elements.extend(accumulated_orphans)
-            else:
-                # Tüm doküman sadece yetim başlıklardan oluşuyorsa tek bölüm yap
-                consolidated.append(
-                    _Section(
-                        heading_path=list(accumulated_orphans[0][1].heading_path),
-                        elements=accumulated_orphans,
-                        heading_element=None,
-                    )
+        # Bunları önceki bölüme yamamak yerine kendi heading_path'leriyle bağımsız bölümler olarak ekle
+        for orphan_idx, orphan_elem in accumulated_orphans:
+            path = list(orphan_elem.heading_path)
+            h_text = orphan_elem.text.strip()
+            if not path or path[-1] != h_text:
+                path.append(h_text)
+            consolidated.append(
+                _Section(
+                    heading_path=path,
+                    elements=[],
+                    heading_element=(orphan_idx, orphan_elem),
                 )
+            )
+        accumulated_orphans.clear()
 
         return consolidated
 
