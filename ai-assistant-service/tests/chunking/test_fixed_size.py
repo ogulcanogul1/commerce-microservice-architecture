@@ -1,6 +1,6 @@
 import pytest
 from app.rag.chunking.base import Chunker
-from app.rag.chunking.fixed_size import FixedSizeChunker
+from app.rag.chunking.strategies.fixed_size import FixedSizeChunker
 from app.rag.chunking.models import ChunkingConfig
 from app.rag.chunking.tokenizer import WhitespaceTokenizer
 from app.rag.ingestion.models import Element, ElementType, ParsedDocument, QualityReport
