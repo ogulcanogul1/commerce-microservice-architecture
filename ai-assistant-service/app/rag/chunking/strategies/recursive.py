@@ -9,7 +9,7 @@ from app.rag.ingestion.models import ParsedDocument
 
 
 class RecursiveChunker:
-    """Endüstri standardı Recursive (özyinelemeli) Chunker.
+    """Recursive (özyinelemeli) Chunker.
 
     Separator merdiveni:
     1. '\\n\\n' (Paragraflar)
