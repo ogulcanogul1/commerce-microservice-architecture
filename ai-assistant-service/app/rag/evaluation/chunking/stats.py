@@ -15,27 +15,45 @@ class ChunkStats(BaseModel):
     tokens_p95: float = Field(ge=0.0, description="95th percentile tokens per chunk")
     tokens_min: int = Field(ge=0, description="Minimum tokens in a chunk")
     tokens_max: int = Field(ge=0, description="Maximum tokens in a chunk")
+    # min_tokens eşiğinin (örn: 60 token) altında kalan çok küçük/yetersiz chunk'ların toplam chunk'lara oranı.
+    # Bu oranın düşük olması, küçük parçaların başarıyla birleştirildiğini gösterir.
     under_min_ratio: float = Field(
         ge=0.0, le=1.0, description="Ratio of chunks with token_count < min_tokens threshold"
     )
+
+    # Overlap (örtüşme) nedeniyle oluşan fazlalık token maliyeti: (Toplam Chunk Token Sayısı) / (Dokümanın Ham Token Sayısı).
+    # 1.0 değeri hiç tekrar/örtüşme yok demektir. 1.20 ise %20 fazladan token üretildiğini/depolandığını ifade eder.
     redundancy: float = Field(
         ge=0.0,
         description="Total chunk tokens / raw document tokens ratio (1.0 = zero overlap overhead)",
     )
+
+    # Cümle ortasından kesilme hasarını ölçen oran.
+    # Küçük harfle başlayan (önceki chunk'tan kopmuş) veya noktalama olmadan biten chunk'ların oranını verir.
+    # Düşük olması, cümle sınırlarına saygı gösterildiğini (Recursive ve Structure-Aware başarısını) kanıtlar.
     sentence_cut_ratio: float = Field(
         ge=0.0,
         le=1.0,
         description="Ratio of chunks starting with lowercase or ending without terminal punctuation",
     )
+
+    # Dokümandaki tabloların tek parçada kalamayıp birden fazla chunk'a bölünme oranı.
+    # (Bölünen Tablo Sayısı) / (Toplam Tablo Sayısı).
     table_split_ratio: float = Field(
         ge=0.0,
         le=1.0,
         description="Ratio of document tables that are split across multiple chunks",
     )
+
+    # Bölünmüş bir tablonun sütun başlığını ve '|---|' ayırıcısını içermeyen "başlıksız" parça sayısı.
+    # Fixed-Size ve Recursive'de başlık koparken, Structure-Aware bu başlığı her parçaya kopyalayarak 0'a indirir.
     table_headless_chunks: int = Field(
         ge=0,
         description="Number of table-bearing chunks lacking a header/separator row",
     )
+
+    # Bir chunk'ın en son satırında tek başına başlık kalıp asıl içeriğin bir sonraki chunk'a taştığı "yetim başlık" oranı.
+    # Bu durum arama motorunu yanıltır; Structure-Aware'de bu oran 0 olmalıdır.
     orphan_heading_ratio: float = Field(
         ge=0.0,
         le=1.0,
@@ -155,7 +173,7 @@ def chunk_stats(
     else:
         table_split_ratio = 0.0
 
-    # 5. Yetim Başlık Oranı (Orphan Heading Ratio)
+    # 5. Orphan Başlık Oranı (Orphan Heading Ratio)
     # Chunk'ın son satırı tek başına bir başlık mı?
     orphan_heading_count = 0
     for c in chunks:
