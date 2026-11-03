@@ -134,7 +134,13 @@ class RecursiveChunker:
             cand_end = candidate_units[-1][1]
             cand_token_count = self.tokenizer.count(flat.text[cand_start:cand_end])
 
-            if cand_token_count <= self.config.max_tokens:
+            # Adil bağlam bütçesi: context_prefix varsa max_tokens'tan düş
+            _, _, heading_path, _ = flat.metadata_for(cand_start, cand_start + 1)
+            prefix = " > ".join(heading_path) if (self.config.include_breadcrumb and heading_path) else ""
+            prefix_tokens = self.tokenizer.count(prefix) if prefix else 0
+            budget = max(1, self.config.max_tokens - prefix_tokens)
+
+            if cand_token_count <= budget:
                 current_units.append(unit)
             else:
                 # Mevcut birikmiş chunk'ı kapat
@@ -155,8 +161,12 @@ class RecursiveChunker:
                     # Aşıyorsa overlap birimlerini azalt
                     while overlap_units:
                         test_cand = overlap_units + [unit]
-                        test_text = flat.text[test_cand[0][0] : test_cand[-1][1]]
-                        if self.tokenizer.count(test_text) <= self.config.max_tokens:
+                        test_start = test_cand[0][0]
+                        test_text = flat.text[test_start : test_cand[-1][1]]
+                        _, _, u_heading_path, _ = flat.metadata_for(test_start, test_start + 1)
+                        u_prefix = " > ".join(u_heading_path) if (self.config.include_breadcrumb and u_heading_path) else ""
+                        u_budget = max(1, self.config.max_tokens - self.tokenizer.count(u_prefix)) if u_prefix else self.config.max_tokens
+                        if self.tokenizer.count(test_text) <= u_budget:
                             break
                         overlap_units.pop(0)
 
@@ -174,7 +184,10 @@ class RecursiveChunker:
             if last_tokens < self.config.min_tokens:
                 prev_start, _ = chunk_spans[-2]
                 merged_text = flat.text[prev_start:last_end]
-                if self.tokenizer.count(merged_text) <= self.config.max_tokens:
+                _, _, p_heading_path, _ = flat.metadata_for(prev_start, prev_start + 1)
+                p_prefix = " > ".join(p_heading_path) if (self.config.include_breadcrumb and p_heading_path) else ""
+                p_budget = max(1, self.config.max_tokens - self.tokenizer.count(p_prefix)) if p_prefix else self.config.max_tokens
+                if self.tokenizer.count(merged_text) <= p_budget:
                     chunk_spans.pop()
                     chunk_spans[-1] = (prev_start, last_end)
 

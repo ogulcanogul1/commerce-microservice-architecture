@@ -57,7 +57,7 @@ def test_fixed_size_sliding_window_100_tokens(sample_100_token_doc):
     tokenizer = WhitespaceTokenizer()
     # max=30, overlap=10, min=10 -> step=20
     # Pencereler: [0, 30), [20, 50), [40, 70), [60, 90), [80, 100)
-    config = ChunkingConfig(max_tokens=30, overlap_tokens=10, min_tokens=10)
+    config = ChunkingConfig(max_tokens=30, overlap_tokens=10, min_tokens=10, include_breadcrumb=False)
     chunker = FixedSizeChunker(tokenizer, config)
 
     chunks = chunker.chunk(sample_100_token_doc)
@@ -122,7 +122,7 @@ def test_fixed_size_no_overlap_only_tail():
         parser_name="mock",
         parser_version="1.0",
     )
-    config = ChunkingConfig(max_tokens=30, overlap_tokens=10, min_tokens=10)
+    config = ChunkingConfig(max_tokens=30, overlap_tokens=10, min_tokens=10, include_breadcrumb=False)
     chunker = FixedSizeChunker(tokenizer, config)
 
     chunks = chunker.chunk(doc)
@@ -161,3 +161,36 @@ def test_fixed_size_deterministic_ids():
     chunker2 = FixedSizeChunker(tokenizer, config2)
     chunks2 = chunker2.chunk(doc)
     assert chunks_a[0].id != chunks2[0].id
+
+
+def test_fixed_size_deducts_breadcrumb_budget():
+    """include_breadcrumb=True olduğunda prefix token'ları bütçeden düşülmeli, embedding_text <= max_tokens kalmalıdır."""
+    tokenizer = WhitespaceTokenizer()
+    words = [f"w{i:03d}" for i in range(50)]
+    elements = [
+        Element(
+            type=ElementType.PARAGRAPH,
+            text=" ".join(words),
+            page_start=1,
+            page_end=1,
+            heading_path=["Kategori", "Alt Kategori"],
+        )
+    ]
+    doc = ParsedDocument(
+        source_file="doc_bc.pdf",
+        elements=elements,
+        quality=QualityReport(page_count=1, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=30, overlap_tokens=5, min_tokens=5, include_breadcrumb=True)
+    chunker = FixedSizeChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    assert len(chunks) >= 2
+    for c in chunks:
+        # embedding_text toplam token sayısı <= 30 olmalıdır
+        assert tokenizer.count(c.embedding_text) <= 30
+        assert c.context_prefix == "Kategori > Alt Kategori"
+

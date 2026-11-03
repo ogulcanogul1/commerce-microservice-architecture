@@ -205,3 +205,35 @@ def test_recursive_strips_trailing_newlines():
         assert not c.text.endswith(" ")
         assert c.text == c.text.rstrip()
 
+
+def test_recursive_deducts_breadcrumb_budget():
+    """RecursiveChunker, include_breadcrumb=True iken prefix token'ını bütçeden düşmelidir."""
+    tokenizer = WhitespaceTokenizer()
+    words = [f"Kelime{i}" for i in range(40)]
+    elements = [
+        Element(
+            type=ElementType.PARAGRAPH,
+            text=". ".join(words) + ".",
+            page_start=1,
+            page_end=1,
+            heading_path=["Ana Kategori", "Alt Başlık"],
+        )
+    ]
+    doc = ParsedDocument(
+        source_file="doc_rec_bc.pdf",
+        elements=elements,
+        quality=QualityReport(page_count=1, status="ok"),
+        parser_name="mock",
+        parser_version="1.0",
+    )
+
+    config = ChunkingConfig(max_tokens=25, overlap_tokens=5, min_tokens=5, include_breadcrumb=True)
+    chunker = RecursiveChunker(tokenizer, config)
+    chunks = chunker.chunk(doc)
+
+    assert len(chunks) >= 2
+    for c in chunks:
+        assert tokenizer.count(c.embedding_text) <= 25
+        assert c.context_prefix == "Ana Kategori > Alt Başlık"
+
+

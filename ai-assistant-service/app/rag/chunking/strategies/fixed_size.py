@@ -39,8 +39,6 @@ class FixedSizeChunker:
         if total_tokens == 0:
             return []
 
-        # Her adımda ilerlenecek net token miktarı (max - overlap)
-        step = self.config.max_tokens - self.config.overlap_tokens
         chunks: list[Chunk] = []
         chunk_idx = 0
         tok_idx = 0
@@ -51,8 +49,20 @@ class FixedSizeChunker:
             if chunk_idx > 0 and remaining <= self.config.overlap_tokens:
                 break
 
-            window_end = min(tok_idx + self.config.max_tokens, total_tokens)
             char_start = token_spans[tok_idx][0]
+            _, _, initial_heading_path, _ = flat.metadata_for(char_start, char_start + 1)
+
+            context_prefix = ""
+            prefix_tokens = 0
+            if self.config.include_breadcrumb and initial_heading_path:
+                context_prefix = " > ".join(initial_heading_path)
+                prefix_tokens = self.tokenizer.count(context_prefix)
+
+            # Adil bağlam bütçesi: context_prefix varsa max_tokens'tan düş
+            budget = max(1, self.config.max_tokens - prefix_tokens)
+            step = max(1, budget - self.config.overlap_tokens)
+
+            window_end = min(tok_idx + budget, total_tokens)
             char_end = token_spans[window_end - 1][1]
 
             chunk_text = flat.text[char_start:char_end]
@@ -63,8 +73,7 @@ class FixedSizeChunker:
                 char_start, char_end
             )
 
-            context_prefix = ""
-            if self.config.include_breadcrumb and heading_path:
+            if not context_prefix and self.config.include_breadcrumb and heading_path:
                 context_prefix = " > ".join(heading_path)
 
             chunk_id = self._generate_chunk_id(doc.source_file, chunk_idx, chunk_text)
