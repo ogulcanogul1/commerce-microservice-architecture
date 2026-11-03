@@ -5,11 +5,11 @@ import re
 from typing import Sequence
 import numpy as np
 
-from app.rag.embedding.base import l2_normalize
+from app.rag.embedding.base import Embedder, l2_normalize
 
 
-class FakeEmbedder:
-    """A deterministic, dependency-free embedder for tests.
+class FakeEmbedder(Embedder):
+    """A deterministic, dependency-free embedder for tests implementing the Embedder interface.
 
     Uses feature hashing (bag-of-words) to project text into a fixed-dimensional space.
     Texts with common words will have higher cosine similarity.
@@ -22,15 +22,27 @@ class FakeEmbedder:
         model_id: str = "fake/deterministic-bow",
         max_input_tokens: int = 512,
     ) -> None:
-        self.dimensions = dimensions
-        self.model_id = model_id
-        self.max_input_tokens = max_input_tokens
+        self._dimensions = dimensions
+        self._model_id = model_id
+        self._max_input_tokens = max_input_tokens
         self.call_count: int = 0
         self.texts_seen: int = 0
 
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    @property
+    def max_input_tokens(self) -> int:
+        return self._max_input_tokens
+
     def _text_to_vector(self, text: str) -> np.ndarray:
         tokens = re.findall(r"\w+", text.lower())
-        vec = np.zeros(self.dimensions, dtype=np.float32)
+        vec = np.zeros(self._dimensions, dtype=np.float32)
 
         if not tokens:
             return vec
@@ -38,7 +50,7 @@ class FakeEmbedder:
         for token in tokens:
             # Deterministic hash to an index in [0, dimensions)
             h = int(hashlib.md5(token.encode("utf-8")).hexdigest(), 16)
-            idx = h % self.dimensions
+            idx = h % self._dimensions
             vec[idx] += 1.0
 
         return l2_normalize(vec)
@@ -49,7 +61,7 @@ class FakeEmbedder:
         self.texts_seen += len(texts)
 
         if not texts:
-            return np.empty((0, self.dimensions), dtype=np.float32)
+            return np.empty((0, self._dimensions), dtype=np.float32)
 
         vectors = [self._text_to_vector(t) for t in texts]
         return np.vstack(vectors).astype(np.float32)

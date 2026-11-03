@@ -114,8 +114,8 @@ class DiskEmbeddingCache:
             pass
 
 
-class CachedEmbedder:
-    """Transparent caching wrapper around any Embedder implementation.
+class CachedEmbedder(Embedder):
+    """Transparent caching wrapper implementing the Embedder interface.
 
     Maintains call stats (hits, misses) and batches uncached documents to inner embedder.
     """
