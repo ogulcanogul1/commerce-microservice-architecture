@@ -1,8 +1,15 @@
 import pytest
 from pydantic import ValidationError
 
-from app.rag.chunking.models import Chunk, ChunkingConfig
+from app.rag.chunking.models import Chunk, ChunkingConfig, ChunkStrategy
 from app.rag.ingestion.models import ElementType
+
+
+def test_chunk_strategy_enum():
+    assert ChunkStrategy.FIXED == "fixed"
+    assert ChunkStrategy.RECURSIVE == "recursive"
+    assert ChunkStrategy.STRUCTURE == "structure"
+    assert str(ChunkStrategy.FIXED) == "fixed"
 
 
 def test_chunking_config_defaults():

@@ -1,7 +1,7 @@
 import hashlib
 from app.rag.chunking.base import Chunker
 from app.rag.chunking.flatten import flatten
-from app.rag.chunking.models import Chunk, ChunkingConfig
+from app.rag.chunking.models import Chunk, ChunkingConfig, ChunkStrategy
 from app.rag.chunking.tokenizer import Tokenizer
 from app.rag.ingestion.models import ParsedDocument
 
@@ -14,7 +14,7 @@ class FixedSizeChunker:
     sadece token sınırlarından katı pencerelerle dilimler.
     """
 
-    name: str = "fixed"
+    name: str = ChunkStrategy.FIXED
 
     def __init__(self, tokenizer: Tokenizer, config: ChunkingConfig) -> None:
         self.tokenizer = tokenizer
@@ -72,7 +72,7 @@ class FixedSizeChunker:
             chunks.append(
                 Chunk(
                     id=chunk_id,
-                    strategy="fixed",
+                    strategy=ChunkStrategy.FIXED,
                     source_file=doc.source_file,
                     chunk_index=chunk_idx,
                     text=chunk_text,
