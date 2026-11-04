@@ -159,6 +159,11 @@ class LocalEmbedder(Embedder):
                 show_progress_bar=False,
             ).astype(np.float32)
 
+        # Matryoshka Boyut Kısaltma: Eğer istenen boyut modelin doğal boyutundan küçükse
+        # ilk N boyutu alıp (slice) tekrar normalize ediyoruz.
+        if self.config.dimensions is not None and matrix.shape[1] > self.config.dimensions:
+            matrix = matrix[:, : self.config.dimensions]
+
         # Cosine similarity aramalarında iç çarpım (dot product) yapabilmek için vektörleri L2-normalize et
         if self.config.normalize:
             return l2_normalize(matrix)
@@ -180,18 +185,20 @@ class LocalEmbedder(Embedder):
                 kwargs["dimensions"] = self.config.dimensions
             response = with_retry(lambda: self.client.embeddings.create(**kwargs))
             vec = np.array(response.data[0].embedding, dtype=np.float32)
-            if self.config.normalize:
-                return l2_normalize(vec)
-            return vec
+        else:
+            # Process-içi sentence-transformers modeli ile sorguyu hesapla
+            st_model = self._get_st_model()
+            vec = st_model.encode(
+                prefixed_query,
+                convert_to_numpy=True,
+                show_progress_bar=False,
+            ).astype(np.float32)
 
-        # Process-içi sentence-transformers modeli ile sorguyu hesapla
-        st_model = self._get_st_model()
-        vec = st_model.encode(
-            prefixed_query,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        ).astype(np.float32)
+        # Matryoshka Boyut Kısaltma (Query)
+        if self.config.dimensions is not None and vec.shape[0] > self.config.dimensions:
+            vec = vec[: self.config.dimensions]
 
         if self.config.normalize:
             return l2_normalize(vec)
         return vec
+

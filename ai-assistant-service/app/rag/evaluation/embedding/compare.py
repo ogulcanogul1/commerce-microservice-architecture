@@ -44,6 +44,8 @@ PRICE_PER_MILLION_TOKENS: dict[str, float] = {
     "openai/text-embedding-3-small": 0.02,
     "openai/text-embedding-3-large": 0.13,
     "gemini/text-embedding-004": 0.025,
+    "local/intfloat/multilingual-e5-small": 0.0,
+    "local/baai/bge-m3": 0.0,
     "local": 0.0,
     "fake": 0.0,
 }
@@ -81,7 +83,7 @@ def parse_model_string(model_str: str) -> EmbeddingConfig:
             elif prov == EmbeddingProvider.GEMINI:
                 return EmbeddingConfig(provider=prov, model="text-embedding-004")
             elif prov == EmbeddingProvider.LOCAL:
-                return EmbeddingConfig(provider=prov, model="multilingual-e5-small")
+                return EmbeddingConfig(provider=prov, model="intfloat/multilingual-e5-small")
             else:
                 return EmbeddingConfig(provider=prov, model="deterministic-bow")
         except ValueError:

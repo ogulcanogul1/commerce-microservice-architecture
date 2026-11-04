@@ -151,6 +151,33 @@ def test_local_embedder_bge_m3_no_prefix():
     assert call_kwargs["input"] == ["bge dokuman"]
 
 
+def test_local_embedder_matryoshka_dimension_truncation():
+    # Simüle edilen model 4 boyut dönüyor, ama kullanıcı 2 boyut istedi
+    mock_client = MagicMock()
+    mock_client.embeddings.create.return_value = MockOpenAIResponse(
+        [
+            MockOpenAIItem([1.0, 1.0, 1.0, 1.0]),
+        ]
+    )
+
+    cfg = EmbeddingConfig(
+        provider="local",
+        model="intfloat/multilingual-e5-small",
+        dimensions=2,
+    )
+    embedder = LocalEmbedder(config=cfg, client=mock_client)
+
+    out = embedder.embed_documents(["test"])
+    assert out.shape == (1, 2)
+    # Normalize edilmiş olmalı: norm == 1.0
+    assert np.isclose(np.linalg.norm(out[0]), 1.0)
+
+    out_q = embedder.embed_query("test query")
+    assert out_q.shape == (2,)
+    assert np.isclose(np.linalg.norm(out_q), 1.0)
+
+
+
 def test_factory_get_embedder(tmp_path):
     from app.rag.embedding.cache import CachedEmbedder, DiskEmbeddingCache
 
