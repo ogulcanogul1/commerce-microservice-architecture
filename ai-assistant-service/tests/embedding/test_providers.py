@@ -170,3 +170,18 @@ def test_factory_get_embedder(tmp_path):
     cfg_unknown = EmbeddingConfig(provider="unknown_provider", model="x")
     with pytest.raises(ValueError, match="Unknown embedding provider"):
         get_embedder(cfg_unknown)
+
+
+def test_get_default_embedder(monkeypatch):
+    from app.core.config import settings
+    from app.rag.embedding import get_default_embedder
+    from app.rag.embedding.fake import FakeEmbedder
+
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL", "default-test")
+    monkeypatch.setattr(settings, "EMBEDDING_DIMENSIONS", 64)
+
+    embedder = get_default_embedder()
+    assert isinstance(embedder, FakeEmbedder)
+    assert embedder.dimensions == 64
+
