@@ -63,6 +63,9 @@ class LocalEmbedder(Embedder):
         # Ağır PyTorch/sentence-transformers modelini belleğe hemen yüklememek için
         # başlangıçta None bırakıyoruz (Lazy Loading - Tembel Yükleme).
         self._st_model: Any = None
+        self._tokenizer: Any = None
+        self._tokenizer_loaded: bool = False
+        self._cl100k_fallback: Any = None
         self.client: Any = None
 
         if client is not None:
@@ -91,21 +94,34 @@ class LocalEmbedder(Embedder):
     def max_input_tokens(self) -> int:
         return self._max_input_tokens
 
-    def count_tokens(self, text: str) -> int:
-        """Count tokens using sentence-transformers / transformers tokenizer if available, else tiktoken fallback."""
-        try:
+    def _get_tokenizer(self) -> Any:
+        if not self._tokenizer_loaded:
+            self._tokenizer_loaded = True
             if self._st_model is not None:
-                return len(self._st_model.tokenizer(text)["input_ids"])
-            from transformers import AutoTokenizer
+                self._tokenizer = self._st_model.tokenizer
+            else:
+                try:
+                    from transformers import AutoTokenizer
 
-            tokenizer = AutoTokenizer.from_pretrained(self.config.model)
-            return len(tokenizer(text)["input_ids"])
-        except Exception:
-            # Fallback estimation for offline/mock environments (using cl100k)
+                    self._tokenizer = AutoTokenizer.from_pretrained(self.config.model)
+                except Exception:
+                    self._tokenizer = None
+        return self._tokenizer
+
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using cached sentence-transformers/transformers tokenizer if available, else tiktoken fallback."""
+        tok = self._get_tokenizer()
+        if tok is not None:
+            try:
+                return len(tok(text)["input_ids"])
+            except Exception:
+                pass
+
+        if self._cl100k_fallback is None:
             import tiktoken
 
-            tok = tiktoken.get_encoding("cl100k_base")
-            return len(tok.encode(text, disallowed_special=()))
+            self._cl100k_fallback = tiktoken.get_encoding("cl100k_base")
+        return len(self._cl100k_fallback.encode(text, disallowed_special=()))
 
     def _get_st_model(self) -> Any:
         # Model henüz belleğe alınmadıysa ilk çağrıda yüklenir (Lazy Loading).

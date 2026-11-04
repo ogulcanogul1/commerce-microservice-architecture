@@ -24,6 +24,8 @@ class GeminiEmbedder(Embedder):
         self._model_id = config.model_id()
         self._dimensions = config.dimensions or 768
         self._max_input_tokens = 2048
+        self._token_count_cache: dict[str, int] = {}
+        self._cl100k_fallback: Any = None
 
         if client is not None:
             self.client = client
@@ -44,18 +46,31 @@ class GeminiEmbedder(Embedder):
         return self._max_input_tokens
 
     def count_tokens(self, text: str) -> int:
-        """Count tokens using Gemini API count_tokens if available, else approximate."""
+        """Count tokens using Gemini API count_tokens with in-memory caching and fallback."""
+        if text in self._token_count_cache:
+            return self._token_count_cache[text]
+
+        count: int | None = None
         try:
-            resp = self.client.models.count_tokens(model=self.config.model, contents=text)
+            resp = with_retry(
+                lambda: self.client.models.count_tokens(
+                    model=self.config.model, contents=text
+                )
+            )
             if hasattr(resp, "total_tokens") and isinstance(resp.total_tokens, int):
-                return resp.total_tokens
+                count = resp.total_tokens
         except Exception:
             pass
 
-        import tiktoken
+        if count is None:
+            if self._cl100k_fallback is None:
+                import tiktoken
 
-        tok = tiktoken.get_encoding("cl100k_base")
-        return len(tok.encode(text, disallowed_special=()))
+                self._cl100k_fallback = tiktoken.get_encoding("cl100k_base")
+            count = len(self._cl100k_fallback.encode(text, disallowed_special=()))
+
+        self._token_count_cache[text] = count
+        return count
 
     def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
         """Embed a sequence of documents using RETRIEVAL_DOCUMENT task type."""
