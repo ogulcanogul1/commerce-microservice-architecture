@@ -35,7 +35,10 @@ from app.rag.evaluation.chunking.retrieval import (
     evaluate_retrieval,
 )
 from app.rag.evaluation.embedding.retrieval import DenseRetriever, HybridRetriever
-from app.rag.evaluation.embedding.validation import validate_chunks_fit
+from app.rag.evaluation.embedding.validation import (
+    compute_token_divergence_ratio,
+    validate_chunks_fit,
+)
 from app.rag.ingestion.models import ParsedDocument
 from app.rag.ingestion.pdf.loader import PDFLoader
 
@@ -134,12 +137,19 @@ def evaluate_single_model(
 ) -> dict[str, Any]:
     """Run full evaluation (Dense + Hybrid) for a specific embedding model."""
     embedder = get_embedder(config, cache=cache)
+    raw_embedder: Embedder = embedder.inner if isinstance(embedder, CachedEmbedder) else embedder
 
-    # 1. Dokümanları embed et ve süreyi ölç
+    # 1. Dokümanları embed et ve indeksleme süresini ölç
+    hits_pre_doc = embedder.hits if isinstance(embedder, CachedEmbedder) else 0
+    misses_pre_doc = embedder.misses if isinstance(embedder, CachedEmbedder) else 0
+
     t_start = time.perf_counter()
     dense_retriever = DenseRetriever(embedder)
     dense_retriever.index(all_chunks)
     embed_duration = time.perf_counter() - t_start
+
+    doc_hits = (embedder.hits - hits_pre_doc) if isinstance(embedder, CachedEmbedder) else 0
+    doc_misses = (embedder.misses - misses_pre_doc) if isinstance(embedder, CachedEmbedder) else 0
 
     # 2. Token sayımları ve maliyet hesabı
     total_doc_tokens = sum(tokenizer.count(c.embedding_text) for c in all_chunks)
@@ -150,33 +160,43 @@ def evaluate_single_model(
         rate = PRICE_PER_MILLION_TOKENS.get(str(config.provider).lower(), 0.0)
     est_cost = ((total_doc_tokens + total_query_tokens) / 1_000_000.0) * rate
 
-    # 3. Dense Retrieval Değerlendirmesi
-    t_dense_start = time.perf_counter()
+    # 3. Saf Sorgu Gecikmesi (Uncached Latency): Cache kapalıyken raw embedder ile ölçülür
+    uncached_latencies: list[float] = []
+    for q in questions:
+        t_q0 = time.perf_counter()
+        _ = raw_embedder.embed_query(q.question)
+        uncached_latencies.append(time.perf_counter() - t_q0)
+    avg_query_sec = (
+        sum(uncached_latencies) / len(uncached_latencies) if uncached_latencies else 0.0
+    )
+
+    # 4. Dense Retrieval Değerlendirmesi
+    hits_pre_query = embedder.hits if isinstance(embedder, CachedEmbedder) else 0
+    misses_pre_query = embedder.misses if isinstance(embedder, CachedEmbedder) else 0
+
     dense_summary, dense_details = evaluate_retrieval(
         dense_retriever, questions, all_chunks
     )
-    dense_eval_duration = time.perf_counter() - t_dense_start
 
-    # 4. Hybrid Retrieval Değerlendirmesi
+    query_hits = (embedder.hits - hits_pre_query) if isinstance(embedder, CachedEmbedder) else 0
+    query_misses = (embedder.misses - misses_pre_query) if isinstance(embedder, CachedEmbedder) else 0
+
+    # 5. Hybrid Retrieval Değerlendirmesi
     hybrid_retriever = HybridRetriever(
         dense=dense_retriever,
         bm25=bm25_retriever,
         dense_weight=dense_weight,
     )
-    # dense zaten indexli, hybrid sadece index'i bağlar
+    # HybridRetriever her iki retriever'ı bağlar; dense vektörler zaten önbellekte olduğundan hızlıca geçer
     hybrid_summary, hybrid_details = evaluate_retrieval(
         hybrid_retriever, questions, all_chunks
     )
 
-    # 5. Token Limiti Uyum Kontrolü
+    # 6. Token Limiti ve Token Sapma (Divergence) Oranı Kontrolü
     fit_report = validate_chunks_fit(all_chunks, embedder, tokenizer=tokenizer)
-
-    # Cache hit/miss istatistikleri
-    hits = 0
-    misses = 0
-    if isinstance(embedder, CachedEmbedder):
-        hits = embedder.hits
-        misses = embedder.misses
+    token_divergence = compute_token_divergence_ratio(
+        all_chunks, embedder, tokenizer=tokenizer
+    )
 
     storage_bytes = len(all_chunks) * embedder.dimensions * 4
 
@@ -186,11 +206,14 @@ def evaluate_single_model(
         "model": config.model,
         "dimensions": embedder.dimensions,
         "embed_duration_sec": round(embed_duration, 3),
-        "avg_query_sec": round(dense_eval_duration / len(questions), 4) if questions else 0.0,
+        "avg_query_sec": round(avg_query_sec, 4),
         "est_cost_usd": round(est_cost, 6),
         "storage_kb": round(storage_bytes / 1024.0, 2),
-        "cache_hits": hits,
-        "cache_misses": misses,
+        "doc_cache_hits": doc_hits,
+        "doc_cache_misses": doc_misses,
+        "query_cache_hits": query_hits,
+        "query_cache_misses": query_misses,
+        "token_divergence_ratio": token_divergence,
         "all_chunks_fit": fit_report.all_fit,
         "max_chunk_tokens": fit_report.max_chunk_tokens,
         "dense_summary": dense_summary.model_dump(),
@@ -292,17 +315,23 @@ def generate_markdown_report(
     lines.append("## 2. Operasyonel ve Maliyet Metrikleri")
     lines.append("")
     lines.append(
-        "| Model | Boyut (dim) | Bellek / Disk (KB) | Embed Süresi (sn) | Soru Başına Gecikme (sn) | Tahmini Maliyet ($) | Cache Hits / Misses |"
+        "| Model | Boyut (dim) | Bellek / Disk (KB) | Embed Süresi (sn) | Saf Sorgu Gecikmesi (sn) | Tahmini Maliyet ($) | Önbellek (Doc Hits/Miss - Query Hits/Miss) | Token Sapma Oranı (cl100k/Model) |"
     )
     lines.append(
-        "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
+        "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
     )
 
     for res in results:
+        cache_str = f"Doc: {res['doc_cache_hits']}/{res['doc_cache_misses']} - Query: {res['query_cache_hits']}/{res['query_cache_misses']}"
+        div_str = (
+            f"{res['token_divergence_ratio']:.3f}"
+            if res.get("token_divergence_ratio") is not None
+            else "N/A"
+        )
         lines.append(
             f"| `{res['model_id']}` | {res['dimensions']} | {res['storage_kb']} KB | "
             f"{res['embed_duration_sec']} sn | {res['avg_query_sec']} sn | "
-            f"${res['est_cost_usd']} | {res['cache_hits']} / {res['cache_misses']} |"
+            f"${res['est_cost_usd']} | {cache_str} | {div_str} |"
         )
 
     lines.append("")
