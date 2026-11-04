@@ -97,6 +97,9 @@ def test_embedder_interface_abc():
         def embed_query(self, text):
             return np.zeros(128, dtype=np.float32)
 
+        def count_tokens(self, text: str) -> int:
+            return len(text.split())
+
     class IncompleteEmbedder(Embedder):
         @property
         def model_id(self) -> str:

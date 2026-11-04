@@ -43,12 +43,34 @@ class GeminiEmbedder(Embedder):
     def max_input_tokens(self) -> int:
         return self._max_input_tokens
 
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using Gemini API count_tokens if available, else approximate."""
+        try:
+            resp = self.client.models.count_tokens(model=self.config.model, contents=text)
+            if hasattr(resp, "total_tokens") and isinstance(resp.total_tokens, int):
+                return resp.total_tokens
+        except Exception:
+            pass
+
+        import tiktoken
+
+        tok = tiktoken.get_encoding("cl100k_base")
+        return len(tok.encode(text, disallowed_special=()))
+
     def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
         """Embed a sequence of documents using RETRIEVAL_DOCUMENT task type."""
         if not texts:
             return np.empty((0, self._dimensions), dtype=np.float32)
 
         validate_non_empty_texts(texts)
+
+        for idx, t in enumerate(texts):
+            c_tokens = self.count_tokens(t)
+            if c_tokens > self._max_input_tokens:
+                raise ValueError(
+                    f"Text at index {idx} has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                    f"Embedders must not truncate silently."
+                )
 
         all_vectors: list[list[float]] = []
 
@@ -76,6 +98,13 @@ class GeminiEmbedder(Embedder):
     def embed_query(self, text: str) -> np.ndarray:
         """Embed a single query using RETRIEVAL_QUERY task type."""
         validate_non_empty_texts([text])
+
+        c_tokens = self.count_tokens(text)
+        if c_tokens > self._max_input_tokens:
+            raise ValueError(
+                f"Query has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                f"Embedders must not truncate silently."
+            )
 
         cfg_kwargs: dict[str, Any] = {"task_type": "RETRIEVAL_QUERY"}
         if self.config.dimensions is not None:

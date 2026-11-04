@@ -138,6 +138,9 @@ class CachedEmbedder(Embedder):
     def max_input_tokens(self) -> int:
         return self.inner.max_input_tokens
 
+    def count_tokens(self, text: str) -> int:
+        return self.inner.count_tokens(text)
+
     def embed_query(self, text: str) -> np.ndarray:
         key = self.cache.build_key(
             self.model_id, self.dimensions, EmbedKind.QUERY, text

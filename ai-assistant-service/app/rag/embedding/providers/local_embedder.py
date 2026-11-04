@@ -91,6 +91,22 @@ class LocalEmbedder(Embedder):
     def max_input_tokens(self) -> int:
         return self._max_input_tokens
 
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using sentence-transformers / transformers tokenizer if available, else tiktoken fallback."""
+        try:
+            if self._st_model is not None:
+                return len(self._st_model.tokenizer(text)["input_ids"])
+            from transformers import AutoTokenizer
+
+            tokenizer = AutoTokenizer.from_pretrained(self.config.model)
+            return len(tokenizer(text)["input_ids"])
+        except Exception:
+            # Fallback estimation for offline/mock environments (using cl100k)
+            import tiktoken
+
+            tok = tiktoken.get_encoding("cl100k_base")
+            return len(tok.encode(text, disallowed_special=()))
+
     def _get_st_model(self) -> Any:
         # Model henüz belleğe alınmadıysa ilk çağrıda yüklenir (Lazy Loading).
         if self._st_model is None:
@@ -133,6 +149,15 @@ class LocalEmbedder(Embedder):
         # Gerekli ise dokümanlara 'passage: ' önekini ekle
         prefixed_texts = [self._apply_doc_prefix(t) for t in texts]
 
+        # Token limit kontrolü: Modeller sessizce metni kesmemeli (truncate etmemeli)
+        for idx, t in enumerate(prefixed_texts):
+            c_tokens = self.count_tokens(t)
+            if c_tokens > self._max_input_tokens:
+                raise ValueError(
+                    f"Text at index {idx} has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                    f"Embedders must not truncate silently."
+                )
+
         all_vectors: list[list[float]] = []
 
         if self.client is not None:
@@ -174,6 +199,13 @@ class LocalEmbedder(Embedder):
 
         # Gerekli ise sorgunun başına 'query: ' önekini ekle
         prefixed_query = self._apply_query_prefix(text)
+
+        c_tokens = self.count_tokens(prefixed_query)
+        if c_tokens > self._max_input_tokens:
+            raise ValueError(
+                f"Query has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                f"Embedders must not truncate silently."
+            )
 
         if self.client is not None:
             # Harici yerel HTTP sunucusu üzerinden sorguyu embed et

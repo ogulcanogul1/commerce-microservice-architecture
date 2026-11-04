@@ -25,6 +25,8 @@ class OpenAIEmbedder(Embedder):
             3072 if "large" in config.model else 1536
         )
         self._max_input_tokens = 8191
+        import tiktoken
+        self._tokenizer = tiktoken.get_encoding("cl100k_base")
 
         if client is not None:
             self.client = client
@@ -44,12 +46,24 @@ class OpenAIEmbedder(Embedder):
     def max_input_tokens(self) -> int:
         return self._max_input_tokens
 
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using tiktoken cl100k_base tokenizer."""
+        return len(self._tokenizer.encode(text, disallowed_special=()))
+
     def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
         """Embed a sequence of texts using OpenAI's embeddings API in batches."""
         if not texts:
             return np.empty((0, self._dimensions), dtype=np.float32)
 
         validate_non_empty_texts(texts)
+
+        for idx, t in enumerate(texts):
+            c_tokens = self.count_tokens(t)
+            if c_tokens > self._max_input_tokens:
+                raise ValueError(
+                    f"Text at index {idx} has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                    f"Embedders must not truncate silently."
+                )
 
         all_vectors: list[list[float]] = []
 

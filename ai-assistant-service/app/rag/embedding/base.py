@@ -60,3 +60,9 @@ class Embedder(ABC):
     def embed_query(self, text: str) -> np.ndarray:
         """Embed a single query string into a 1D float32 array (dimensions,)."""
         ...
+
+    @abstractmethod
+    def count_tokens(self, text: str) -> int:
+        """Count tokens for the given text using the model's tokenizer."""
+        ...
+

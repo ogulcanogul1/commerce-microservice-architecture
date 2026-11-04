@@ -55,19 +55,39 @@ class FakeEmbedder(Embedder):
 
         return l2_normalize(vec)
 
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using regex word extraction."""
+        return len(re.findall(r"\w+", text))
+
     def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
         """Embed a sequence of texts into a 2D float32 array (n, dimensions)."""
-        self.call_count += 1
-        self.texts_seen += len(texts)
-
         if not texts:
             return np.empty((0, self._dimensions), dtype=np.float32)
+
+        for idx, t in enumerate(texts):
+            c_tokens = self.count_tokens(t)
+            if c_tokens > self._max_input_tokens:
+                raise ValueError(
+                    f"Text at index {idx} has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                    f"Embedders must not truncate silently."
+                )
+
+        self.call_count += 1
+        self.texts_seen += len(texts)
 
         vectors = [self._text_to_vector(t) for t in texts]
         return np.vstack(vectors).astype(np.float32)
 
     def embed_query(self, text: str) -> np.ndarray:
         """Embed a single query text into a 1D float32 array (dimensions,)."""
+        c_tokens = self.count_tokens(text)
+        if c_tokens > self._max_input_tokens:
+            raise ValueError(
+                f"Query has {c_tokens} tokens, exceeding max_input_tokens={self._max_input_tokens}. "
+                f"Embedders must not truncate silently."
+            )
+
         self.call_count += 1
         self.texts_seen += 1
         return self._text_to_vector(text)
+

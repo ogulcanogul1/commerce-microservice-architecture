@@ -72,3 +72,18 @@ def test_fake_embedder_call_counters():
     embedder.embed_documents(["doc 1", "doc 2", "doc 3"])
     assert embedder.call_count == 2
     assert embedder.texts_seen == 4
+
+
+def test_fake_embedder_token_limit_exceeded():
+    import pytest
+
+    embedder = FakeEmbedder(max_input_tokens=5)
+    # 5 kelimeye kadar geçerli
+    embedder.embed_query("bir iki uc dort bes")
+
+    # 6 kelime limiti aşar ve fail-fast hata fırlatmalıdır
+    with pytest.raises(ValueError, match="exceeding max_input_tokens"):
+        embedder.embed_query("bir iki uc dort bes alti")
+
+    with pytest.raises(ValueError, match="exceeding max_input_tokens"):
+        embedder.embed_documents(["kisa", "bir iki uc dort bes alti yedi"])
