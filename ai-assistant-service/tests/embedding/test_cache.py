@@ -91,3 +91,18 @@ def test_cache_corrupted_or_empty_cache_graceful(tmp_path):
     # get ve get_many hata fırlatmak yerine None / {} dönmeli
     assert cache.get("nonexistent_key", 256) is None
     assert cache.get_many(["k1", "k2"], 256) == {}
+
+
+def test_cache_write_error_logged(tmp_path, caplog):
+    import logging
+
+    bad_db = tmp_path / "bad.db"
+    bad_db.write_text("corrupted content", encoding="utf-8")
+    cache = DiskEmbeddingCache(bad_db)
+
+    with caplog.at_level(logging.WARNING):
+        # Bozuk DB'ye set veya set_many çağrısı çökmemeli ancak uyarı loglamalıdır
+        cache.set("key1", np.zeros(256, dtype=np.float32))
+        cache.set_many([("key2", np.zeros(256, dtype=np.float32))])
+
+    assert "Failed to write to embedding cache" in caplog.text

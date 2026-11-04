@@ -5,6 +5,7 @@ import pytest
 from app.core.config import settings
 from app.rag.embedding.models import EmbeddingConfig
 from app.rag.embedding.providers.gemini_embedder import GeminiEmbedder
+from app.rag.embedding.providers.local_embedder import LocalEmbedder
 from app.rag.embedding.providers.openai_embedder import OpenAIEmbedder
 
 
@@ -39,6 +40,34 @@ def test_gemini_embedder_live():
         dimensions=256,
     )
     embedder = GeminiEmbedder(config=cfg)
+
+    texts = ["Turkiye e-ticaret lojistik", "Kargo takip sorgulama"]
+    docs_matrix = embedder.embed_documents(texts)
+    assert docs_matrix.shape == (2, 256)
+
+    query_vec = embedder.embed_query("siparis nerede")
+    assert query_vec.shape == (256,)
+
+
+@pytest.mark.integration
+def test_local_embedder_live():
+    if not settings.LOCAL_LLM_BASE_URL:
+        pytest.skip("LOCAL_LLM_BASE_URL is not set; skipping live local server test.")
+
+    # Yerel sunucunun (örn. Ollama) ayakta olup olmadığını doğrula, ayakta değilse beklemeden skip et
+    import urllib.request
+
+    try:
+        urllib.request.urlopen(settings.LOCAL_LLM_BASE_URL, timeout=0.5)
+    except Exception:
+        pytest.skip(f"Local LLM server at {settings.LOCAL_LLM_BASE_URL} is unreachable.")
+
+    cfg = EmbeddingConfig(
+        provider="local",
+        model="intfloat/multilingual-e5-small",
+        dimensions=256,
+    )
+    embedder = LocalEmbedder(config=cfg)
 
     texts = ["Turkiye e-ticaret lojistik", "Kargo takip sorgulama"]
     docs_matrix = embedder.embed_documents(texts)

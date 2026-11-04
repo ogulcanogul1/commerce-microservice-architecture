@@ -1,6 +1,7 @@
 """SQLite-backed disk embedding cache and cached embedder wrapper."""
 
 import hashlib
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Sequence
@@ -8,6 +9,8 @@ import numpy as np
 
 from app.rag.embedding.base import Embedder
 from app.rag.embedding.models import EmbedKind
+
+logger = logging.getLogger(__name__)
 
 
 class DiskEmbeddingCache:
@@ -74,8 +77,8 @@ class DiskEmbeddingCache:
                     (key, blob),
                 )
                 conn.commit()
-        except Exception:
-            pass
+        except Exception as err:
+            logger.warning("Failed to write to embedding cache for key %s: %s", key, err)
 
     def get_many(self, keys: Sequence[str], dimensions: int) -> dict[str, np.ndarray]:
         """Retrieve multiple vectors at once."""
@@ -110,8 +113,8 @@ class DiskEmbeddingCache:
                     data,
                 )
                 conn.commit()
-        except Exception:
-            pass
+        except Exception as err:
+            logger.warning("Failed to write batch to embedding cache (%d items): %s", len(items), err)
 
 
 class CachedEmbedder(Embedder):
