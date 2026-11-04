@@ -22,6 +22,19 @@ class ChunkFitReport(BaseModel):
     all_fit: bool
 
 
+class EmbedderTokenizerAdapter:
+    """Adapts an Embedder's count_tokens method to the Tokenizer protocol."""
+
+    def __init__(self, embedder: Embedder) -> None:
+        self.embedder = embedder
+
+    def count(self, text: str) -> int:
+        return self.embedder.count_tokens(text)
+
+    def token_spans(self, text: str) -> list[tuple[int, int]]:
+        return []
+
+
 def validate_chunks_fit(
     chunks: Sequence[Chunk],
     embedder: Embedder,

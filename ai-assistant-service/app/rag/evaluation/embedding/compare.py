@@ -36,6 +36,7 @@ from app.rag.evaluation.chunking.retrieval import (
 )
 from app.rag.evaluation.embedding.retrieval import DenseRetriever, HybridRetriever
 from app.rag.evaluation.embedding.validation import (
+    EmbedderTokenizerAdapter,
     compute_token_divergence_ratio,
     validate_chunks_fit,
 )
@@ -194,8 +195,12 @@ def evaluate_single_model(
 
     # 6. Token Limiti ve Token Sapma (Divergence) Oranı Kontrolü
     fit_report = validate_chunks_fit(all_chunks, embedder, tokenizer=tokenizer)
+    texts = [c.embedding_text for c in all_chunks]
+    model_tok = EmbedderTokenizerAdapter(raw_embedder)
     token_divergence = compute_token_divergence_ratio(
-        all_chunks, embedder, tokenizer=tokenizer
+        texts=texts,
+        base_tokenizer=tokenizer,
+        model_tokenizer=model_tok,
     )
 
     storage_bytes = len(all_chunks) * embedder.dimensions * 4
