@@ -194,7 +194,8 @@ def evaluate_single_model(
     )
 
     # 6. Token Limiti ve Token Sapma (Divergence) Oranı Kontrolü
-    fit_report = validate_chunks_fit(all_chunks, embedder, tokenizer=tokenizer)
+    # validate_chunks_fit modelin kendi count_tokens yöntemi ile sınır denetimi yapar
+    fit_report = validate_chunks_fit(all_chunks, embedder)
     texts = [c.embedding_text for c in all_chunks]
     model_tok = EmbedderTokenizerAdapter(raw_embedder)
     token_divergence = compute_token_divergence_ratio(

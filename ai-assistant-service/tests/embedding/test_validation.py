@@ -60,6 +60,11 @@ def test_validate_chunks_fit_synthetic():
     assert report_gen.all_fit is True
     assert len(report_gen.oversized_chunks) == 0
 
+    # Tokenizer parametresi verilmediğinde doğrudan modelin kendi count_tokens'ı kullanılmalıdır
+    report_default_tok = validate_chunks_fit(chunks, embedder_small)
+    assert report_default_tok.all_fit is False
+    assert report_default_tok.oversized_chunks[0][0] == "c_big"
+
 
 def test_compute_token_divergence_ratio():
     texts = ["merhaba dunya", "turkiye e-ticaret lojistik"]

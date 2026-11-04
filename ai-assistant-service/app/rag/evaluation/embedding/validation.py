@@ -42,7 +42,7 @@ def validate_chunks_fit(
 ) -> ChunkFitReport:
     """Validate that every chunk's embedding_text fits within the embedder's max_input_tokens.
 
-    Uses the provided tokenizer (defaults to TiktokenTokenizer cl100k_base).
+    Defaults to the embedder's own tokenizer (via EmbedderTokenizerAdapter).
     Returns a ChunkFitReport containing statistics and any violating chunks.
     """
     if not chunks:
@@ -55,7 +55,7 @@ def validate_chunks_fit(
             all_fit=True,
         )
 
-    tok = tokenizer if tokenizer is not None else TiktokenTokenizer()
+    tok = tokenizer if tokenizer is not None else EmbedderTokenizerAdapter(embedder)
 
     counts = [tok.count(c.embedding_text) for c in chunks]
     oversized: list[tuple[str, int]] = []
