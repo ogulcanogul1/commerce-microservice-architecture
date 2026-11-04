@@ -67,18 +67,16 @@ class HybridRetriever:
         bm25: BM25Retriever,
         k_rrf: int = 60,
         dense_weight: float = 0.5,
-        bm25_weight: float = 0.5,
     ) -> None:
-        if dense_weight < 0 or bm25_weight < 0:
-            raise ValueError("Weights must be non-negative")
-        if dense_weight == 0 and bm25_weight == 0:
-            raise ValueError("At least one weight must be greater than 0")
+        if not (0.0 <= dense_weight <= 1.0):
+            raise ValueError(f"dense_weight must be between 0.0 and 1.0, got {dense_weight}")
 
         self.dense = dense
         self.bm25 = bm25
         self.k_rrf = k_rrf
         self.dense_weight = dense_weight
-        self.bm25_weight = bm25_weight
+        # BM25 weight is automatically the complement: (1.0 - dense_weight)
+        self.bm25_weight = 1.0 - dense_weight
         self.chunks: list[Chunk] = []
 
     def index(self, chunks: Sequence[Chunk]) -> None:

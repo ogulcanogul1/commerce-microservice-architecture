@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from app.rag.chunking.models import Chunk, ChunkStrategy
@@ -153,13 +154,15 @@ def test_hybrid_retriever_custom_weights():
     dense = DenseRetriever(embedder)
     bm25 = BM25Retriever()
 
-    # Dense %80, BM25 %20 ağırlık
+    # Dense %80, BM25 otomatik olarak %20 (1.0 - 0.8)
     hybrid = HybridRetriever(
         dense,
         bm25,
         dense_weight=0.8,
-        bm25_weight=0.2,
     )
+    assert hybrid.dense_weight == 0.8
+    assert np.isclose(hybrid.bm25_weight, 0.2)
+
     chunks = create_sample_chunks()
     hybrid.index(chunks)
 
@@ -167,11 +170,11 @@ def test_hybrid_retriever_custom_weights():
     assert len(res) == 3
     assert res[0].id == "c1"
 
-    # Negatif ağırlık hata fırlatmalı
-    with pytest.raises(ValueError, match="non-negative"):
+    # [0.0, 1.0] aralığı dışındaki ağırlıklar hata fırlatmalı
+    with pytest.raises(ValueError, match="between 0.0 and 1.0"):
         HybridRetriever(dense, bm25, dense_weight=-0.1)
 
-    # İki ağırlık birden 0 olamaz
-    with pytest.raises(ValueError, match="greater than 0"):
-        HybridRetriever(dense, bm25, dense_weight=0.0, bm25_weight=0.0)
+    with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+        HybridRetriever(dense, bm25, dense_weight=1.5)
+
 
