@@ -59,17 +59,26 @@ class DenseRetriever:
 
 
 class HybridRetriever:
-    """Hybrid retriever combining Dense and BM25 search via Reciprocal Rank Fusion (RRF)."""
+    """Hybrid retriever combining Dense and BM25 search via Weighted Reciprocal Rank Fusion (RRF)."""
 
     def __init__(
         self,
         dense: DenseRetriever,
         bm25: BM25Retriever,
         k_rrf: int = 60,
+        dense_weight: float = 0.5,
+        bm25_weight: float = 0.5,
     ) -> None:
+        if dense_weight < 0 or bm25_weight < 0:
+            raise ValueError("Weights must be non-negative")
+        if dense_weight == 0 and bm25_weight == 0:
+            raise ValueError("At least one weight must be greater than 0")
+
         self.dense = dense
         self.bm25 = bm25
         self.k_rrf = k_rrf
+        self.dense_weight = dense_weight
+        self.bm25_weight = bm25_weight
         self.chunks: list[Chunk] = []
 
     def index(self, chunks: Sequence[Chunk]) -> None:
@@ -79,9 +88,9 @@ class HybridRetriever:
         self.bm25.index(self.chunks)
 
     def search(self, query: str, k: int = 5) -> list[Chunk]:
-        """Search top-k chunks by combining dense and lexical ranks using RRF.
+        """Search top-k chunks by combining dense and lexical ranks using Weighted RRF.
 
-        RRF score = sum(1.0 / (k_rrf + rank_m)) for each ranking method m.
+        RRF score = sum(weight_m * (1.0 / (k_rrf + rank_m))) for each ranking method m.
         """
         if not self.chunks or not query.strip():
             return []
@@ -96,10 +105,10 @@ class HybridRetriever:
         index_order = {c.id: i for i, c in enumerate(self.chunks)}
 
         for rank, c in enumerate(dense_results, start=1):
-            rrf_scores[c.id] += 1.0 / (self.k_rrf + rank)
+            rrf_scores[c.id] += self.dense_weight * (1.0 / (self.k_rrf + rank))
 
         for rank, c in enumerate(bm25_results, start=1):
-            rrf_scores[c.id] += 1.0 / (self.k_rrf + rank)
+            rrf_scores[c.id] += self.bm25_weight * (1.0 / (self.k_rrf + rank))
 
         # Deterministik sıralama: yüksek RRF skoru ilk, eşitlikte korpus sırası
         sorted_ids = sorted(

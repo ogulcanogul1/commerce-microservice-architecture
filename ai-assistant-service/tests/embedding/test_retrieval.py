@@ -146,3 +146,32 @@ def test_hybrid_search_by_budget():
     assert len(results) <= 2
     total_tokens = sum(tokenizer.count(c.text) for c in results)
     assert total_tokens <= 15
+
+
+def test_hybrid_retriever_custom_weights():
+    embedder = FakeEmbedder()
+    dense = DenseRetriever(embedder)
+    bm25 = BM25Retriever()
+
+    # Dense %80, BM25 %20 ağırlık
+    hybrid = HybridRetriever(
+        dense,
+        bm25,
+        dense_weight=0.8,
+        bm25_weight=0.2,
+    )
+    chunks = create_sample_chunks()
+    hybrid.index(chunks)
+
+    res = hybrid.search("iade kosullari", k=3)
+    assert len(res) == 3
+    assert res[0].id == "c1"
+
+    # Negatif ağırlık hata fırlatmalı
+    with pytest.raises(ValueError, match="non-negative"):
+        HybridRetriever(dense, bm25, dense_weight=-0.1)
+
+    # İki ağırlık birden 0 olamaz
+    with pytest.raises(ValueError, match="greater than 0"):
+        HybridRetriever(dense, bm25, dense_weight=0.0, bm25_weight=0.0)
+
