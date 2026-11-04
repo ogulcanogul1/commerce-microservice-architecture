@@ -30,9 +30,15 @@ class LocalEmbedder(Embedder):
     ) -> None:
         self.config = config
         self._model_id = config.model_id()
+
+        # E5 model ailesi (örn. intfloat/multilingual-e5-small) sorgu ve dokümanlar için
+        # zorunlu 'query: ' ve 'passage: ' önekleri bekler. Model adında 'e5' geçip geçmediğini denetliyoruz.
         self.is_e5 = "e5" in config.model.lower()
 
-        # Dimension defaults based on model family
+        # Vektör boyutu (dimension): Konfigürasyondan gelmediyse model tipine göre varsayılan atıyoruz.
+        # - BGE-M3 modelleri: 1024 boyut
+        # - E5-small modelleri: 384 boyut
+        # - Diğer genel açık kaynak modeller: 768 boyut
         if config.dimensions is not None:
             self._dimensions = config.dimensions
         elif "bge-m3" in config.model.lower():
@@ -42,7 +48,8 @@ class LocalEmbedder(Embedder):
         else:
             self._dimensions = 768
 
-        # Max input tokens
+        # Maksimum girdi token limiti:
+        # BGE-M3 uzun metinleri (8192 token) desteklerken, E5-small en fazla 512 token alabilir.
         if "bge-m3" in config.model.lower():
             self._max_input_tokens = 8192
         elif self.is_e5:
@@ -50,19 +57,26 @@ class LocalEmbedder(Embedder):
         else:
             self._max_input_tokens = 2048
 
+        # Yerel sunucu adresi (Ollama / vLLM / llama.cpp vb.)
         self.base_url = base_url or settings.LOCAL_LLM_BASE_URL
+
+        # Ağır PyTorch/sentence-transformers modelini belleğe hemen yüklememek için
+        # başlangıçta None bırakıyoruz (Lazy Loading - Tembel Yükleme).
         self._st_model: Any = None
         self.client: Any = None
 
         if client is not None:
+            # Testlerde dışarıdan mock client enjekte etmek için kullanılır.
             self.client = client
         elif self.base_url:
+            # Eğer bir URL tanımlıysa (örn. http://localhost:11434/v1), OpenAI istemcisi
+            # bu yerel adrese yönlendirilir (Ollama / vLLM OpenAI API formatını destekler).
             self.client = openai.OpenAI(
                 base_url=self.base_url,
                 api_key="local-dummy-key",
             )
         else:
-            # In-process sentence-transformers mode (lazy loaded)
+            # base_url yoksa, model process içinde sentence-transformers ile çalıştırılacaktır.
             pass
 
     @property
@@ -78,8 +92,13 @@ class LocalEmbedder(Embedder):
         return self._max_input_tokens
 
     def _get_st_model(self) -> Any:
+        # Model henüz belleğe alınmadıysa ilk çağrıda yüklenir (Lazy Loading).
         if self._st_model is None:
             try:
+                # Neden dosyanın en tepesinde import etmiyoruz?
+                # Çünkü sentence-transformers devasa bir PyTorch kütüphanesidir (~2 GB).
+                # Kullanıcı sadece OpenAI veya Gemini kullanacaksa servisi gereksiz yormasın,
+                # sadece bu yerel mod çağrıldığında dinamik olarak içeriye alınsın.
                 from sentence_transformers import SentenceTransformer
 
                 self._st_model = SentenceTransformer(self.config.model)
@@ -92,11 +111,14 @@ class LocalEmbedder(Embedder):
         return self._st_model
 
     def _apply_doc_prefix(self, text: str) -> str:
+        # Multilingual-E5 modeli dokümanları embed ederken 'passage: ' önekini şart koşar.
+        # Bu önek olmazsa model dokümanı doğru vektör uzayına yerleştiremez.
         if self.is_e5 and not text.startswith("passage: "):
             return f"passage: {text}"
         return text
 
     def _apply_query_prefix(self, text: str) -> str:
+        # Multilingual-E5 modeli arama sorgularını embed ederken 'query: ' önekini şart koşar.
         if self.is_e5 and not text.startswith("query: "):
             return f"query: {text}"
         return text
@@ -105,12 +127,16 @@ class LocalEmbedder(Embedder):
         if not texts:
             return np.empty((0, self._dimensions), dtype=np.float32)
 
+        # Boş string ("") veya sadece boşluk ("   ") içeren hatalı chunk'ları filtrele
         validate_non_empty_texts(texts)
+
+        # Gerekli ise dokümanlara 'passage: ' önekini ekle
         prefixed_texts = [self._apply_doc_prefix(t) for t in texts]
 
         all_vectors: list[list[float]] = []
 
         if self.client is not None:
+            # 1. YOL: Harici yerel HTTP sunucusu (Ollama, vLLM) üzerinden batching & retry ile çağır
             for batch in batched(prefixed_texts, self.config.batch_size):
                 kwargs: dict[str, Any] = {
                     "model": self.config.model,
@@ -124,6 +150,7 @@ class LocalEmbedder(Embedder):
                     all_vectors.append(item.embedding)
             matrix = np.array(all_vectors, dtype=np.float32)
         else:
+            # 2. YOL: Python process'i içinde yerel sentence-transformers modeliyle doğrudan CPU/GPU'da hesapla
             st_model = self._get_st_model()
             matrix = st_model.encode(
                 prefixed_texts,
@@ -132,15 +159,19 @@ class LocalEmbedder(Embedder):
                 show_progress_bar=False,
             ).astype(np.float32)
 
+        # Cosine similarity aramalarında iç çarpım (dot product) yapabilmek için vektörleri L2-normalize et
         if self.config.normalize:
             return l2_normalize(matrix)
         return matrix
 
     def embed_query(self, text: str) -> np.ndarray:
         validate_non_empty_texts([text])
+
+        # Gerekli ise sorgunun başına 'query: ' önekini ekle
         prefixed_query = self._apply_query_prefix(text)
 
         if self.client is not None:
+            # Harici yerel HTTP sunucusu üzerinden sorguyu embed et
             kwargs: dict[str, Any] = {
                 "model": self.config.model,
                 "input": [prefixed_query],
@@ -153,6 +184,7 @@ class LocalEmbedder(Embedder):
                 return l2_normalize(vec)
             return vec
 
+        # Process-içi sentence-transformers modeli ile sorguyu hesapla
         st_model = self._get_st_model()
         vec = st_model.encode(
             prefixed_query,
