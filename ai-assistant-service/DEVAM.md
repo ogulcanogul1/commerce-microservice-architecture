@@ -26,9 +26,10 @@
    - `compare.py`: CLI benchmark runner ve otomatik Markdown + JSON raporlama.
 
 ### Beklenmeyen Bulgular ve Sürprizler (Findings):
-1. **RRF'in Çarpıcı Etkisi:** Sahte model üzerinde bile Reciprocal Rank Fusion (Hybrid), `Hit@1` başarımını Dense'e göre **%66.7'den %88.1'e (+%21.4)** çıkarmış ve tek başına BM25'i (%81.0) geride bırakmıştır. Anlamsal ve sözcüksel aramanın birbirini tamamladığı kanıtlanmıştır.
-2. **Korpus Doygunluğu (Saturation):** Mevcut 3 doküman ve 42 soruluk Golden Set'te hem BM25 hem de modeller `Hit@3` seviyesinde **%97.6** skoruna ulaşarak doymuştur. 5 puandan küçük farkların gürültü olduğu doğrulanmış ve raporda otomatik uyarı mekanizması devreye alınmıştır.
-3. **Context Window Güvenliği:** `DefaultChunker`'ın 300 token bütçesiyle ürettiği hiçbir parça, en dar limitli model olan `multilingual-e5-small`'un 512 token sınırını dahi aşmamıştır (maksimum chunk < 350 token).
+1. **RRF'in Çarpıcı Etkisi:** `FakeEmbedder` ile yapılan pilot koşuda bile Reciprocal Rank Fusion (Hybrid), `Hit@1` başarımını Dense'e göre **%66.7'den %88.1'e (+%21.4)** çıkarmış ve tek başına BM25'i (%81.0) geride bırakmıştır. Anlamsal ve sözcüksel aramanın birbirini tamamladığı pratik olarak gözlemlenmiştir.
+2. **Yapısal Korpus Doygunluğu (Saturation):** Mevcut 3 doküman ve toplam 8 chunk'lık korpusta `Hit@3` seviyesinde **%97.6 - %100** skoruna ulaşılması korpusun küçüklüğünden kaynaklanan yapısal bir durumdur. Gerçek ayrım büyük ürün ve politika korpusu ile API anahtarları sağlandığında ortaya çıkacaktır.
+3. **Model Seçimi Durumu (Provisional Baseline):** Ortamda OpenAI/Gemini anahtarları bulunmadığı için ilk koşu `fake/deterministic-bow` ile yapılmıştır. OpenAI `text-embedding-3-small` seçimi deneysel kesin zafer değil, teorik kriterlere dayalı geçici başlangıç adayıdır.
+4. **Context Window Güvenliği:** `DefaultChunker`'ın 300 token bütçesiyle ürettiği hiçbir parça, en dar limitli model olan `multilingual-e5-small`'un 512 token sınırını dahi aşmamıştır (maksimum chunk < 350 token).
 
 ---
 
