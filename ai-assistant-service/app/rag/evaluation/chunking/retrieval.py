@@ -27,6 +27,33 @@ class Retriever(Protocol):
         ...
 
 
+def select_chunks_by_budget(
+    ranked_chunks: Sequence[Chunk],
+    budget: int,
+    tokenizer: Tokenizer,
+) -> list[Chunk]:
+    """Accumulate ranked chunks up to a strict token budget.
+
+    Always includes at least the first chunk if ranked_chunks is not empty.
+    Stops as soon as adding the next chunk exceeds the budget.
+    """
+    if not ranked_chunks or budget <= 0:
+        return []
+
+    selected: list[Chunk] = []
+    accumulated_tokens = 0
+
+    for chunk in ranked_chunks:
+        c_tokens = tokenizer.count(chunk.text)
+        if accumulated_tokens + c_tokens <= budget or not selected:
+            selected.append(chunk)
+            accumulated_tokens += c_tokens
+        else:
+            break
+
+    return selected
+
+
 class BM25Retriever:
     """In-memory lexical retriever using BM25Okapi with Turkish-aware tokenization."""
 
@@ -74,23 +101,9 @@ class BM25Retriever:
         if not self.chunks or self.bm25 is None or not query.strip() or budget <= 0:
             return []
 
-        q_tokens = self._tokenize(query)
-        scores = self.bm25.get_scores(q_tokens)
-        ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        ranked = self.search(query, k=len(self.chunks))
+        return select_chunks_by_budget(ranked, budget, tokenizer)
 
-        selected: list[Chunk] = []
-        accumulated_tokens = 0
-
-        for idx in ranked_indices:
-            chunk = self.chunks[idx]
-            c_tokens = tokenizer.count(chunk.text)
-            if accumulated_tokens + c_tokens <= budget or not selected:
-                selected.append(chunk)
-                accumulated_tokens += c_tokens
-            else:
-                break
-
-        return selected
 
 
 class QuestionResult(BaseModel):
