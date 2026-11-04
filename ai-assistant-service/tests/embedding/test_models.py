@@ -3,12 +3,19 @@ import pytest
 from pydantic import ValidationError
 
 from app.rag.embedding.base import Embedder, l2_normalize
-from app.rag.embedding.models import EmbedKind, EmbeddingConfig
+from app.rag.embedding.models import EmbedKind, EmbeddingConfig, EmbeddingProvider
 
 
 def test_embed_kind_values():
     assert EmbedKind.QUERY == "query"
     assert EmbedKind.DOCUMENT == "document"
+
+
+def test_embedding_provider_enum_values():
+    assert EmbeddingProvider.OPENAI == "openai"
+    assert EmbeddingProvider.GEMINI == "gemini"
+    assert EmbeddingProvider.LOCAL == "local"
+    assert EmbeddingProvider.FAKE == "fake"
 
 
 def test_embedding_config_defaults_and_model_id():
