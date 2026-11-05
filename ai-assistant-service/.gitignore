@@ -15,4 +15,5 @@ scratch/
 eval/chunking/reports/
 eval/embedding/cache/
 eval/embedding/reports/
+eval/qdrant/reports/
 

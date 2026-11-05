@@ -95,10 +95,12 @@ Teknolojiler sadece popüler oldukları için eklenmez. Her mimari karar doğrud
 | `shipping-service` | `com.dgl.shipping` | **8085** | `shipping_db` (5432) | Kargo gönderimi, takip kodu, lojistik simülasyonu |
 | `customer-service` | `com.dgl.customer` | **8086** | `customer_db` (5432) | Müşteri profilleri, adresler, kullanıcı tercihleri |
 | `notification-service` | `com.dgl.notification` | **8087** | `notification_db` (5432) | Olay dinleme, E-posta / SMS bildirim simülasyonu |
+| `ai-assistant-service` | `app` | **8089** | Qdrant (6333) | AI asistan servisi, RAG doküman işleme ve vektör arama |
 
 ### Altyapı ve Destek Servisleri Port Dağılımı:
 | Altyapı Bileşeni | Varsayılan Port | Açıklama |
 | :--- | :--- | :--- |
+| `qdrant` | **6333** (gRPC: 6334) | Vektör veritabanı (Dense & Sparse hibrit arama, Web Dashboard) |
 | `kafka-connect` (Debezium) | **8088** (Konteyner: 8083) | Change Data Capture (CDC) motoru, Transactional Outbox olay akışı (REST API) |
 | `kafka-ui` | **8090** | Apache Kafka web yönetim konsolu |
 | `prometheus` | **9090** | Mikroservis metrik toplayıcısı (`/actuator/prometheus`) |

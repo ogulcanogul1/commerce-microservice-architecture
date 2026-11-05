@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSIONS: int | None = None
 
+    # Qdrant Vector Store Configuration
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
+    QDRANT_COLLECTION_PREFIX: str = "commerce_docs"
+
     # Pydantic Settings
     model_config = SettingsConfigDict(
         env_file=".env",
