@@ -23,3 +23,7 @@ Bu belge; kalıcı vektör veritabanı (Qdrant), koleksiyon şeması, hybrid ara
   - **Çift Vektörlü Koleksiyon Şeması (Named Vectors):** `dense` (`Distance.COSINE`) ve `sparse` (`Modifier.IDF`) alanları tanımlandı. Mevcut koleksiyon varsa vektör boyutu doğrulandı; uyuşmazlıkta sessizce ezmek yerine fail-fast ile `ValueError` fırlatıldı.
   - **Batching ve Idempotent Upsert:** `upsert_batch_size` dilimleriyle partili yazma sağlandı. `uuid5` sayesinde aynı chunk tekrar yazıldığında point sayısı değişmedi (idempotency).
   - **Upsert-then-Delete Güvencesi (Karar 7):** `delete_stale` metodu ile yalnızca hedef dosyanın güncel olmayan (`doc_hash != keep_doc_hash`) point'lerinin silinmesi garanti altına alındı; diğer dosyalara dokunulmadı.
+- **Adım 4 (Arama ve Retriever Adaptörü):**
+  - **Sunucu Taraflı RRF Hybrid Füzyon (Karar 2):** İstemci tarafı füzyon yerine, Qdrant'ın `query_points(prefetch=[dense, sparse], query=FusionQuery(fusion=Fusion.RRF))` API'si kullanıldı. Prefetch limiti `max(k * 4, 20)` olarak belirlendi; sorguda sparse token yoksa otomatik dense fallback uygulandı.
+  - **Retriever Protokol Uyumu:** `QdrantRetriever` sınıfı mevcut `Retriever` protokolüne (`index`, `search`, `search_by_budget`) tam uyumlu yazıldı. Bütçe biriktirmede `select_chunks_by_budget` ortak yardımcısı kopyalanmadan yeniden kullanıldı.
+  - **Filtre ve Uç Durum Yönetimi:** `source_file` ve `page_start/end` filtreleri `SearchFilter` ile izole edildi; boş sorgularda fail-safe olarak boş liste dönüldü. Mevcut tüm testlerin yeşil olduğu korundu.
