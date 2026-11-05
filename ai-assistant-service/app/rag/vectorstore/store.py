@@ -398,3 +398,6 @@ class QdrantStore:
         if points and points[0].payload:
             return points[0].payload.get("doc_hash")
         return None
+
+
+

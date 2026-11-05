@@ -52,3 +52,20 @@ class SearchHit(BaseModel):
     )
 
     model_config = {"frozen": True}
+
+
+class SyncReport(BaseModel):
+    """Incremental sync işlemi sonucunda üretilen özet rapor."""
+
+    created: int = Field(default=0, description="Yeni oluşturulan doküman sayısı")
+    skipped: int = Field(default=0, description="Değişmediği için atlanan doküman sayısı")
+    replaced: int = Field(default=0, description="Güncellenen doküman sayısı")
+    pruned: int = Field(default=0, description="Klasörde olmadığı için silinen doküman sayısı")
+    failed: list[tuple[str, str]] = Field(
+        default_factory=list,
+        description="İşlenemeyen dosyalar ve hata gerekçeleri: (dosya_yolu, hata_mesaji)",
+    )
+
+    def total_processed(self) -> int:
+        """İşleme alınan (başarılı) toplam dosya sayısı."""
+        return self.created + self.skipped + self.replaced
