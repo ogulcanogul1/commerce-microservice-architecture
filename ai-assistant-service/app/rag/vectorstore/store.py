@@ -1,11 +1,11 @@
 """Qdrant vektör veritabanı yönetim ve yazma katmanı (QdrantStore).
 
-Bu modül, Qdrant istemcisi ile doğrudan etkileşime girerek:
-  1. Çift vektörlü (dense + sparse) koleksiyon oluşturma ve boyut doğrulama,
-  2. Arama performansını artıran payload indekslerini kurma,
-  3. Doküman parçalarını (Chunk) vektörleri ile birlikte toplu (batch) yazma,
-  4. Doküman güncellemelerinde eski versiyonları temizleme (delete_stale)
-sorumluluklarını yerine getirir.
+Bu modül, Qdrant istemcisi ile doğrudan etkileşime girerek şu temel sorumlulukları üstlenir:
+  1. Çift vektörlü (Named Vectors: 'dense' + 'sparse') koleksiyon şemasını kurma ve boyut doğrulama.
+  2. Filtreleme sorgularını milisaniyelere indiren payload indekslerini (B-Tree/Keyword) açma.
+  3. Doküman parçalarını (Chunk), dense vektörleri ve otomatik üretilen BM25 sparse vektörleri ile
+     birlikte partiler halinde (batching) veritabanına yazma (upsert).
+  4. Doküman güncellemelerinde veri kaybını önleyen "Upsert-then-Delete" mantığıyla eski point'leri silme (delete_stale).
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ from app.rag.vectorstore.sparse import SparseEncoder
 
 
 class QdrantStore:
-    """Qdrant vektör deposu için koleksiyon, indeksleme ve yazma yöneticisi.
+    """Qdrant vektör deposu için koleksiyon oluşturma, indeksleme ve yazma yöneticisi.
 
     Bu sınıf doğrudan Qdrant sunucusuyla (veya bellek içi ':memory:' istemcisiyle)
-    konuşur. Dense (vektör) ve Sparse (BM25) olmak üzere iki adlandırılmış vektör
-    şeması kurar. Arama mantığı bu sınıfta yer almaz; bu sınıf yalnızca depolama,
-    güncelleme ve silme (CRUD) işlemlerinden sorumludur.
+    haberleşir. 'dense' (anlamsal arama) ve 'sparse' (BM25 kelime araması) olmak
+    üzere iki vektör alanı açar. Arama (search) mantığı bu sınıfta yer almaz; bu
+    sınıf yalnızca depolama, güncelleme ve silme (CRUD) işlemlerinden sorumludur.
     """
 
     def __init__(
@@ -40,33 +40,43 @@ class QdrantStore:
         sparse_encoder: SparseEncoder | None = None,
         collection_name: str | None = None,
     ) -> None:
-        """QdrantStore başlatıcı.
+        """QdrantStore başlatıcı metodu.
 
         Args:
-            client: QdrantClient örneği (bağlantı kurulmuş sunucu veya ':memory:').
-            config: Qdrant konfigürasyon nesnesi (batch_size, prefix, timeout).
-            embedder: Vektör boyutu ve adlandırma için Embedder nesnesi (opsiyonel).
-            sparse_encoder: BM25 sparse vektör kodlayıcısı (varsayılan: SparseEncoder()).
-            collection_name: Koleksiyon adı (boşsa embedder üzerinden dinamik türetilir).
+            client: Qdrant istemcisi (gerçek HTTP/gRPC sunucu veya testler için ':memory:').
+            config: Qdrant ayarları (batch boyutu, koleksiyon ön eki, timeout).
+            embedder: Boyut ve model adını öğrenmek için kullanılan Embedder nesnesi (opsiyonel).
+            sparse_encoder: Metinleri BM25 sparse vektörlerine dönüştüren kodlayıcı (varsayılan: SparseEncoder()).
+            collection_name: Özel koleksiyon adı (belirtilmezse embedder modelinden otomatik türetilir).
         """
         self.client = client
         self.config = config
         self.embedder = embedder
+        # Eğer dışarıdan bir sparse_encoder verilmediyse varsayılan ayarlarla oluştur
         self.sparse_encoder = sparse_encoder or SparseEncoder()
+
+        # Koleksiyon adını belirle: Özel isim verilmişse onu al, yoksa embedder'dan türet
         self._collection_name = collection_name
         if not self._collection_name and self.embedder is not None:
             self._collection_name = self.config.collection_name(self.embedder)
 
     @property
     def collection_name(self) -> str:
-        """Etkin koleksiyon adını döner. Tanımlı değilse açık hata fırlatır."""
+        """Etkin koleksiyon adını döner.
+
+        Eğer koleksiyon adı henüz bilinmiyorsa ve embedder tanımlıysa otomatik türetir;
+        hiçbiri yoksa fail-fast prensibiyle açıkça ValueError fırlatır.
+
+        Returns:
+            Koleksiyon adı string'i (örn: 'commerce_docs__openai_text_embedding_3_small_1536').
+        """
         if not self._collection_name:
             if self.embedder is not None:
                 self._collection_name = self.config.collection_name(self.embedder)
             else:
                 raise ValueError(
                     "Koleksiyon adı henüz belirlenmemiş. "
-                    "Lütfen 'ensure_collection(embedder)' çağırın veya başlatıcıda bir embedder sağlayın."
+                    "Lütfen 'ensure_collection(embedder)' çağırın veya başlangıçta bir embedder sağlayın."
                 )
         return self._collection_name
 
@@ -75,22 +85,26 @@ class QdrantStore:
         embedder: Embedder | None = None,
         collection_name: str | None = None,
     ) -> str:
-        """Koleksiyon yoksa oluşturur; varsa vektör boyutunu doğrular.
+        """Koleksiyon yoksa Qdrant'ta oluşturur; varsa vektör boyutunu doğrular.
 
-        Karar 5: Koleksiyon adı embedder'a göre dinamiktir ({prefix}__{model_slug}_{dim})
-        veya doğrudan collection_name parametresiyle sabitlenebilir.
-        Eğer aynı isimde bir koleksiyon zaten varsa, mevcut koleksiyonun boyutu kontrol edilir.
-        Boyut uyuşmazlığı varsa sessizce yeniden oluşturmak yerine açık hata verir.
+        İşlem Adımları:
+          1. Hedef embedder ve koleksiyon adı tespit edilir.
+          2. client.collection_exists(col_name) ile veritabanı kontrol edilir.
+          3. Koleksiyon ZATEN VARSA:
+             - Mevcut koleksiyonun 'dense' vektör boyutu kontrol edilir.
+             - Eğer veritabanındaki boyut (örn. 768) ile embedder'ın boyutu (örn. 1536)
+               uyuşmuyorsa, verilerin bozulmasını önlemek için ValueError fırlatılır (Karar 5).
+          4. Koleksiyon YOKSA:
+             - client.create_collection çağrılarak iki adet adlandırılmış vektör açılır:
+               a) 'dense': Boyut = embedder.dimensions, Uzaklık Metriği = Cosine
+               b) 'sparse': Qdrant sunucu taraflı BM25 IDF hesaplayıcı (Modifier.IDF)
 
         Args:
             embedder: Boyut ve model bilgisi alınacak embedder. Sağlanmazsa self.embedder kullanılır.
-            collection_name: Özel koleksiyon adı (opsiyonel).
+            collection_name: Özel bir koleksiyon adı kullanılmak istenirse belirtilir.
 
         Returns:
-            Oluşturulan veya doğrulanan koleksiyonun adı (str).
-
-        Raises:
-            ValueError: Mevcut koleksiyonun vektör boyutu ile embedder boyutu uyuşmuyorsa.
+            Oluşturulan veya doğrulanmış koleksiyon adı (str).
         """
         target_embedder = embedder or self.embedder
         if target_embedder is None:
@@ -105,34 +119,38 @@ class QdrantStore:
         col_name = self._collection_name
         dim = target_embedder.dimensions
 
-        # Koleksiyon zaten mevcut mu?
+        # 1. Adım: Koleksiyon veritabanında zaten mevcut mu?
         if self.client.collection_exists(col_name):
             info = self.client.get_collection(col_name)
-            # Mevcut dense vektör boyutunu doğrula
             existing_dim = None
+
+            # Qdrant yapılandırmasından 'dense' vektörünün boyutunu oku
             vectors_param = info.config.params.vectors
             if isinstance(vectors_param, dict) and "dense" in vectors_param:
                 existing_dim = vectors_param["dense"].size
             elif hasattr(vectors_param, "size"):
                 existing_dim = vectors_param.size
 
+            # Boyut uyuşmazlığı kontrolü (Karar 5: Sessizce ezme yok, fail-fast)
             if existing_dim is not None and existing_dim != dim:
                 raise ValueError(
                     f"Koleksiyon boyutu uyuşmazlığı: '{col_name}' koleksiyonu {existing_dim} boyutunda, "
                     f"ancak embedder {dim} boyutunda vektörler bekliyor. "
                     "Eski verilerin bozulmasını önlemek için farklı bir model/boyut koleksiyonu kullanılmalıdır."
                 )
-            return col_name
+            return col_name  # Boyutlar uyumlu, mevcut koleksiyon adı döndürülür
 
-        # Koleksiyon yoksa: named dense + sparse vektör şemasıyla oluştur
+        # 2. Adım: Koleksiyon yoksa çift vektörlü (dense + sparse) olarak oluştur
         self.client.create_collection(
             collection_name=col_name,
+            # Dense Vektör: Semantik anlam araması için Cosine uzaklığı
             vectors_config={
                 "dense": models.VectorParams(
                     size=dim,
                     distance=models.Distance.COSINE,
                 )
             },
+            # Sparse Vektör: BM25 anahtar kelime araması ve sunucu taraflı IDF hesabı
             sparse_vectors_config={
                 "sparse": models.SparseVectorParams(
                     modifier=models.Modifier.IDF,
@@ -143,12 +161,13 @@ class QdrantStore:
         return col_name
 
     def ensure_payload_indexes(self) -> None:
-        """Filtreleme performansını artırmak için payload alanlarına indeks tanımlar.
+        """Sorgularda filtreleme hızını artırmak için payload alanlarına indeks tanımlar.
 
+        PostgreSQL'deki 'CREATE INDEX' komutuna benzer şekilde çalışır.
         İndekslenen alanlar:
-          - source_file (KEYWORD): Dosya bazlı filtrelemeler için.
-          - doc_hash (KEYWORD): Eski doküman parçalarını tek sorguda bulup silmek için.
-          - page_start (INTEGER): Sayfa aralığı filtrelemeleri için.
+          - source_file (KEYWORD): 'source_file = "sozlesme.pdf"' filtreleri için.
+          - doc_hash (KEYWORD): Doküman güncellemelerinde eski point'leri tek sorguda silmek için.
+          - page_start (INTEGER): 'page_start >= 1 AND page_start <= 3' aralık filtreleri için.
         """
         col_name = self.collection_name
         indexes = [
@@ -164,7 +183,7 @@ class QdrantStore:
                     field_schema=field_schema,
                 )
             except Exception:
-                # İndeks zaten mevcutsa veya yerel bellek uyarısı gelirse yoksay
+                # İndeks zaten mevcutsa veya yerel ':memory:' modu uyarı verirse görmezden gel
                 pass
 
     def upsert_chunks(
@@ -174,44 +193,54 @@ class QdrantStore:
         doc_hash: str,
         ingested_at: str | None = None,
     ) -> int:
-        """Chunk'ları dense ve sparse vektörleri ile birlikte Qdrant'a yazar.
+        """Doküman parçalarını (Chunk) vektörleri ve metadata'sı ile birlikte Qdrant'a yazar.
 
         İşlem Adımları:
-          1. Chunk sayısı ile dense vektör sayısının eşitliği doğrulanır.
-          2. Her chunk için SparseEncoder ile BM25 sparse vektörü hesaplanır.
-          3. PointStruct nesneleri oluşturulur (id = uuid5(chunk.id)).
-          4. upsert_batch_size partilerine bölünerek Qdrant'a gönderilir.
+          1. EŞİTLİK DOĞRULAMASI: Her 1 Chunk için tam olarak 1 adet Dense Vektör olmalıdır.
+             (len(chunks) != len(dense_vectors) ise kayma/eşleşme hatası olmaması için fail-fast yapılır).
+          2. METADATA VE SPARSE HESABI:
+             - Her chunk'ın metninden SparseEncoder ile BM25 (indices, values) üretilir.
+             - chunk.id'den deterministik uuid5 point kimliği oluşturulur.
+             - chunk_to_payload ile disk tasarruflu (embedding_text hariç) payload hazırlanır.
+          3. TOPLU YAZMA (BATCHING):
+             - Point'ler config.upsert_batch_size (örn: 128) boyutundaki gruplara bölünür.
+             - client.upsert(..., wait=True) ile veritabanına yazılır.
 
         Args:
-            chunks: Eklenecek doküman parçaları.
-            dense_vectors: Her bir chunk için hesaplanmış dense float vektörler.
-            doc_hash: Dokümanın güncel içerik karması (fingerprint).
-            ingested_at: ISO-8601 zaman damgası (boşsa şu anki UTC zamanı).
+            chunks: Eklenecek doküman parçaları listesi.
+            dense_vectors: Embedder tarafından bu chunk'lar için üretilmiş float vektörler.
+            doc_hash: Dokümanın o anki içeriğinin benzersiz parmak izi (fingerprint).
+            ingested_at: İsteğe bağlı ISO-8601 zaman damgası (boşsa anlık UTC zamanı).
 
         Returns:
-            Yazılan toplam chunk sayısı (int).
+            Veritabanına yazılan toplam point sayısı (int).
         """
+        # 1. Adım: Birebir eşleşme güvencesi (1 Chunk = 1 Dense Vector)
         if len(chunks) != len(dense_vectors):
             raise ValueError(
                 f"Chunk sayısı ({len(chunks)}) ile dense vektör sayısı ({len(dense_vectors)}) eşit olmalıdır."
             )
 
         if not chunks:
-            return 0
+            return 0  # Yazılacak veri yoksa 0 dön
 
         col_name = self.collection_name
         now_iso = ingested_at or datetime.now(timezone.utc).isoformat()
         embedder_model_id = self.embedder.model_id if self.embedder else "unknown"
 
+        # 2. Adım: Qdrant PointStruct nesnelerini oluştur
         points: list[models.PointStruct] = []
         for chunk, dense_vec in zip(chunks, dense_vectors):
+            # Deterministik UUID point kimliği (Karar 1)
             pid = chunk_point_id(chunk.id)
-            # Sparse BM25 vektörünü chunk metninden otomatik hesapla
+
+            # Chunk metninden BM25 sparse vektörünü üret
             sparse_indices, sparse_values = self.sparse_encoder.encode_document(chunk.embedding_text)
 
-            # Dense vektörü liste formatına getir
+            # Numpy dizisi geldiyse standart Python listesine çevir
             dense_list = dense_vec.tolist() if isinstance(dense_vec, np.ndarray) else list(dense_vec)
 
+            # Chunk modelini JSON payload'a çevir (embedding_text hariç tutularak disk tasarrufu sağlanır)
             payload = chunk_to_payload(
                 chunk,
                 doc_hash=doc_hash,
@@ -219,6 +248,7 @@ class QdrantStore:
                 ingested_at=now_iso,
             )
 
+            # Hem dense hem sparse vektörü tek bir point içinde birleştir
             point = models.PointStruct(
                 id=pid,
                 vector={
@@ -232,7 +262,7 @@ class QdrantStore:
             )
             points.append(point)
 
-        # upsert_batch_size partilerine bölerek Qdrant'a bas (wait=True: işlem tamamlanana kadar bekle)
+        # 3. Adım: Partiler halinde (Batching) Qdrant'a gönder (wait=True: diske yazılana kadar bekle)
         for batch in batched(points, self.config.upsert_batch_size):
             self.client.upsert(
                 collection_name=col_name,
@@ -240,16 +270,25 @@ class QdrantStore:
                 wait=True,
             )
 
-        return len(points)
+        return len(points)  # Toplam yazılan point sayısı döner
 
     def delete_stale(self, source_file: str, keep_doc_hash: str) -> None:
-        """Hedef dosyaya ait, ancak güncel doc_hash ile uyuşmayan eski point'leri siler.
+        """Güncellenen bir dokümanın eski versiyonuna ait point'leri siler.
 
-        Karar 7 (Upsert-then-Delete): Önce yeni chunk'lar başarıyla yazılır,
-        ardından bu metot çağrılarak eski versiyona ait point'ler temizlenir.
-        Böylece çökme veya elektrik kesintisi anında veri kaybı yaşanmaz.
+        Karar 7 (Upsert-then-Delete Prensibi):
+          Önce yeni versiyonun chunk'ları 'upsert_chunks' ile veritabanına yazılır.
+          İşlem başarıyla tamamlandıktan sonra bu metot çağrılarak:
+            - source_file == source_file (Sadece bu dosya)
+            - doc_hash != keep_doc_hash (Yeni hash DIŞINDAKİ tüm eski versiyonlar)
+          şartını sağlayan point'ler tek seferde silinir.
+          Bu sayede güncelleme sırasında sistem çökse dahi eski veriler kaybolmaz!
+
+        Args:
+            source_file: Temizlenecek dokümanın dosya yolu/adı (örn: 'sozlesme.pdf').
+            keep_doc_hash: Muhafaza edilecek (silinmeyecek) güncel doküman karması.
         """
         col_name = self.collection_name
+        # Filtre: Bu dosyaya ait olsun (must) AMA güncel hash'e sahip olmasın (must_not)
         filter_stale = models.Filter(
             must=[
                 models.FieldCondition(
@@ -271,7 +310,13 @@ class QdrantStore:
         )
 
     def delete_document(self, source_file: str) -> None:
-        """Belirtilen source_file'a ait tüm point'leri koleksiyondan tamamen siler."""
+        """Belirtilen source_file'a ait tüm parçaları koleksiyondan tamamen siler.
+
+        Bir PDF sistemden tamamen kaldırıldığında veya silindiğinde kullanılır.
+
+        Args:
+            source_file: Silinecek dokümanın dosya adı (örn: 'eski_kampanya.pdf').
+        """
         col_name = self.collection_name
         doc_filter = models.Filter(
             must=[
@@ -288,7 +333,14 @@ class QdrantStore:
         )
 
     def count(self, source_file: str | None = None) -> int:
-        """Koleksiyondaki toplam veya belirli bir dosyaya ait point sayısını döner."""
+        """Koleksiyondaki toplam veya belirli bir dosyaya ait point (vektör) sayısını döner.
+
+        Args:
+            source_file: Belirtilirse sadece o dosyanın point'leri sayılır; boşsa tüm koleksiyon.
+
+        Returns:
+            Kayıtlı point sayısı (int).
+        """
         col_name = self.collection_name
         count_filter = None
         if source_file:
@@ -301,6 +353,7 @@ class QdrantStore:
                 ]
             )
 
+        # exact=True: Tahmini değil, kesin gerçek sayıyı döner
         res = self.client.count(
             collection_name=col_name,
             count_filter=count_filter,
@@ -309,10 +362,19 @@ class QdrantStore:
         return res.count
 
     def get_doc_hash(self, source_file: str) -> str | None:
-        """Koleksiyonda o dosyaya ait kayıtlı doc_hash değerini döner.
+        """Koleksiyonda o dosyaya ait kayıtlı doc_hash (parmak izi) değerini okur.
+
+        Neden Scroll Kullanılıyor?
+          Tüm dokümanı veya tüm vektörleri bellekten çekmek yerine,
+          Qdrant'ın 'scroll' API'si ile sadece 1 adet point'in 'doc_hash' alanını
+          okur (limit=1, with_payload=['doc_hash']). Bu sayede sıfır ağ/bellek yüküyle
+          dokümanın değişip değişmediği kontrol edilir.
+
+        Args:
+            source_file: Kontrol edilecek doküman yolu (örn: 'sozlesme.pdf').
 
         Returns:
-            Kayıtlı hash string'i veya dosya/koleksiyon yoksa None.
+            Dokümanın kayıtlı doc_hash değeri (str) veya doküman/koleksiyon yoksa None.
         """
         col_name = self.collection_name
         if not self.client.collection_exists(col_name):
@@ -326,6 +388,7 @@ class QdrantStore:
                 )
             ]
         )
+        # Sadece 1 kayıt çek ve sadece 'doc_hash' payload alanını getir
         points, _ = self.client.scroll(
             collection_name=col_name,
             scroll_filter=doc_filter,
