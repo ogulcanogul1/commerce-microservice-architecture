@@ -144,6 +144,10 @@ class RagAnswerService:
         masked_q = ""
         has_pii = False
         pii_types: list[str] = []
+        retrieved_chunk_ids: list[str] = []
+        context_chunk_ids: list[str] = []
+        top_score: float | None = None
+        exc_occurred: Exception | None = None
 
         try:
             # -------------------------------------------------------------------------
@@ -371,11 +375,16 @@ class RagAnswerService:
             )
             return final_answer
 
+        except Exception as exc:
+            exc_occurred = exc
+            raise
+
         finally:
             # -------------------------------------------------------------------------
             # 8. ADIM: Yapılandırılmış Gözlemlenebilirlik (Structured Logging - Karar 13)
             # Güvenlik ve KVKK gereği kullanıcı sorusunun açık metni ASLA loglanmaz;
             # sadece soru uzunluğu, PII varlığı, gecikmeler ve token sayıları kaydedilir.
+            # Kesinti ve istisnalarda da durum='error' olarak her halükarda loglanır.
             # -------------------------------------------------------------------------
             total_latency_ms = (time.perf_counter() - t_total_start) * 1000
             if final_answer is not None:
@@ -407,3 +416,22 @@ class RagAnswerService:
                     log_data["correlation_id"] = correlation_id
 
                 logger.info("RAG Answer Generation completed: %s", log_data)
+            else:
+                log_data = {
+                    "event": "rag_answer",
+                    "status": "error",
+                    "error_type": type(exc_occurred).__name__ if exc_occurred else "Unknown",
+                    "question_len": len(question),
+                    "has_pii": has_pii,
+                    "pii_types": pii_types,
+                    "retrieved_chunk_ids": retrieved_chunk_ids,
+                    "context_chunk_ids": context_chunk_ids,
+                    "top_dense_score": top_score,
+                    "latency_retrieval_ms": round(retrieval_latency_ms, 2),
+                    "latency_llm_ms": round(llm_latency_ms, 2),
+                    "latency_total_ms": round(total_latency_ms, 2),
+                }
+                if correlation_id:
+                    log_data["correlation_id"] = correlation_id
+
+                logger.error("RAG Answer Generation failed with error: %s", log_data)

@@ -440,3 +440,32 @@ async def test_service_usage_aggregated_across_attempts(
 
     assert result.usage.input_tokens == call1_in + call2_in
     assert result.usage.output_tokens == call1_out + call2_out
+
+
+@pytest.mark.anyio
+async def test_service_logs_on_exception(
+    memory_store: QdrantStore,
+    fake_embedder: FakeEmbedder,
+    generation_config: GenerationConfig,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """İstisna (timeout, LLM hatası) durumunda da her durumda yapılandırılmış log yazılmalıdır."""
+    import logging
+
+    fake_llm = FakeLLMProvider(raise_on_call=TimeoutError("LLM call timed out"))
+    service = RagAnswerService(
+        store=memory_store,
+        embedder=fake_embedder,
+        llm=fake_llm,
+        tokenizer=WhitespaceTokenizer(),
+        config=generation_config,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(TimeoutError):
+            await service.answer("İade süresi?", correlation_id="test-corr-fail")
+
+    # Loglarda hata satırı bulunmalı ve soru metni sızmamalı
+    assert any("RAG Answer Generation failed with error" in r.message for r in caplog.records)
+    assert any("test-corr-fail" in r.message for r in caplog.records)
+    assert not any("İade süresi?" in r.message for r in caplog.records)
