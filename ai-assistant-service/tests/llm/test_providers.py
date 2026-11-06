@@ -43,7 +43,8 @@ async def test_openai_provider_passes_max_tokens_and_parses_usage(
     # max_tokens kwargs doğrula
     mock_create.assert_called_once()
     _, kwargs = mock_create.call_args
-    assert kwargs["max_tokens"] == 250
+    assert kwargs["max_completion_tokens"] == 250
+    assert "max_tokens" not in kwargs
     assert kwargs["temperature"] == 0.1
 
 

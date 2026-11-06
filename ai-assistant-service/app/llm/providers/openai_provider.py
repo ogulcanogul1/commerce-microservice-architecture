@@ -71,7 +71,8 @@ class OpenAIProvider(BaseLLMProvider):
         }
 
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            # max_tokens eski; yeni modeller yalnızca max_completion_tokens kabul eder
+            kwargs["max_completion_tokens"] = max_tokens
 
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
