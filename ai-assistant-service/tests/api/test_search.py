@@ -202,6 +202,22 @@ def test_search_unindexed_collection_returns_503(
     app.dependency_overrides.clear()
 
 
+def test_search_error_rfc7807_format(client: TestClient):
+    """Hata cevapları RFC 7807 ProblemDetails standart formatında dönmelidir."""
+    # 422 Unprocessable Entity testi
+    res_422 = client.post("/rag/search", json={"query": "", "k": 5})
+    assert res_422.status_code == 422
+    assert "application/problem+json" in res_422.headers.get("content-type", "")
+    body_422 = res_422.json()
+    assert body_422["type"] == "about:blank"
+    assert body_422["title"] == "Unprocessable Entity"
+    assert body_422["status"] == 422
+    assert body_422["instance"] == "/rag/search"
+    assert "errors" in body_422
+    assert isinstance(body_422["errors"], list)
+
+
+
 def test_search_store_exception_returns_503_without_leaking_internals(
     memory_store: QdrantStore,
     fake_embedder: FakeEmbedder,
@@ -230,6 +246,21 @@ def test_search_store_exception_returns_503_without_leaking_internals(
         assert "bir hata oluştu" in detail
 
     app.dependency_overrides.clear()
+
+
+def test_search_error_rfc7807_format(client: TestClient):
+    """Hata cevapları RFC 7807 ProblemDetails standart formatında dönmelidir."""
+    # 422 Unprocessable Entity testi
+    res_422 = client.post("/rag/search", json={"query": "", "k": 5})
+    assert res_422.status_code == 422
+    assert "application/problem+json" in res_422.headers.get("content-type", "")
+    body_422 = res_422.json()
+    assert body_422["type"] == "about:blank"
+    assert body_422["title"] == "Unprocessable Entity"
+    assert body_422["status"] == 422
+    assert body_422["instance"] == "/rag/search"
+    assert "errors" in body_422
+    assert isinstance(body_422["errors"], list)
 
 
 # ============================================================================
@@ -293,3 +324,18 @@ def test_search_integration_real_qdrant():
     finally:
         app.dependency_overrides.clear()
         client.delete_collection(store.collection_name)
+
+
+def test_search_error_rfc7807_format(client: TestClient):
+    """Hata cevapları RFC 7807 ProblemDetails standart formatında dönmelidir."""
+    # 422 Unprocessable Entity testi
+    res_422 = client.post("/rag/search", json={"query": "", "k": 5})
+    assert res_422.status_code == 422
+    assert "application/problem+json" in res_422.headers.get("content-type", "")
+    body_422 = res_422.json()
+    assert body_422["type"] == "about:blank"
+    assert body_422["title"] == "Unprocessable Entity"
+    assert body_422["status"] == 422
+    assert body_422["instance"] == "/rag/search"
+    assert "errors" in body_422
+    assert isinstance(body_422["errors"], list)

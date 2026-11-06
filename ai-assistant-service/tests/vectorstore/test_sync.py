@@ -430,6 +430,28 @@ def test_subdirectories_with_same_filename_do_not_collide(tmp_path, sync_env):
     assert store.count() == 2
 
 
+def test_sync_emptied_document_cleans_up_old_points(sync_env):
+    """İçeriği tamamen boşaltılan bir doküman, eski point'lerini temizlemeli ve replaced dönmelidir."""
+    store, embedder, chunker = sync_env
+
+    # 1. Başlangıçta dolu bir doküman
+    doc_initial = _make_parsed_doc("emptyable.pdf", ["Madde 1", "Madde 2", "Madde 3"])
+    res1 = sync_document(doc_initial, chunker=chunker, embedder=embedder, store=store)
+    assert res1 == "created"
+    assert store.count("emptyable.pdf") == 3
+
+    # 2. Dokümanın tüm içeriği silinmiş (0 element)
+    doc_emptied = _make_parsed_doc("emptyable.pdf", [])
+    res2 = sync_document(doc_emptied, chunker=chunker, embedder=embedder, store=store)
+    assert res2 == "replaced"
+    # Eski point'lerin tamamı silinmiş olmalı
+    assert store.count("emptyable.pdf") == 0
+
+    # 3. İkinci koşuda doküman zaten boş ve point yok, skipped dönmeli
+    res3 = sync_document(doc_emptied, chunker=chunker, embedder=embedder, store=store)
+    assert res3 == "skipped"
+
+
 def test_sync_cli_main_help(monkeypatch):
     """sync CLI main() fonksiyonu NameError vermeden argparse yardımını açmalıdır."""
     import sys

@@ -11,6 +11,7 @@ from qdrant_client import QdrantClient
 
 from app.api.api import api_router
 from app.core.config import settings
+from app.core.errors import register_problem_details_handlers
 from app.rag.embedding.factory import get_default_embedder
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.store import QdrantStore
@@ -68,6 +69,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+register_problem_details_handlers(app)
 app.include_router(api_router)
 
 

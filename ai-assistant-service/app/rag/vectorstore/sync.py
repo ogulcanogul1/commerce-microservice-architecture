@@ -137,6 +137,11 @@ def sync_document(
     # 4. Aşama: Doküman yeni veya değişmiş / yarım kalmış -> Chunk'la ve Embed et
     chunks = chunker.chunk(doc)
     if not chunks:
+        # Dokümanın içeriği boşalmışsa (örneğin tüm metin silinmişse),
+        # veritabanında kalan eski point'ler aramalarda çıkmamalı, temizlenmelidir.
+        if existing_count > 0:
+            store.delete_document(doc.source_file)
+            return "replaced"
         return "skipped"
 
     dense_vectors = embedder.embed_documents([c.embedding_text for c in chunks])
@@ -242,7 +247,13 @@ def sync_directory(
                 strat = strategy or getattr(chunker, "strategy", getattr(chunker, "name", "structure"))
                 fingerprint = compute_doc_fingerprint(doc, cfg, strat)
 
-                if store.is_document_intact(doc.source_file, expected_doc_hash=fingerprint):
+                chunks = chunker.chunk(doc)
+                if not chunks:
+                    if store.count(doc.source_file) > 0:
+                        report.replaced += 1
+                    else:
+                        report.skipped += 1
+                elif store.is_document_intact(doc.source_file, expected_doc_hash=fingerprint):
                     report.skipped += 1
                 elif store.count(doc.source_file) > 0:
                     report.replaced += 1
