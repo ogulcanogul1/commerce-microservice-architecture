@@ -1,54 +1,67 @@
 # DEVAM — AI Assistant Service Oturum Devir ve İlerleme Raporu
 
-## Son Tamamlanan Aşama: Qdrant Vektör Veritabanı ve Hibrit Arama (qdrant.md)
+## Tamamlanan Aşama: RAG Cevap Üretimi (Generation), Atıf Doğrulama ve Abstain Mekanizması (`generation.md`)
 
-`ai-assistant-service/python_plan/qdrant.md` planındaki Adım 0'dan Adım 8'e kadar tüm adımlar eksiksiz tamamlanmış, bellek içi (`:memory:`) ve sunucu modlarında doğrulanmış ve testleri yeşile çekilmiştir.
-
-### Mimari Bileşenler ve Kapsam:
-1. **Veri Modelleri ve Eşleme (`app/rag/vectorstore/`):**
-   - `QdrantConfig` & `SearchHit`: Tip güvenli, dondurulmuş (frozen) konfigürasyon ve arama modeli.
-   - `chunk_point_id`: `uuid5` tabanlı deterministik point kimliği üretimi.
-   - `chunk_to_payload` & `payload_to_chunk`: Çift yönlü kayıpsız dönüşüm (`embedding_text` disk tasarrufu için hariç).
-2. **Sparse Encoder (`sparse.py`):**
-   - Deterministik `uint32` token indeksleme (`hashlib.blake2b(digest_size=4)`).
-   - Corpus'tan bağımsız sabit `avgdl = 256.0` ile artımlı (incremental) BM25 TF ağırlıklandırması.
-   - Qdrant `Modifier.IDF` ile sunucu taraflı BM25 IDF hesaplama.
-3. **QdrantStore (`store.py`):**
-   - Çift vektörlü (`dense` Cosine + `sparse` BM25) dinamik koleksiyon yönetimi (`{prefix}__{model}_{dim}`).
-   - Boyut uyuşmazlığında sessiz ezme yerine fail-fast koruması.
-   - Batch upsert ve `delete_stale` ile "upsert-then-delete" veri bütünlüğü garantisi.
-4. **Arama ve Retriever Adaptörü (`search.py`, `retriever.py`):**
-   - `search_dense`, `search_sparse` ve sunucu taraflı RRF hibrit füzyon (`search_hybrid`).
-   - `QdrantRetriever`: Projenin standart `Retriever` protokolüne tam uyumlu adaptör.
-5. **Parmak İzi ve Incremental Sync (`sync.py`):**
-   - Yapısal SHA-256 içerik parmak izi (`doc_hash`): Element metinleri, sayfa/tip bilgileri, parser sürümü ve chunking ayarları.
-   - İkinci sync koşusunda embedder çağrısı 0 (skipped) ile sıfır API maliyeti.
-   - CLI arayüzü (`--docs-dir`, `--dry-run`, `--prune`).
-6. **Parite Değerlendirmesi (`parity.py`):**
-   - In-Memory (`DenseRetriever`, `HybridRetriever`) vs Qdrant (`QdrantRetriever`).
-   - Dense sıralama farkı: 0 soru (%100 matematiksel eşleşme).
-   - Hybrid Hit@3 farkı: 0.0 soru (tam parite).
-7. **RAG Arama API (`app/api/search.py`):**
-   - `POST /rag/search`: `query` (1..1000 karakter, boşluk korumalı), `k` (1..20), `mode` ('dense', 'sparse', 'hybrid'), `source_file` filtresi.
-   - FastAPI `lifespan` yöneticisi altında `app.state` entegrasyonu (import anında ağa bağlanmama).
-   - Dahili hata ve IP/URL sızdırmayan 503 ve 422 hata yönetimi.
+`ai-assistant-service/python_plan/generation.md` planındaki Adım 0'dan Adım 9'a kadar tüm adımlar eksiksiz tamamlanmış, Docker veya harici ağ gerektirmeden ağsız modda 324 birim test ile doğrulanmış ve GitHub `main` dalına pushlanmıştır.
 
 ---
 
-### Beklenmeyen Bulgular ve Mühendislik İçgörüleri:
-1. **Rust SIMD Floating-Point Tie (Kayan Nokta Eşitliği):** Soru Q03'te NumPy skorları `0.2331262` ve `0.2331262` (fark 0.0) olan iki chunk'ta Python NumPy kararlı sıralaması indeks sırasını (indeks 5, indeks 7) tercih ederken; Qdrant'ın Rust motoru SIMD vektör çarpımında `2e-8` ULP farkı (`0.23312622` vs `0.23312619`) hesaplamıştır. Bu durum, pratikteki benzerlik eşitliklerinin değerlendirme metriklerinde yanıltıcı olmaması için `1e-4` eşiğinde tie-breaker mantığı ile çözülmüştür.
-2. **Local Mode (`:memory:`) Payload Index Uyarısı:** Qdrant yerel bellek modu vektör aramalarını ve RRF füzyonunu tam olarak desteklerken, payload indeksleri sunucu gerektirir. Birim testlerin Docker gerektirmeden tam hızda çalışabilmesi için local mode uyarısı güvenle ele alınmıştır.
-3. **Korpus Doygunluğu (Corpus Saturation):** Test korpusu 3 PDF / 8 chunk'tan oluştuğu için k=5 sorgularında Hit@5 yapısal olarak %100'e doymaktadır. Raporlama aracı bu durumu otomatik algılayıp uyarı basacak şekilde yapılandırılmıştır.
+### Mimari Bileşenler ve Kapsam:
+
+1. **LLM Katmanı ve TokenUsage Eki (`app/llm/`):**
+   - `TokenUsage(input_tokens, output_tokens)` modeli ve `BaseLLMProvider.generate`'e `max_tokens` desteği.
+   - OpenAI, Claude, Gemini ve Local sağlayıcılarında tam token ve kullanım eşlemesi.
+   - `FakeLLMProvider`: Kelime bazlı deterministik token sayımı, çağrı kaydı (`calls`), sequential/responder desteği ve ağsız test ortamı.
+
+2. **PII Maskeleme (`app/core/pii.py`):**
+   - TCKN (resmi 10./11. hane algoritması ile tam checksum kontrolü).
+   - Kredi Kartı (13–19 hane arası Luhn mod-10 algoritması).
+   - IBAN (`TR` + 24 hane), E-posta ve Mobil Telefon (`05xx`, `+905xx`).
+   - Non-overlapping span tespiti ve sağdan sola yer değiştirme; sipariş numaraları ve iş süreleri ("14 gün") korunur.
+
+3. **Modeller ve Context Builder (`app/rag/generation/`):**
+   - `ContextBlock`, `Citation`, `ValidationIssue`, `RagAnswer`, `GenerationConfig`.
+   - `build_context`: `[1]`, `[2]` şeklinde blok numaralama, sayfa/başlık bilgisi, indirect prompt injection koruması (`<kaynaklar>` etiket kaçırma) ve token bütçesi (`header + text`).
+
+4. **Sistem Promptu ve Retry Mekanizması (`prompt.py`):**
+   - Grounding kuralı: Yalnızca verilen kaynakları kullanma, harici bilgi katmama, bilgi yoksa tek başına `BULUNAMADI` yazma.
+   - `build_retry_messages`: Doğrulama hatalarında bulunan ilk 5 sorunu modele iletip düzeltme talep etme.
+
+5. **Atıf ve Sayı Doğrulama (`citations.py`):**
+   - `split_sentences`: Türkçe kısaltmalar (`vb.`, `örn.`), ondalık sayılar ve tarihler korunarak cümle bölme; noktadan sonra gelen `[n]` atıflarını önceki cümleye bağlama.
+   - 3 Deterministik Kontrol:
+     1. `uncited_sentence`: Her cümlede en az bir `[n]` olmalıdır.
+     2. `invalid_citation`: Atıf numarası blok aralığında (`1..len(blocks)`) olmalıdır.
+     3. `number_not_in_source`: Cümledeki her rakam grubu (`\d+`), atıf yapılan kaynağın metninde veya başlığında bulunmalıdır.
+   - `is_abstain`: Metin içinde `bulunamadı` geçiyorsa tutucu abstain kararı.
+
+6. **RagAnswerService Orkestrasyonu (`service.py`):**
+   - Kullanıcı sorusu gelir gelmez PII maskelenir; loglarda soru metni gizlenir.
+   - Asenkron threadpool sınırı ile event loop bloklanmaz.
+   - `no_results` ve `low_retrieval_score` durumlarında LLM çağrılmadan hızlı abstain.
+   - En fazla 2 LLM denemesi; geçemezse `validation_failed` ile güvenli kurumsal abstain mesajı.
+
+7. **Answer HTTP API (`app/api/answer.py`):**
+   - `POST /rag/answer`: `question` (1..1000 karakter, boşluk korumalı), `k` (1..10), `source_file` filtresi.
+   - Halka açık API yanıtında dahili teşhis alanları (`validation_issues`, `usage`, `top_dense_score`) sızdırılmaz.
+   - RFC 7807 problem details ve 503 hata maskelemesi.
+
+8. **Generation Değerlendirme Paketi (`app/rag/evaluation/generation/`):**
+   - `eval/generation/answer_set.json`: 54 soru (42 cevaplanabilir golden set + 12 cevaplanamaz; 6 konu dışı + 6 tehlikeli yakın).
+   - `dataset.py`: Doğrulayıcı ve yükleyici CLI (`--validate`).
+   - `metrics.py`: Deterministik `fact_recall`, `forbidden_hit`, `correct`, `answer_accuracy`, `hallucination_rate`, `false_abstain_rate`, gecikme ve token metrikleri.
+   - `gate.py`: Dense kosinüs skor dağılımı ölçümü ve eşik analizi.
+   - `run.py`: Uçtan uca değerlendirme koşucusu; Markdown ve JSON raporlama.
 
 ---
 
 ### Doğrulama ve Test Özeti:
-- **Toplam Birim Testi:** 231 test (tümü yeşil, Docker veya harici ağ gerektirmez).
-- **Test Süresi:** ~23 saniye (`uv run pytest -m "not integration"`).
+- **Toplam Birim Testi:** **324 test** (Tümü passed, 4 deselected, 0 failure).
+- **Test Süresi:** ~36 saniye (`uv run pytest -m "not integration"`).
+- **Ağ ve Docker Bağımsızlığı:** Tüm testler ağ bağlantısı veya Docker gerektirmeden bellek içi çalışır.
 
 ---
 
-## Sıradaki İş (Next Step):
-- **Aşama 4: Generation — kaynaklı cevap üretimi, citation doğrulama, abstain, `POST /rag/answer` ve generation eval.**
-  - Plan: `python_plan/generation.md` (Adım 0–9). Karar günlüğü: `python_plan/generation-decisions.md` (Adım 0'da açılır).
-  - Reranker bu aşamadan **sonraya** alındı: 8 chunk'lık corpus'ta Hit@5 doygun, reranker'ın faydası ölçülemez. Generation eval seti ve büyük corpus geldikten sonra ayrı planla ele alınacak.
+### Sıradaki Aşama (Next Step):
+- **Aşama 5: Agent Entegrasyonu ve Müşteri Destek İş Akışı (Tools & Routing).**
+- **Aşama 6: Reranker Değerlendirmesi (Genişletilmiş korpus ile Cohere / BGE reranker kıyaslaması).**

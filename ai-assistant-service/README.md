@@ -107,15 +107,102 @@ Content-Type: application/json
 }
 ```
 
+```
+
 ---
 
-## 6. Testleri Çalıştırma
+## 6. RAG Cevap Üretimi HTTP Uç Noktası (`POST /rag/answer`)
+
+```http
+POST /rag/answer
+Content-Type: application/json
+X-Correlation-Id: test-correlation-id
+
+{
+  "question": "Müşteriler siparişlerini kaç gün içinde iade edebilir?",
+  "k": 3,
+  "source_file": "iade_politikasi.pdf"
+}
+```
+
+**Örnek Başarılı Yanıt (200 OK):**
+```json
+{
+  "status": "answered",
+  "answer": "Tüketiciler, satın aldıkları ürünleri teslim tarihinden itibaren 14 gün içinde herhangi bir gerekçe göstermeksizin iade edebilirler [1].",
+  "abstain_reason": null,
+  "citations": [
+    {
+      "number": 1,
+      "chunk_id": "chunk-iade-politikasi-p1-c0",
+      "source_file": "iade_politikasi.pdf",
+      "page_start": 1,
+      "page_end": 1,
+      "heading_path": ["1. Genel İade Koşulları"]
+    }
+  ]
+}
+```
+
+**Örnek Abstain Yanıtı (200 OK):**
+```json
+{
+  "status": "abstained",
+  "answer": "Bu konuda dokümanlarımızda bilgi bulamadım. Sizi bir müşteri temsilcisine yönlendirebilirim.",
+  "abstain_reason": "model_abstained",
+  "citations": []
+}
+```
+
+---
+
+## 7. RAG Generation Değerlendirme ve Eşik Ölçümü (CLI)
+
+```powershell
+# 1. Answer Set veri setini doğrula
+uv run python -m app.rag.evaluation.generation.dataset --validate
+
+# 2. Dense kosinüs skor dağılımını ölç ve abstain eşiği önerisi al (Gate)
+uv run python -m app.rag.evaluation.generation.gate --embedder fake
+
+# 3. Uçtan uca generation kalite değerlendirmesi çalıştır (Smoke Test - Fake LLM)
+uv run python -m app.rag.evaluation.generation.run --llm fake --embedder fake
+
+# 4. Gerçek LLM ile değerlendirme (API anahtarları ile)
+uv run python -m app.rag.evaluation.generation.run --llm default --embedder default
+```
+
+Otomatik raporlar `eval/generation/reports/` dizinine Markdown (`.md`) ve JSON formatında üretilir.
+
+---
+
+## 8. RAG Yapılandırma Parametreleri
+
+| Ortam Değişkeni | Varsayılan | Açıklama |
+| :--- | :--- | :--- |
+| `RAG_LLM_PROVIDER` | `""` | LLM sağlayıcısı (boşsa `DEFAULT_LLM_PROVIDER` kullanılır: openai, claude, gemini, local) |
+| `RAG_LLM_MODEL` | `""` | Sağlayıcıya özel model kimliği (boşsa sağlayıcının varsayılanı) |
+| `RAG_TEMPERATURE` | `0.0` | Üretim sıcaklığı (deterministik ve politikaya sadık cevaplar için 0.0) |
+| `RAG_MAX_OUTPUT_TOKENS` | `400` | Üretilecek maksimum cevap uzunluğu (token) |
+| `RAG_LLM_TIMEOUT_SEC` | `30.0` | LLM HTTP çağrısı zaman aşımı süresi (saniye) |
+| `RAG_CONTEXT_TOKEN_BUDGET`| `1500` | Soruya eklenecek kaynak blokları için toplam token bütçesi |
+| `RAG_TOP_K` | `5` | Getirilecek aday chunk sayısı |
+| `RAG_MIN_DENSE_SCORE` | `None` | Abstain kapısı için minimum dense benzerlik eşiği (None = kapı kapalı) |
+| `RAG_MAX_ATTEMPTS` | `2` | Doğrulama hatasında maksimum deneme sayısı (1 ilk deneme + 1 retry) |
+| `RAG_ABSTAIN_MESSAGE` | `"Bu konuda dokümanlarımızda bilgi bulamadım..."` | Cevap bulunamadığında dönen kurumsal mesaj |
+
+---
+
+## 9. Testleri Çalıştırma
 
 Tüm birim testleri Docker veya harici ağ gerektirmeden bellek içi (`:memory:`) modda koşturmak için:
 
 ```powershell
-# Ağsız / Docker'sız tüm testleri çalıştır (231 test)
+# Ağsız / Docker'sız tüm testleri çalıştır (324 test)
 uv run pytest -m "not integration"
+
+# Yalnızca Generation testlerini çalıştır
+uv run pytest tests/generation/ -v
 
 # Yalnızca API testlerini çalıştır
 uv run pytest tests/api/ -v

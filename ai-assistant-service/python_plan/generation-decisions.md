@@ -86,6 +86,44 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
    - Smoke test koşuları için `--llm fake` ve `--embedder fake` desteği eklendi; markdown ve JSON raporlama tamamlandı.
 5. **Test Sayısı:** `tests/generation/test_eval.py` altında 12 yeni test eklendi; toplam test sayısı 312'den 324'e yükseldi (324 passed, 4 deselected).
 
+## Adım 9 Kararları — Final Karar ve Devir Özeti
+
+1. **Citation Formatı (Neden Düz Metin + `[n]`?):**
+   - Model, kaynakları `[1]`, `[2]` şeklinde görür ve cevabında da bu referansları kullanır. 16 karakterlik hex `chunk_id` modele verilmez; model uzun id'leri kopyalarken hata yapar ve gereksiz token harcar. Numara → `ContextBlock` eşlemesi sunucu tarafında tutulur ve API cevabında doğrulanmış `chunk_id`, `source_file`, sayfa aralığı ve `heading_path` olarak döner.
+   - Dört sağlayıcının (OpenAI, Claude, Gemini, Local) ortak bir structured output arayüzü bulunmadığından ve düz metin ileride streaming mimarisine daha uygun olduğundan JSON yerine düz metin + satır içi `[n]` formatı seçilmiştir.
+
+2. **Abstain İşareti ve Kapı Kararı:**
+   - Abstain işareti tek ve sabittir: `BULUNAMADI`. Cevap içinde geçmesi halinde dahi tutucu bir yaklaşımla doğrudan abstain edilir; kullanıcıya ayardaki kurumsal mesaj (`RAG_ABSTAIN_MESSAGE`) gösterilir.
+   - `gate.py` ile yapılan ölçümde 42 cevaplanabilir ve 12 cevaplanamaz soru için dense kosinüs benzerlik skorlarının örtüştüğü görülmüştür. Cevaplanabilir soruları kaybetmemek adına `RAG_MIN_DENSE_SCORE = None` (kapı kapalı) olarak bırakılmış, filtreleme sorumluluğu güvenle model sistem prompt kuralına bırakılmıştır.
+
+3. **Retry ve Hata Toleransı:**
+   - İstek başına en fazla 2 LLM çağrısı (`RAG_MAX_ATTEMPTS = 2`) yapılır. İlk yanıtta atıf eksikliği, geçersiz atıf veya kaynakta olmayan sayı tespit edilirse model 1 kez uyarılır. İkinci denemede de hata devam ederse uydurma veri yerine `validation_failed` ile abstain edilir.
+
+4. **Bütçe ve Token Ölçümü:**
+   - `RAG_CONTEXT_TOKEN_BUDGET = 1500` token. Bir bloğun maliyeti hem başlık satırını hem de chunk metnini kapsar (`count(header) + count(text)`). İlk blok tek başına bütçeyi aşsa bile bağlam kaybını önlemek için içeri alınır.
+
+5. **Model ve Sıcaklık Parametreleri:**
+   - `RAG_TEMPERATURE = 0.0`: Politika ve sözleşme yanıtlarında kesin tekrarlanabilirlik ve halüsinasyonsuz çıktılar için sıcaklık sıfırlanmıştır.
+   - `RAG_MAX_OUTPUT_TOKENS = 400`: Maliyet ve aşırı uzun yanıt sınırı.
+
+6. **PII Maskeleme Kapsamı:**
+   - TCKN (resmi 10./11. hane algoritması), Kredi Kartı (Luhn mod-10), IBAN (TR24), Mobil Telefon (05xx, +905xx) ve E-posta maskelenir. İş terimleri (sipariş no, tutar, süreler) prompt bağlamını bozmamak için serbest bırakılmıştır.
+
+7. **Doğrulamanın Bilinen Sınırları:**
+   - Anlam denetimi yapmaz: "yapılabilir" yerine "yapılamaz" demeyi yakalayamaz (faithfulness LLM judge bu planda yer almaz).
+   - Sayı denetimi rakam dizileri (`\d+`) üzerinden çalışır; yazıyla yazılmış sayılar ("on dört") yakalanamaz. Bu sınırlar kabul edilmiştir.
+
+8. **Gerçek Korpus Geldiğinde Koşulacak Komutlar:**
+   - Kapı eşiği ölçümü:
+     ```powershell
+     uv run python -m app.rag.evaluation.generation.gate --embedder default
+     ```
+   - Gerçek model ile tam eval koşusu:
+     ```powershell
+     uv run python -m app.rag.evaluation.generation.run --llm default --embedder default
+     ```
+
+
 
 
 
