@@ -220,12 +220,15 @@ def sync_directory(
 
     # Klasördeki tüm PDF'leri bul
     pdf_files = sorted(directory.glob("**/*.pdf"))
-    disk_source_files = {p.name for p in pdf_files}
+    disk_source_files = {p.relative_to(directory).as_posix() for p in pdf_files}
 
     for pdf_path in pdf_files:
         try:
             # Dokümanı parse et
             doc = pdf_loader.load(pdf_path)
+            # Alt klasörlerdeki aynı isimli PDF'lerin (örn: a/x.pdf ve b/x.pdf)
+            # çakışmaması ve birbirini ezmemesi için docs_dir'e göreli yol kullanılır.
+            doc.source_file = pdf_path.relative_to(directory).as_posix()
 
             # Karantina kontrolü
             if doc.quality and doc.quality.status == "quarantine":

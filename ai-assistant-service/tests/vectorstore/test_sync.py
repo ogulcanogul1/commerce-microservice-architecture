@@ -379,6 +379,57 @@ def test_first_run_dry_run_collection_not_found_handled_safely(tmp_path):
     assert report.skipped == 0
 
 
+def test_subdirectories_with_same_filename_do_not_collide(tmp_path, sync_env):
+    """Farklı alt dizinlerdeki aynı isimli PDF'ler (a/x.pdf ve b/x.pdf) birbirini ezmemeli ve skipped olmalıdır."""
+    store, embedder, chunker = sync_env
+
+    dir_a = tmp_path / "dir_a"
+    dir_b = tmp_path / "dir_b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+
+    file_a = dir_a / "contract.pdf"
+    file_b = dir_b / "contract.pdf"
+    file_a.write_text("a")
+    file_b.write_text("b")
+
+    class SubdirLoader:
+        def load(self, p: Path):
+            # Dosya adını değil göreli yolu test et
+            text = "A sözleşmesi içeriği" if "dir_a" in str(p) else "B sözleşmesi içeriği"
+            return _make_parsed_doc(p.name, [text])
+
+    loader = SubdirLoader()
+
+    # 1. Koşu: İki dosya da oluşturulmalı (created=2, replaced=0)
+    report1 = sync_directory(
+        docs_dir=tmp_path,
+        chunker=chunker,
+        embedder=embedder,
+        store=store,
+        loader=loader,
+    )
+    assert report1.created == 2
+    assert report1.replaced == 0
+    assert report1.skipped == 0
+    assert store.count("dir_a/contract.pdf") == 1
+    assert store.count("dir_b/contract.pdf") == 1
+    assert store.count() == 2
+
+    # 2. Koşu: İkisi de değişmediği için SKIPPED olmalı (asla replaced veya re-embed olmamalı!)
+    report2 = sync_directory(
+        docs_dir=tmp_path,
+        chunker=chunker,
+        embedder=embedder,
+        store=store,
+        loader=loader,
+    )
+    assert report2.skipped == 2
+    assert report2.created == 0
+    assert report2.replaced == 0
+    assert store.count() == 2
+
+
 def test_sync_cli_main_help(monkeypatch):
     """sync CLI main() fonksiyonu NameError vermeden argparse yardımını açmalıdır."""
     import sys
