@@ -48,6 +48,15 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 5. **Abstain Tespiti:** Cevabın herhangi bir yerinde `bulunamadı` ifadesinin geçmesi kesin abstain sayılır (kısmi cevap + bulunamadı karışımı güvensizdir).
 6. **Test Sayısı:** `tests/generation/test_citations.py` altında 9 yeni test eklendi; toplam test sayısı 286'ya yükseldi.
 
+## Adım 6 Kararları — RagAnswerService
+1. **PII ve İzolasyon:** Kullanıcı sorusu `answer()` çağrılır çağrılmaz `mask_pii` ile maskelenir; embedding ve LLM çağrılarında yalnızca maskelenmiş metin kullanılır.
+2. **Asenkron Threadpool Sınırı:** Senkron çalışan Qdrant ve embedder aramaları `starlette.concurrency.run_in_threadpool` ile çağrılarak FastAPI event loop bloklanması önlendi.
+3. **Fail-Fast Abstain Kapıları:** Sıfır sonuç (`no_results`) ve düşük dense skoru (`low_retrieval_score`) durumlarında LLM'e hiç gidilmeden doğrudan abstain edilir; maliyet ve gecikme sıfırlanır.
+4. **Retry ve Pes Etme Dengesi:** Model `BULUNAMADI` dediğinde ısrar edilmez (`model_abstained`). Doğrulama hatalarında 1 kez retry denenir; 2. deneme de başarısız olursa atıfsız veya uydurma veri müşteriye gösterilmez (`validation_failed`).
+5. **Gözlemlenebilirlik ve Log Gizliliği:** Kullanıcı sorusu loglanmaz (yalnızca soru uzunluğu ve `has_pii` loglanır); süreler, token kullanımları ve doğrulama hata tipleri yapılandırılmış log ile kaydedilir.
+6. **Test Sayısı:** `tests/generation/test_service.py` altında 12 yeni test eklendi; toplam test sayısı 298'e yükseldi.
+
+
 
 
 

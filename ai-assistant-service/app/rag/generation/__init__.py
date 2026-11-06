@@ -24,6 +24,7 @@ from app.rag.generation.prompt import (
     build_messages,
     build_retry_messages,
 )
+from app.rag.generation.service import RagAnswerService
 
 __all__ = [
     "AbstainReason",
@@ -44,4 +45,5 @@ __all__ = [
     "is_abstain",
     "validate_answer",
     "ABBREVIATIONS",
+    "RagAnswerService",
 ]
