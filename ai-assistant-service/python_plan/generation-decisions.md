@@ -37,6 +37,18 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 3. **Retry Geri Bildirimi ve Bütçe:** Doğrulama hatalarında modele gönderilen düzeltme mesajı en fazla 5 maddeyi listeler; 5'ten fazla sorun varsa `...ve N sorun daha` şeklinde özetlenerek context token israfı önlenir.
 4. **Test Sayısı:** `tests/generation/test_prompt.py` altında 3 yeni test eklendi; toplam test sayısı 277'ye yükseldi.
 
+## Adım 5 Kararları — Citation Doğrulama
+1. **Cümle Bölücü ve Kısaltmalar:** Cümleler `.`, `!`, `?` işaretlerinden bölünür; ancak yaygın Türkçe kısaltmalar (`vb.`, `vs.`, `örn.`, `s.`, `Md.`, `No.`, `Dr.`, `Prof.`), ondalık/binlik sayılar (`1.000`, `2,5`) ve tarihler (`14.05.2026`) bölünmez. Noktadan hemen sonra gelen atıf grupları (`. [1][2]`) ait olduğu önceki cümleye bağlanır.
+2. **Deterministik Doğrulama (3 Kontrol):**
+   - `uncited_sentence`: Cevabın her cümlesinde en az bir geçerli atıf bulunmalıdır.
+   - `invalid_citation`: Atıf yapılan kaynak `1..len(blocks)` sınırları içinde olmalıdır.
+   - `number_not_in_source`: Cümledeki her rakam grubu (`\d+`), cümlenin atıf yaptığı kaynakların metninde veya başlığında geçmelidir.
+3. **Doğrulama Önceliği:** Bir cümlede `invalid_citation` varsa o cümle için sayı kontrolü atlanır; çünkü olmayan bir kaynağın metni karşılaştırılamaz.
+4. **Sayı Kontrol Sınırı:** Kontrol rakam dizileri (`\d+`) üzerinden yapılır; yazıyla yazılmış sayılar ("on dört") yakalanamaz (bu sınır kabul edilmiştir).
+5. **Abstain Tespiti:** Cevabın herhangi bir yerinde `bulunamadı` ifadesinin geçmesi kesin abstain sayılır (kısmi cevap + bulunamadı karışımı güvensizdir).
+6. **Test Sayısı:** `tests/generation/test_citations.py` altında 9 yeni test eklendi; toplam test sayısı 286'ya yükseldi.
+
+
 
 
 
