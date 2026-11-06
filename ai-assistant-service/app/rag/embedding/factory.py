@@ -45,3 +45,16 @@ def get_embedder(
         return CachedEmbedder(embedder, cache)
 
     return embedder
+
+
+def get_default_embedder(*, cache: DiskEmbeddingCache | None = None) -> Embedder:
+    """Create default Embedder instance based on core application Settings."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    config = EmbeddingConfig(
+        provider=s.EMBEDDING_PROVIDER,
+        model=s.EMBEDDING_MODEL,
+        dimensions=s.EMBEDDING_DIMENSIONS,
+    )
+    return get_embedder(config, cache=cache)
