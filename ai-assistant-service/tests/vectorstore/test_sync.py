@@ -244,3 +244,120 @@ def test_sync_directory_with_prune_and_dry_run(sync_env, tmp_path):
     assert report_prune.pruned == 1   # doc2.pdf silindi
     assert store.count("doc2.pdf") == 0
     assert store.count("doc1.pdf") == 1
+
+
+def test_interrupted_write_recovered_on_next_sync(sync_env):
+    """Yazma işlemi yarıda kesilirse, sonraki sync yarım kalmış dokümanı tespit edip onarmalıdır."""
+    store, embedder, chunker = sync_env
+
+    doc_v1 = _make_parsed_doc("contract.pdf", ["M1", "M2", "M3", "M4"])
+    res1 = sync_document(doc_v1, chunker=chunker, embedder=embedder, store=store)
+    assert res1 == "created"
+    assert store.count("contract.pdf") == 4
+
+    # v2: 6 paragraflık yeni doküman
+    doc_v2 = _make_parsed_doc("contract.pdf", ["Yeni 1", "Yeni 2", "Yeni 3", "Yeni 4", "Yeni 5", "Yeni 6"])
+    cfg = ChunkingConfig()
+    fp2 = compute_doc_fingerprint(doc_v2, cfg, ChunkStrategy.STRUCTURE)
+
+    # Simülasyon: v2 yazılırken süreç ilk 2 chunk'tan sonra çöktü (batch crash)
+    from app.rag.vectorstore.mapping import chunk_point_id, chunk_to_payload
+    from qdrant_client import models
+
+    v2_chunks = chunker.chunk(doc_v2)
+    v2_vecs = embedder.embed_documents([c.embedding_text for c in v2_chunks[:2]])
+
+    crashed_points = []
+    for c, v in zip(v2_chunks[:2], v2_vecs):
+        p = chunk_to_payload(
+            c,
+            doc_hash=fp2,
+            embedding_model_id=embedder.model_id,
+            ingested_at="2026-11-06T12:00:00Z",
+            chunk_count=6,
+        )
+        crashed_points.append(
+            models.PointStruct(
+                id=chunk_point_id(c.id),
+                vector={"dense": list(v), "sparse": models.SparseVector(indices=[], values=[])},
+                payload=p,
+            )
+        )
+    store.client.upsert(collection_name=store.collection_name, points=crashed_points)
+
+    # Şu anda veritabanında 2 adet v2 parçası ve 2 adet henüz silinmemiş v1 parçası var
+    # (İlk 2 chunk id bazında overwrite edildi, kalan 2 v1 parçası ise eski doc_hash ile duruyor)
+    assert store.count("contract.pdf") == 4
+    # Eski get_doc_hash() rastgele tek bir point'e bakıp v2'yi görebilir ve dokümanı tamamlanmış sanabilirdi!
+    # Yeni is_document_intact kontrolü sayesinde doküman sağlam sayılmaz:
+    assert store.is_document_intact("contract.pdf", expected_doc_hash=fp2) is False
+
+    # Yeni sync başlatılır: Doküman "skipped" OLMAMALI, "replaced" olarak onarılmalıdır!
+    res2 = sync_document(doc_v2, chunker=chunker, embedder=embedder, store=store)
+    assert res2 == "replaced"
+
+    # Onarım sonrası kontroller:
+    # Toplam point sayısı tam olarak 6 olmalı (v2'nin tüm parçaları)
+    assert store.count("contract.pdf") == 6
+    # v1'den kalan 4 eski parça silinmiş olmalı:
+    stale_remaining = store.client.count(
+        collection_name=store.collection_name,
+        count_filter=models.Filter(
+            must=[models.FieldCondition(key="source_file", match=models.MatchValue(value="contract.pdf"))],
+            must_not=[models.FieldCondition(key="doc_hash", match=models.MatchValue(value=fp2))],
+        ),
+        exact=True,
+    ).count
+    assert stale_remaining == 0
+    assert store.is_document_intact("contract.pdf", expected_doc_hash=fp2) is True
+
+    # Artık eksiksiz olduğu için sonraki sync "skipped" dönmeli
+    res3 = sync_document(doc_v2, chunker=chunker, embedder=embedder, store=store)
+    assert res3 == "skipped"
+
+
+def test_prune_does_not_delete_files_existing_on_disk(tmp_path, sync_env):
+    """--prune, diskte var olan ancak parse/yükleme hatası alan dosyaları Qdrant'tan silmemelidir."""
+    store, embedder, chunker = sync_env
+
+    # 1. Başlangıçta diskte doc1.pdf ve doc_error.pdf var
+    p1 = tmp_path / "doc1.pdf"
+    p1.write_text("ok")
+    p2 = tmp_path / "doc_error.pdf"
+    p2.write_text("error")
+
+    class FaultyLoader:
+        def load(self, p: Path):
+            if p.name == "doc1.pdf":
+                return _make_parsed_doc("doc1.pdf", ["İçerik 1"])
+            elif p.name == "doc_error.pdf":
+                # Diskte var ama yükleme hatası alıyor
+                raise RuntimeError("PDF corrupt")
+            raise FileNotFoundError()
+
+    loader = FaultyLoader()
+
+    # Önce doc1'i indeksle
+    report = sync_directory(
+        docs_dir=tmp_path,
+        chunker=chunker,
+        embedder=embedder,
+        store=store,
+        prune=True,
+        loader=loader,
+    )
+    assert report.created == 1
+    assert len(report.failed) == 1
+    assert report.pruned == 0  # doc_error diskte olduğu için ASLA prune edilmedi!
+
+
+def test_sync_cli_main_help(monkeypatch):
+    """sync CLI main() fonksiyonu NameError vermeden argparse yardımını açmalıdır."""
+    import sys
+    from app.rag.vectorstore.sync import main
+
+    monkeypatch.setattr(sys, "argv", ["sync", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 0
+

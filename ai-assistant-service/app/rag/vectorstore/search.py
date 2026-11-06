@@ -50,11 +50,19 @@ class SearchFilter(BaseModel):
             )
 
         # Sayfa aralığı filtresi
+        # Not: Chunk'ın [page_start, page_end] aralığı içinde kalmasını doğrulamak için:
+        # page_start >= self.page_start ve page_end <= self.page_end kontrolü yapılır.
         if self.page_start is not None and self.page_end is not None:
             conditions.append(
                 models.FieldCondition(
                     key="page_start",
-                    range=models.Range(gte=float(self.page_start), lte=float(self.page_end)),
+                    range=models.Range(gte=float(self.page_start)),
+                )
+            )
+            conditions.append(
+                models.FieldCondition(
+                    key="page_end",
+                    range=models.Range(lte=float(self.page_end)),
                 )
             )
         elif self.page_start is not None:
@@ -67,7 +75,7 @@ class SearchFilter(BaseModel):
         elif self.page_end is not None:
             conditions.append(
                 models.FieldCondition(
-                    key="page_start",
+                    key="page_end",
                     range=models.Range(lte=float(self.page_end)),
                 )
             )

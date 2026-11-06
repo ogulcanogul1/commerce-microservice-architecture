@@ -41,6 +41,16 @@ class QdrantConfig(BaseModel):
         dim = embedder.dimensions
         return f"{self.collection_prefix}__{model_slug}_{dim}"
 
+    def create_client(self) -> QdrantClient:
+        """Konfigürasyondaki url, api_key ve timeout_sec ile QdrantClient üretir."""
+        from qdrant_client import QdrantClient
+
+        return QdrantClient(
+            url=self.url,
+            api_key=self.api_key or None,
+            timeout=self.timeout_sec,
+        )
+
 
 class SearchHit(BaseModel):
     """Vektör veya hibrit arama sonucu dönen tekil eşleşme."""

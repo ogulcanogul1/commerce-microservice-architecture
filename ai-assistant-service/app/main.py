@@ -36,16 +36,12 @@ async def lifespan(app: FastAPI):
         logger.warning("Varsayılan embedder başlatılamadı (API anahtarı eksik olabilir): %s", exc)
 
     try:
-        client = QdrantClient(
-            url=settings.QDRANT_URL,
-            api_key=settings.QDRANT_API_KEY or None,
-            timeout=30.0,
-        )
         config = QdrantConfig(
             url=settings.QDRANT_URL,
             api_key=settings.QDRANT_API_KEY or None,
             collection_prefix=settings.QDRANT_COLLECTION_PREFIX,
         )
+        client = config.create_client()
         if embedder is not None:
             store = QdrantStore(client=client, config=config, embedder=embedder)
     except Exception as exc:

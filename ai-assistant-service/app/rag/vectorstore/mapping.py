@@ -25,16 +25,21 @@ def chunk_to_payload(
     doc_hash: str,
     embedding_model_id: str,
     ingested_at: str,
+    chunk_count: int | None = None,
 ) -> dict[str, Any]:
     """Bir Chunk nesnesini Qdrant payload sözlüğüne dönüştürür.
 
     Not: 'embedding_text' payload'a yazılmaz; context_prefix ve text üzerinden
     türetildiği için diskte fazladan yer kaplaması engellenir.
+    'chunk_count' ise o dokümana ait toplam chunk sayısını saklayarak
+    kesintiye uğrayan yarım yazma işlemlerini tespit etmeyi sağlar.
     """
     payload = chunk.model_dump(mode="json", exclude={"embedding_text"})
     payload["doc_hash"] = doc_hash
     payload["embedding_model_id"] = embedding_model_id
     payload["ingested_at"] = ingested_at
+    if chunk_count is not None:
+        payload["chunk_count"] = chunk_count
     return payload
 
 
@@ -45,5 +50,6 @@ def payload_to_chunk(payload: dict[str, Any]) -> Chunk:
     data.pop("doc_hash", None)
     data.pop("embedding_model_id", None)
     data.pop("ingested_at", None)
+    data.pop("chunk_count", None)
 
     return Chunk.model_validate(data)

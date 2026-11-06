@@ -24,7 +24,7 @@ from app.rag.chunking.models import ChunkingConfig, ChunkStrategy
 from app.rag.embedding.base import Embedder
 from app.rag.ingestion.models import ParsedDocument
 from app.rag.ingestion.pdf.loader import PDFLoader
-from app.rag.vectorstore.models import SyncReport
+from app.rag.vectorstore.models import QdrantConfig, SyncReport
 from app.rag.vectorstore.store import QdrantStore
 
 logger = logging.getLogger(__name__)
@@ -125,14 +125,16 @@ def sync_document(
     # 2. Aşama: Parmak izi hesapla
     fingerprint = compute_doc_fingerprint(doc, cfg, strat)
 
-    # 3. Aşama: Qdrant'taki mevcut doc_hash'i oku
-    existing_hash = store.get_doc_hash(doc.source_file)
-
-    # Parmak izi aynıysa doküman hiç değişmemiştir: ATLA (0 maliyet!)
-    if existing_hash == fingerprint:
+    # 3. Aşama: Qdrant'taki durumunu kontrol et
+    # Yarım yazma / crash koruması: Sadece tek bir point'e bakmak yerine,
+    # dokümanın eksiksiz yazıldığını ve eski/artık point kalmadığını doğrula.
+    if store.is_document_intact(doc.source_file, expected_doc_hash=fingerprint):
         return "skipped"
 
-    # 4. Aşama: Doküman yeni veya değişmiş -> Chunk'la ve Embed et
+    # Mevcut point sayısı (created vs replaced ayrımı için)
+    existing_count = store.count(doc.source_file)
+
+    # 4. Aşama: Doküman yeni veya değişmiş / yarım kalmış -> Chunk'la ve Embed et
     chunks = chunker.chunk(doc)
     if not chunks:
         return "skipped"
@@ -142,8 +144,8 @@ def sync_document(
     # Yeni chunk'ları veritabanına yaz
     store.upsert_chunks(chunks=chunks, dense_vectors=dense_vectors, doc_hash=fingerprint)
 
-    # 5. Aşama: Eğer eski bir versiyon varsa, eski hash'li point'leri temizle (Upsert-then-Delete)
-    if existing_hash is not None:
+    # 5. Aşama: Eski versiyon veya artık point'leri temizle (Upsert-then-Delete)
+    if existing_count > 0:
         store.delete_stale(source_file=doc.source_file, keep_doc_hash=fingerprint)
         return "replaced"
 
@@ -218,13 +220,12 @@ def sync_directory(
 
     # Klasördeki tüm PDF'leri bul
     pdf_files = sorted(directory.glob("**/*.pdf"))
-    seen_source_files: set[str] = set()
+    disk_source_files = {p.name for p in pdf_files}
 
     for pdf_path in pdf_files:
         try:
             # Dokümanı parse et
             doc = pdf_loader.load(pdf_path)
-            seen_source_files.add(doc.source_file)
 
             # Karantina kontrolü
             if doc.quality and doc.quality.status == "quarantine":
@@ -233,15 +234,14 @@ def sync_directory(
                 continue
 
             if dry_run:
-                # Dry run modunda sadece parmak izi kıyaslaması yap
+                # Dry run modunda sadece parmak izi ve sağlamlık kontrolü yap
                 cfg = chunking_config or getattr(chunker, "config", ChunkingConfig())
                 strat = strategy or getattr(chunker, "strategy", getattr(chunker, "name", "structure"))
                 fingerprint = compute_doc_fingerprint(doc, cfg, strat)
-                existing_hash = store.get_doc_hash(doc.source_file)
 
-                if existing_hash == fingerprint:
+                if store.is_document_intact(doc.source_file, expected_doc_hash=fingerprint):
                     report.skipped += 1
-                elif existing_hash is not None:
+                elif store.count(doc.source_file) > 0:
                     report.replaced += 1
                 else:
                     report.created += 1
@@ -265,10 +265,11 @@ def sync_directory(
         except Exception as e:
             report.failed.append((str(pdf_path), str(e)))
 
-    # Prune işlemi: Klasörde artık yer almayan eski dosyaların temizlenmesi
+    # Prune işlemi: Klasörde artık yer almayan (silinmiş) eski dosyaların temizlenmesi.
+    # Yüklenemeyen veya karantinadaki dosyalar diskte var olduğu için asla prune edilmez!
     if prune:
         stored_files = _get_all_stored_source_files(store)
-        stale_files = stored_files - seen_source_files
+        stale_files = stored_files - disk_source_files
         for stale_file in stale_files:
             if not dry_run:
                 store.delete_document(stale_file)
@@ -295,19 +296,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from qdrant_client import QdrantClient
     from app.core.config import get_settings
     from app.rag.chunking.factory import get_chunker
     from app.rag.chunking.tokenizer import TiktokenTokenizer
     from app.rag.embedding.factory import get_default_embedder
 
     settings = get_settings()
-    client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY or None)
     config = QdrantConfig(
         url=settings.QDRANT_URL,
         api_key=settings.QDRANT_API_KEY or None,
         collection_prefix=settings.QDRANT_COLLECTION_PREFIX,
     )
+    client = config.create_client()
     embedder = get_default_embedder()
     store = QdrantStore(client=client, config=config, embedder=embedder)
 

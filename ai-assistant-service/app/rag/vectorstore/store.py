@@ -11,6 +11,7 @@ Bu modül, Qdrant istemcisi ile doğrudan etkileşime girerek şu temel sorumlul
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import Sequence
 import numpy as np
 from qdrant_client import QdrantClient, models
@@ -21,6 +22,8 @@ from app.rag.embedding.batching import batched
 from app.rag.vectorstore.mapping import chunk_point_id, chunk_to_payload
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.sparse import SparseEncoder
+
+logger = logging.getLogger(__name__)
 
 
 class QdrantStore:
@@ -174,6 +177,7 @@ class QdrantStore:
             ("source_file", models.PayloadSchemaType.KEYWORD),
             ("doc_hash", models.PayloadSchemaType.KEYWORD),
             ("page_start", models.PayloadSchemaType.INTEGER),
+            ("page_end", models.PayloadSchemaType.INTEGER),
         ]
         for field_name, field_schema in indexes:
             try:
@@ -182,9 +186,13 @@ class QdrantStore:
                     field_name=field_name,
                     field_schema=field_schema,
                 )
-            except Exception:
-                # İndeks zaten mevcutsa veya yerel ':memory:' modu uyarı verirse görmezden gel
-                pass
+            except Exception as exc:
+                err_msg = str(exc).lower()
+                # Yalnızca indeksin zaten var olduğunu belirten durumları tolere et
+                if "already exists" in err_msg or "already indexed" in err_msg or "409" in err_msg:
+                    continue
+                logger.error("Payload indeksi '%s' oluşturulamadı: %s", field_name, exc)
+                raise
 
     def upsert_chunks(
         self,
@@ -246,6 +254,7 @@ class QdrantStore:
                 doc_hash=doc_hash,
                 embedding_model_id=embedder_model_id,
                 ingested_at=now_iso,
+                chunk_count=len(chunks),
             )
 
             # Hem dense hem sparse vektörü tek bir point içinde birleştir
@@ -398,6 +407,94 @@ class QdrantStore:
         if points and points[0].payload:
             return points[0].payload.get("doc_hash")
         return None
+
+    def is_document_intact(
+        self,
+        source_file: str,
+        expected_doc_hash: str,
+        expected_chunk_count: int | None = None,
+    ) -> bool:
+        """Dokümanın verilen parmak iziyle veritabanında eksiksiz ve temiz olup olmadığını doğrular.
+
+        Yarım Yazma ve Crash Koruması:
+          1. Koleksiyon mevcut mu?
+          2. Bu dosyaya ait ama 'doc_hash != expected_doc_hash' olan artık/eski point sayısı 0 mı?
+             (Eğer > 0 ise, önceki bir versiyondan veya kesintiye uğramış bir sync'ten artıklar kalmıştır).
+          3. 'doc_hash == expected_doc_hash' olan point sayısı beklenen chunk sayısına eşit mi?
+             (Point'lerin payload'ında saklanan 'chunk_count' ile Qdrant'taki gerçek kayıt sayısı eşleşiyor mu?).
+
+        Returns:
+            Doküman tamamen eksiksiz, sağlam ve güncelse True; aksi halde False.
+        """
+        col_name = self.collection_name
+        if not self.client.collection_exists(col_name):
+            return False
+
+        # 1. Kontrol: Eski / artık (stale) point var mı?
+        stale_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="source_file",
+                    match=models.MatchValue(value=source_file),
+                )
+            ],
+            must_not=[
+                models.FieldCondition(
+                    key="doc_hash",
+                    match=models.MatchValue(value=expected_doc_hash),
+                )
+            ],
+        )
+        stale_count = self.client.count(
+            collection_name=col_name,
+            count_filter=stale_filter,
+            exact=True,
+        ).count
+
+        if stale_count > 0:
+            # Artık veya eski sürüm point'leri kalmış, doküman temiz değil!
+            return False
+
+        # 2. Kontrol: Hedef hash ile eşleşen point'lerin sayısı
+        matching_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="source_file",
+                    match=models.MatchValue(value=source_file),
+                ),
+                models.FieldCondition(
+                    key="doc_hash",
+                    match=models.MatchValue(value=expected_doc_hash),
+                ),
+            ]
+        )
+        matching_count = self.client.count(
+            collection_name=col_name,
+            count_filter=matching_filter,
+            exact=True,
+        ).count
+
+        if matching_count == 0:
+            return False
+
+        # Beklenen chunk sayısını doğrula
+        target_chunk_count = expected_chunk_count
+        if target_chunk_count is None:
+            # Payload'daki chunk_count değerini oku
+            points, _ = self.client.scroll(
+                collection_name=col_name,
+                scroll_filter=matching_filter,
+                limit=1,
+                with_payload=["chunk_count"],
+            )
+            if points and points[0].payload and "chunk_count" in points[0].payload:
+                target_chunk_count = points[0].payload["chunk_count"]
+
+        if target_chunk_count is not None and matching_count != target_chunk_count:
+            # Yazma işlemi yarıda kesilmiş (örn: 6 chunk'tan sadece 2'si yazılabilmiş)
+            return False
+
+        return True
 
 
 

@@ -63,9 +63,12 @@ Bu belge; kalıcı vektör veritabanı (Qdrant), koleksiyon şeması, hybrid ara
    - Dosya bayt karması yerine yapısal elementler, parser sürümü ve chunking konfigürasyonunu kapsayan deterministik SHA-256 kullanılmıştır. Doküman değişmediğinde ikinci sync koşusunda embedder çağrısı 0 olmakta, API maliyeti ve zaman kaybı önlenmektedir.
 
 5. **Prune Güvenliği:**
-   - Kullanıcının yanlış bir dizin yolu belirtmesi halinde tüm koleksiyonun kazara silinmesini önlemek için `prune` varsayılan olarak `False` olarak belirlenmiştir.
+   - Kullanıcının yanlış bir dizin yolu belirtmesi halinde tüm koleksiyonun kazara silinmesini önlemek için `prune` varsayılan olarak `False` olarak belirlenmiştir. Ayrıca prune silme kararı `disk_source_files` (diskteki mevcut tüm PDF dosyaları) kümesi üzerinden verilir; diskte var olan ancak parse hatası alan veya karantinadaki dosyalar asla prune edilmez.
 
-6. **Geçicilik Notu ve Yeniden Doğrulama:**
+6. **Yarım Yazma ve Crash Koruması (is_document_intact):**
+   - Dokümanlar yazılırken point payload'larına `chunk_count` eklenmiştir. `sync_document` adımı yalnızca tek bir point'in hash'ine bakıp aldanmak yerine, hedef dosyaya ait eski hash'li point sayısının 0 olduğunu ve hedef hash'li point sayısının `chunk_count`'a eşit olduğunu doğrular (`is_document_intact`). Kesintiye uğrayan yazımlar otomatik tespit edilir ve sonraki sync'te eksiksiz onarılır.
+
+7. **Geçicilik Notu ve Yeniden Doğrulama:**
    - Sentetik test korpusu 8 chunk'tan oluştuğu için k=5 sorgularında Hit@5 yapısal doygunluktadır. Gerçek 100+ sayfalık e-ticaret dokümanları eklendiğinde sistem şu komutlarla tekrar doğrulanmalıdır:
      - `uv run python -m app.rag.evaluation.qdrant.parity --embedder default`
      - `uv run python -m app.rag.embedding.compare`

@@ -157,3 +157,74 @@ def test_delete_document_and_get_doc_hash(memory_store):
     store.delete_document("sozlesme.pdf")
     assert store.count("sozlesme.pdf") == 0
     assert store.get_doc_hash("sozlesme.pdf") is None
+
+
+def test_is_document_intact_detects_clean_partial_and_stale(memory_store):
+    """is_document_intact sağlam dokümanlarda True, yarım kalmış veya artık point'li durumlarda False dönmelidir."""
+    store, _, embedder, _ = memory_store
+
+    chunks_v1 = [
+        _make_chunk("c1", "doc.pdf", "Parça 1"),
+        _make_chunk("c2", "doc.pdf", "Parça 2"),
+        _make_chunk("c3", "doc.pdf", "Parça 3"),
+        _make_chunk("c4", "doc.pdf", "Parça 4"),
+    ]
+    vecs_v1 = embedder.embed_documents([c.embedding_text for c in chunks_v1])
+    store.upsert_chunks(chunks_v1, vecs_v1, doc_hash="hash_v1")
+
+    # Tam ve temiz v1 dokümanı
+    assert store.is_document_intact("doc.pdf", expected_doc_hash="hash_v1") is True
+    assert store.is_document_intact("doc.pdf", expected_doc_hash="wrong_hash") is False
+
+    # Senaryo: v2 yazımı yarım kaldı (6 parçadan sadece 2'si yazıldı, v1 parçaları henüz silinmedi)
+    chunks_v2 = [
+        _make_chunk("c5", "doc.pdf", "Yeni Parça 1"),
+        _make_chunk("c6", "doc.pdf", "Yeni Parça 2"),
+        _make_chunk("c7", "doc.pdf", "Yeni Parça 3"),
+        _make_chunk("c8", "doc.pdf", "Yeni Parça 4"),
+        _make_chunk("c9", "doc.pdf", "Yeni Parça 5"),
+        _make_chunk("c10", "doc.pdf", "Yeni Parça 6"),
+    ]
+    vecs_v2 = embedder.embed_documents([c.embedding_text for c in chunks_v2])
+    # Sadece ilk 2 parçayı yazarak çökme simüle et (ama chunk_count=6 olarak işaretlenir)
+    from app.rag.vectorstore.mapping import chunk_point_id, chunk_to_payload
+    from qdrant_client import models
+
+    partial_points = []
+    for c, v in zip(chunks_v2[:2], vecs_v2[:2]):
+        payload = chunk_to_payload(
+            c,
+            doc_hash="hash_v2",
+            embedding_model_id="test-model",
+            ingested_at="2026-11-06T12:00:00Z",
+            chunk_count=6,
+        )
+        partial_points.append(
+            models.PointStruct(
+                id=chunk_point_id(c.id),
+                vector={"dense": list(v), "sparse": models.SparseVector(indices=[], values=[])},
+                payload=payload,
+            )
+        )
+    store.client.upsert(collection_name=store.collection_name, points=partial_points)
+
+    # v2 henüz tamamlanmadı ve v1'den kalan 4 point de duruyor:
+    # 1. hash_v2 açısından: stale_count = 4 (v1 parçaları) ve matching_count = 2 != 6
+    assert store.is_document_intact("doc.pdf", expected_doc_hash="hash_v2") is False
+
+    # 2. hash_v1 açısından: stale_count = 2 (v2 parçaları)
+    assert store.is_document_intact("doc.pdf", expected_doc_hash="hash_v1") is False
+
+
+def test_ensure_payload_indexes_reraises_connection_errors(memory_store, monkeypatch):
+    """ensure_payload_indexes gerçek bağlantı/sistem hatalarını yutmamalı, yukarı fırlatmalıdır."""
+    store, _, _, _ = memory_store
+
+    def broken_create_index(*args, **kwargs):
+        raise ConnectionRefusedError("Qdrant sunucusuna bağlanılamadı")
+
+    monkeypatch.setattr(store.client, "create_payload_index", broken_create_index)
+
+    with pytest.raises(ConnectionRefusedError):
+        store.ensure_payload_indexes()
+

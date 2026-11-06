@@ -113,3 +113,42 @@ def test_search_hit_model():
 
     with pytest.raises(Exception):
         hit.score = 0.50  # frozen=True olduğu için değiştirilemez
+
+
+def test_qdrant_config_create_client():
+    """QdrantConfig.create_client() konfigürasyondaki parametrelerle QdrantClient üretmelidir."""
+    config = QdrantConfig(
+        url="http://test-server:6333",
+        api_key="secret-key",
+        timeout_sec=45.0,
+    )
+    client = config.create_client()
+    assert client is not None
+
+
+def test_payload_chunk_count_support():
+    """chunk_to_payload chunk_count alanını desteklemeli ve payload_to_chunk ile kayıpsız dönmelidir."""
+    original = Chunk(
+        id="chunk_test_count",
+        strategy=ChunkStrategy.STRUCTURE,
+        source_file="docs/test.pdf",
+        chunk_index=0,
+        text="Örnek metin",
+        page_start=1,
+        page_end=1,
+        char_start=0,
+        char_end=11,
+        token_count=2,
+    )
+    payload = chunk_to_payload(
+        original,
+        doc_hash="hash_123",
+        embedding_model_id="fake-embedder",
+        ingested_at="2026-11-06T12:00:00Z",
+        chunk_count=5,
+    )
+    assert payload["chunk_count"] == 5
+
+    reconstructed = payload_to_chunk(payload)
+    assert reconstructed == original
+

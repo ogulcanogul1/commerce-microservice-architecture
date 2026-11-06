@@ -153,6 +153,34 @@ def test_page_range_filter(search_fixture):
     assert returned_pages.issubset({2, 3})
 
 
+def test_page_single_boundary_filters(search_fixture):
+    """Yalnızca page_start veya yalnızca page_end verildiğinde filtre doğru çalışmalıdır."""
+    store, embedder, _ = search_fixture
+
+    # Sadece page_start >= 3
+    retriever_start = QdrantRetriever(
+        store=store,
+        embedder=embedder,
+        mode="dense",
+        filter=SearchFilter(page_start=3),
+    )
+    res_start = retriever_start.search("iade", k=5)
+    assert len(res_start) == 1
+    assert res_start[0].page_start == 3
+
+    # Sadece page_end <= 2
+    retriever_end = QdrantRetriever(
+        store=store,
+        embedder=embedder,
+        mode="dense",
+        filter=SearchFilter(page_end=2),
+    )
+    res_end = retriever_end.search("iade", k=5)
+    for c in res_end:
+        assert c.page_end <= 2
+
+
+
 def test_search_by_budget_respects_limit(search_fixture):
     """search_by_budget bütçeyi kesinlikle aşmamalıdır."""
     store, embedder, _ = search_fixture

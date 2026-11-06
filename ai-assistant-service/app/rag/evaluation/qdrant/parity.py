@@ -137,14 +137,14 @@ def run_parity_evaluation(
         collection_name=temp_col,
     )
     store.ensure_collection(embedder=embedder, collection_name=temp_col)
-    store.ensure_payload_indexes()
-
-    # Chunk'ları Qdrant koleksiyonuna bir defa indeksle
-    print(f"[*] {len(all_chunks)} chunk Qdrant'a yazılıyor...")
-    dense_vecs = embedder.embed_documents([c.embedding_text for c in all_chunks])
-    store.upsert_chunks(all_chunks, dense_vecs, doc_hash="parity_eval_hash")
-
     try:
+        store.ensure_payload_indexes()
+
+        # Chunk'ları Qdrant koleksiyonuna bir defa indeksle
+        print(f"[*] {len(all_chunks)} chunk Qdrant'a yazılıyor...")
+        dense_vecs = embedder.embed_documents([c.embedding_text for c in all_chunks])
+        store.upsert_chunks(all_chunks, dense_vecs, doc_hash="parity_eval_hash")
+
         print("[4/4] Qdrant Dense ve Hybrid retriever'lar değerlendiriliyor...")
         qdrant_dense = QdrantRetriever(store=store, embedder=embedder, mode="dense")
         summary_dense_qdrant, q_dense_qdrant = evaluate_retrieval(qdrant_dense, questions, all_chunks)
