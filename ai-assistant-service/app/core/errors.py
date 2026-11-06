@@ -10,10 +10,11 @@ import http
 import logging
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,8 @@ class ProblemDetails(BaseModel):
 def register_problem_details_handlers(app: FastAPI) -> None:
     """FastAPI uygulamasına RFC 7807 uyumlu hata yakalayıcılarını kaydeder."""
 
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         try:
             status_obj = http.HTTPStatus(exc.status_code)
             title = status_obj.phrase

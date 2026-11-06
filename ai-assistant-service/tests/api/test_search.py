@@ -202,22 +202,6 @@ def test_search_unindexed_collection_returns_503(
     app.dependency_overrides.clear()
 
 
-def test_search_error_rfc7807_format(client: TestClient):
-    """Hata cevapları RFC 7807 ProblemDetails standart formatında dönmelidir."""
-    # 422 Unprocessable Entity testi
-    res_422 = client.post("/rag/search", json={"query": "", "k": 5})
-    assert res_422.status_code == 422
-    assert "application/problem+json" in res_422.headers.get("content-type", "")
-    body_422 = res_422.json()
-    assert body_422["type"] == "about:blank"
-    assert body_422["title"] == "Unprocessable Entity"
-    assert body_422["status"] == 422
-    assert body_422["instance"] == "/rag/search"
-    assert "errors" in body_422
-    assert isinstance(body_422["errors"], list)
-
-
-
 def test_search_store_exception_returns_503_without_leaking_internals(
     memory_store: QdrantStore,
     fake_embedder: FakeEmbedder,
@@ -261,6 +245,25 @@ def test_search_error_rfc7807_format(client: TestClient):
     assert body_422["instance"] == "/rag/search"
     assert "errors" in body_422
     assert isinstance(body_422["errors"], list)
+
+    # 404 Not Found testi (Starlette routing hatası)
+    res_404 = client.get("/non-existent-endpoint")
+    assert res_404.status_code == 404
+    assert "application/problem+json" in res_404.headers.get("content-type", "")
+    body_404 = res_404.json()
+    assert body_404["type"] == "about:blank"
+    assert body_404["status"] == 404
+    assert body_404["instance"] == "/non-existent-endpoint"
+
+    # 405 Method Not Allowed testi
+    res_405 = client.get("/rag/search")  # Sadece POST desteklenir
+    assert res_405.status_code == 405
+    assert "application/problem+json" in res_405.headers.get("content-type", "")
+    body_405 = res_405.json()
+    assert body_405["type"] == "about:blank"
+    assert body_405["status"] == 405
+    assert body_405["instance"] == "/rag/search"
+
 
 
 # ============================================================================
@@ -339,3 +342,22 @@ def test_search_error_rfc7807_format(client: TestClient):
     assert body_422["instance"] == "/rag/search"
     assert "errors" in body_422
     assert isinstance(body_422["errors"], list)
+
+    # 404 Not Found testi (Starlette routing hatası)
+    res_404 = client.get("/non-existent-endpoint")
+    assert res_404.status_code == 404
+    assert "application/problem+json" in res_404.headers.get("content-type", "")
+    body_404 = res_404.json()
+    assert body_404["type"] == "about:blank"
+    assert body_404["status"] == 404
+    assert body_404["instance"] == "/non-existent-endpoint"
+
+    # 405 Method Not Allowed testi
+    res_405 = client.get("/rag/search")  # Sadece POST desteklenir
+    assert res_405.status_code == 405
+    assert "application/problem+json" in res_405.headers.get("content-type", "")
+    body_405 = res_405.json()
+    assert body_405["type"] == "about:blank"
+    assert body_405["status"] == 405
+    assert body_405["instance"] == "/rag/search"
+
