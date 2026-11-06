@@ -8,6 +8,7 @@ from app.llm.base import (
     BaseLLMProvider,
     ChatMessage,
     LLMResponse,
+    TokenUsage,
     ToolCallRequest,
     ToolDefinition,
 )
@@ -54,6 +55,7 @@ class ClaudeProvider(BaseLLMProvider):
         messages: list[ChatMessage],
         tools: list[ToolDefinition] | None = None,
         temperature: float = 0.7,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """
         Execute an asynchronous chat completion request against Anthropic Claude.
@@ -70,7 +72,7 @@ class ClaudeProvider(BaseLLMProvider):
         kwargs: dict[str, Any] = {
             "model": self.model_name,
             "messages": anthropic_messages,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens if max_tokens is not None else 4096,
             "temperature": temperature,
         }
 
@@ -101,9 +103,17 @@ class ClaudeProvider(BaseLLMProvider):
                     )
                 )
 
+        usage: TokenUsage | None = None
+        if getattr(response, "usage", None):
+            usage = TokenUsage(
+                input_tokens=getattr(response.usage, "input_tokens", None),
+                output_tokens=getattr(response.usage, "output_tokens", None),
+            )
+
         return LLMResponse(
             content="\n".join(content_parts),
             tool_calls=tool_calls,
             provider="claude",
             model=self.model_name,
+            usage=usage,
         )

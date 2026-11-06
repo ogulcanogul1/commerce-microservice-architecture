@@ -9,6 +9,7 @@ from app.llm.base import (
     BaseLLMProvider,
     ChatMessage,
     LLMResponse,
+    TokenUsage,
     ToolCallRequest,
     ToolDefinition,
 )
@@ -56,6 +57,7 @@ class LocalProvider(BaseLLMProvider):
         messages: list[ChatMessage],
         tools: list[ToolDefinition] | None = None,
         temperature: float = 0.7,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """
         Execute an asynchronous chat completion request against the local LLM endpoint.
@@ -70,6 +72,9 @@ class LocalProvider(BaseLLMProvider):
             "messages": formatted_messages,
             "temperature": temperature,
         }
+
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
 
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
@@ -101,9 +106,17 @@ class LocalProvider(BaseLLMProvider):
                     )
                 )
 
+        usage: TokenUsage | None = None
+        if getattr(response, "usage", None):
+            usage = TokenUsage(
+                input_tokens=getattr(response.usage, "prompt_tokens", None),
+                output_tokens=getattr(response.usage, "completion_tokens", None),
+            )
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             provider="local",
             model=self.model_name,
+            usage=usage,
         )

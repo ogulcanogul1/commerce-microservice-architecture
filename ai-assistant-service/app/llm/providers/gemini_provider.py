@@ -4,10 +4,12 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from app.core.config import settings
 from app.llm.base import (
     BaseLLMProvider,
     ChatMessage,
     LLMResponse,
+    TokenUsage,
     ToolCallRequest,
     ToolDefinition,
 )
@@ -24,8 +26,13 @@ class GeminiProvider(BaseLLMProvider):
         api_key: str = "",
         base_url: str = "",
     ) -> None:
-        super().__init__(model_name=model_name, api_key=api_key, base_url=base_url)
-        self.client = genai.Client(api_key=self.api_key) if self.api_key else genai.Client()
+        resolved_key = api_key or settings.GEMINI_API_KEY
+        if not resolved_key:
+            raise ValueError(
+                "Gemini API key is missing! Please set GEMINI_API_KEY in your .env file."
+            )
+        super().__init__(model_name=model_name, api_key=resolved_key, base_url=base_url)
+        self.client = genai.Client(api_key=self.api_key)
 
     def _convert_tools(self, tools: list[ToolDefinition]) -> list[types.Tool]:
         """Convert standard ToolDefinition list into Gemini-compatible FunctionDeclaration objects."""
@@ -45,6 +52,7 @@ class GeminiProvider(BaseLLMProvider):
         messages: list[ChatMessage],
         tools: list[ToolDefinition] | None = None,
         temperature: float = 0.7,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """
         Execute an asynchronous chat completion request against the Gemini API.
@@ -70,10 +78,14 @@ class GeminiProvider(BaseLLMProvider):
                     )
                 )
 
-        config = types.GenerateContentConfig(
-            temperature=temperature,
-            system_instruction=system_instruction,
-        )
+        config_kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "system_instruction": system_instruction,
+        }
+        if max_tokens is not None:
+            config_kwargs["max_output_tokens"] = max_tokens
+
+        config = types.GenerateContentConfig(**config_kwargs)
 
         if tools:
             config.tools = self._convert_tools(tools)
@@ -103,9 +115,17 @@ class GeminiProvider(BaseLLMProvider):
         else:
             response_text = response.text or ""
 
+        usage: TokenUsage | None = None
+        if getattr(response, "usage_metadata", None):
+            usage = TokenUsage(
+                input_tokens=getattr(response.usage_metadata, "prompt_token_count", None),
+                output_tokens=getattr(response.usage_metadata, "candidates_token_count", None),
+            )
+
         return LLMResponse(
             content=response_text,
             tool_calls=tool_calls,
             provider="gemini",
             model=self.model_name,
+            usage=usage,
         )

@@ -25,7 +25,10 @@ class LLMFactory:
     """    
 
     @staticmethod
-    def get_provider(provider_name :str | None = None) -> BaseLLMProvider:
+    def get_provider(
+        provider_name: str | None = None,
+        model_name: str | None = None,
+    ) -> BaseLLMProvider:
         """                                                                                                                    
         Resolve and return the appropriate BaseLLMProvider instance.                                                           
                                                                                                                                
@@ -34,17 +37,29 @@ class LLMFactory:
             - 'local' (or 'ollama')                                                                                              
             - 'openai'                                                                                                           
             - 'claude' (or 'anthropic')                                                                                          
-         """  
-        selected_provider = (provider_name or settings.DEFAULT_LLM_PROVIDER).strip().lower()
+        """  
+        raw_provider = (provider_name or settings.DEFAULT_LLM_PROVIDER).strip().lower()
+
+        # Support aliases
+        if raw_provider == "anthropic":
+            selected_provider = LLMProviderType.CLAUDE
+        elif raw_provider == "ollama":
+            selected_provider = LLMProviderType.LOCAL
+        else:
+            selected_provider = raw_provider
+
+        kwargs: dict[str, str] = {}
+        if model_name:
+            kwargs["model_name"] = model_name
 
         if selected_provider == LLMProviderType.GEMINI:
-            return GeminiProvider()
+            return GeminiProvider(**kwargs)
         elif selected_provider == LLMProviderType.OPENAI:
-            return OpenAIProvider()
+            return OpenAIProvider(**kwargs)
         elif selected_provider == LLMProviderType.CLAUDE:
-            return ClaudeProvider()
+            return ClaudeProvider(**kwargs)
         elif selected_provider == LLMProviderType.LOCAL:
-            return LocalProvider()
+            return LocalProvider(**kwargs)
         else:
-            raise ValueError(f"Unsupported LLM provider : '{selected_provider}'")
+            raise ValueError(f"Unsupported LLM provider: '{raw_provider}'")
 
