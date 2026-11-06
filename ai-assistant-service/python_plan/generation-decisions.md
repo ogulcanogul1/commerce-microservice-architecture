@@ -24,4 +24,12 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 3. **Çakışma ve İndeks Yönetimi:** Varlıklar non-overlapping `_PIISpan` modeli ile tespit edilip sağdan sola değiştirilerek karakter offset kaymaları önlenmiştir.
 4. **Test Sayısı:** `tests/core/test_pii.py` altında 9 yeni test eklendi; toplam test sayısı 267'ye yükseldi.
 
+## Adım 3 Kararları — Modeller ve Context Builder
+1. **Citation İndeksi ve Blok Numaralama:** Modeller `[1]`, `[2]` gibi 1'den başlayan ve ardışık artan basit referans numaraları görür; sunucu tarafında bu numaralar `ContextBlock` ve `Citation` modelleri ile gerçek `chunk.id`, `source_file`, `page_start/end` ve `heading_path` ile eşleştirilir.
+2. **Context Bütçesi ve Başlık Maliyeti:** Bir bloğun token maliyeti hem başlık satırını hem de chunk metnini kapsar (`cost = count(header) + count(text)`). İlk blok tek başına bütçeyi aşsa bile bilgi kaybını önlemek için içeri alınır ve uyarı loglanır.
+3. **Indirect Prompt Injection Savunması:** Doküman metinleri veya başlıkları içinde yer alan `<kaynaklar>` ve `</kaynaklar>` etiketleri `‹kaynaklar›` ve `‹/kaynaklar›` olarak kaçırılarak modelin prompt yapısını manipüle etmesi engellenmiştir.
+4. **Tekilleştirme:** Aynı `chunk.id`'ye sahip yinelenen arama sonuçları elenir.
+5. **Test Sayısı:** `tests/generation/test_context.py` altında 7 yeni test eklendi; toplam test sayısı 274'e yükseldi.
+
+
 
