@@ -197,6 +197,30 @@ def test_search_by_budget_respects_limit(search_fixture):
         assert total_tokens <= budget
 
 
+def test_search_by_budget_caps_candidates_at_50(search_fixture, monkeypatch):
+    """search_by_budget koleksiyonda binlerce point olsa bile en fazla 50 aday çekmelidir."""
+    store, embedder, _ = search_fixture
+    retriever = QdrantRetriever(store=store, embedder=embedder, mode="hybrid")
+    tokenizer = WhitespaceTokenizer()
+
+    # store.count()'un 10,000 döndüğünü simüle et
+    monkeypatch.setattr(store, "count", lambda *args, **kwargs: 10_000)
+
+    searched_k = []
+    original_search = retriever.search
+
+    def spy_search(query: str, k: int = 5):
+        searched_k.append(k)
+        return original_search(query, k=k)
+
+    monkeypatch.setattr(retriever, "search", spy_search)
+
+    retriever.search_by_budget("iade", budget=100, tokenizer=tokenizer)
+    assert len(searched_k) == 1
+    assert searched_k[0] == 50  # 10,000 değil kesinlikle 50 ile sınırlandırılmış olmalı
+
+
+
 def test_empty_query_returns_empty(search_fixture):
     """Boş sorgu veya k=0 durumlarında boş liste dönmelidir."""
     store, embedder, _ = search_fixture

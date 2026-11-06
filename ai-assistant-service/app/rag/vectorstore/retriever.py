@@ -124,8 +124,8 @@ class QdrantRetriever:
         if not query or not query.strip() or budget <= 0:
             return []
 
-        # Bütçeyi dolduracak kadar aday çek (maksimum koleksiyondaki toplam sayı veya 50)
-        total_in_store = max(self.store.count(), 10)
-        ranked = self.search(query, k=total_in_store)
+        # Bütçeyi dolduracak kadar aday çek (üst sınır 50 ile sınırlandırılmıştır)
+        candidate_limit = min(max(self.store.count(), 10), 50)
+        ranked = self.search(query, k=candidate_limit)
 
         return select_chunks_by_budget(ranked, budget, tokenizer)

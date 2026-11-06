@@ -162,7 +162,7 @@ def get_embedder(request: Request) -> Embedder:
         503: {"description": "Vektör veritabanına erişilemiyor veya koleksiyon henüz indekslenmemiş."},
     },
 )
-async def search_documents(
+def search_documents(
     payload: SearchRequest,
     store: QdrantStore = Depends(get_qdrant_store),
     embedder: Embedder = Depends(get_embedder),
