@@ -196,18 +196,23 @@ def print_gate_report(
     print(" RAG ABSTAIN GATESI - DENSE KOSINUS SKOR DAGILIMI")
     print("=" * 70)
 
+    sorted_ans = sorted(ans_scores)
+    sorted_unans = sorted(unans_scores)
+
     print("\n[1] Skor Ozet Istatistikleri:")
     print(f"  Cevaplanabilir (n={len(ans_scores)}):")
     print(f"    Min:    {ans_stats['min']:.4f}")
     print(f"    p25:    {ans_stats['p25']:.4f}")
     print(f"    Medyan: {ans_stats['median']:.4f}")
     print(f"    Max:    {ans_stats['max']:.4f}")
+    print(f"    Sirali Tam Liste: {', '.join(f'{s:.4f}' for s in sorted_ans)}")
 
     print(f"\n  Cevaplanamaz (n={len(unans_scores)}):")
     print(f"    Min:    {unans_stats['min']:.4f}")
     print(f"    p25:    {unans_stats['p25']:.4f}")
     print(f"    Medyan: {unans_stats['median']:.4f}")
     print(f"    Max:    {unans_stats['max']:.4f}")
+    print(f"    Sirali Tam Liste: {', '.join(f'{s:.4f}' for s in sorted_unans)}")
 
     print("\n[2] Aday Esik Degerleri Tablosu:")
     print(f"{'Esik':<8} | {'Kaybedilen Cevap':<18} | {'Elenen Cevaplanamaz':<20}")
