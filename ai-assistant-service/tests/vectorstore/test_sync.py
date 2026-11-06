@@ -351,6 +351,34 @@ def test_prune_does_not_delete_files_existing_on_disk(tmp_path, sync_env):
     assert report.pruned == 0  # doc_error diskte olduğu için ASLA prune edilmedi!
 
 
+def test_first_run_dry_run_collection_not_found_handled_safely(tmp_path):
+    """Koleksiyon henüz hiç oluşturulmamışken --dry-run çalıştırıldığında hata fırlatmamalı ve created saymalıdır."""
+    p = tmp_path / "doc.pdf"
+    p.write_text("dummy")
+
+    client = QdrantClient(":memory:")
+    config = QdrantConfig(collection_prefix="fresh_uncreated_coll")
+    embedder = FakeEmbedder(dimensions=16)
+    store = QdrantStore(client=client, config=config, embedder=embedder)
+    chunker = DummyChunker()
+
+    class FreshLoader:
+        def load(self, p: Path):
+            return _make_parsed_doc("doc.pdf", ["Paragraf 1"])
+
+    report = sync_directory(
+        docs_dir=tmp_path,
+        chunker=chunker,
+        embedder=embedder,
+        store=store,
+        dry_run=True,
+        loader=FreshLoader(),
+    )
+    assert report.created == 1
+    assert len(report.failed) == 0
+    assert report.skipped == 0
+
+
 def test_sync_cli_main_help(monkeypatch):
     """sync CLI main() fonksiyonu NameError vermeden argparse yardımını açmalıdır."""
     import sys

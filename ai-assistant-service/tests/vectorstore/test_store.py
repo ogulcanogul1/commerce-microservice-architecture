@@ -216,6 +216,19 @@ def test_is_document_intact_detects_clean_partial_and_stale(memory_store):
     assert store.is_document_intact("doc.pdf", expected_doc_hash="hash_v1") is False
 
 
+def test_count_and_delete_non_existing_collection_safe(memory_store):
+    """Koleksiyon henüz oluşturulmamışken count ve delete metotları hata vermeden güvenle çalışmalıdır."""
+    _, client, embedder, config = memory_store
+    uncreated_config = QdrantConfig(collection_prefix="not_created_yet")
+    store = QdrantStore(client=client, config=uncreated_config, embedder=embedder)
+
+    assert store.count() == 0
+    assert store.count("any.pdf") == 0
+    # delete metotları da çökmemelidir
+    store.delete_stale("any.pdf", keep_doc_hash="h1")
+    store.delete_document("any.pdf")
+
+
 def test_ensure_payload_indexes_reraises_connection_errors(memory_store, monkeypatch):
     """ensure_payload_indexes gerçek bağlantı/sistem hatalarını yutmamalı, yukarı fırlatmalıdır."""
     store, _, _, _ = memory_store

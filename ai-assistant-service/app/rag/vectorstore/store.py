@@ -297,6 +297,8 @@ class QdrantStore:
             keep_doc_hash: Muhafaza edilecek (silinmeyecek) güncel doküman karması.
         """
         col_name = self.collection_name
+        if not self.client.collection_exists(col_name):
+            return
         # Filtre: Bu dosyaya ait olsun (must) AMA güncel hash'e sahip olmasın (must_not)
         filter_stale = models.Filter(
             must=[
@@ -327,6 +329,8 @@ class QdrantStore:
             source_file: Silinecek dokümanın dosya adı (örn: 'eski_kampanya.pdf').
         """
         col_name = self.collection_name
+        if not self.client.collection_exists(col_name):
+            return
         doc_filter = models.Filter(
             must=[
                 models.FieldCondition(
@@ -348,9 +352,11 @@ class QdrantStore:
             source_file: Belirtilirse sadece o dosyanın point'leri sayılır; boşsa tüm koleksiyon.
 
         Returns:
-            Kayıtlı point sayısı (int).
+            Kayıtlı point sayısı (int). Koleksiyon yoksa 0 döner.
         """
         col_name = self.collection_name
+        if not self.client.collection_exists(col_name):
+            return 0
         count_filter = None
         if source_file:
             count_filter = models.Filter(
