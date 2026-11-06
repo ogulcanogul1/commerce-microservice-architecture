@@ -266,8 +266,9 @@ def main() -> None:
         try:
             embedder = get_default_embedder()
         except Exception as exc:
-            print(f"[UYARI] Gerçek embedder başlatılamadı ({exc}), FakeEmbedder'a geçiliyor.")
-            embedder = FakeEmbedder(dimensions=64)
+            print(f"[HATA] Gercek embedder baslatilamadi: {exc}")
+            print("Lutfen API anahtarlarinizi (.env) kontrol edin veya test icin '--embedder fake' kullanin.")
+            sys.exit(1)
 
     # 2. Qdrant İstemcisi
     if args.client_mode == "server":

@@ -355,9 +355,9 @@ def main() -> None:
             embedder = get_default_embedder()
             embedder_name = getattr(embedder, "model_id", "default")
         except Exception as exc:
-            print(f"[UYARI] Varsayılan embedder başlatılamadı ({exc}), FakeEmbedder'a geçiliyor.")
-            embedder = FakeEmbedder(dimensions=64)
-            embedder_name = "FakeEmbedder(fallback)"
+            print(f"[HATA] Varsayilan embedder baslatilamadi: {exc}")
+            print("Lutfen API anahtarlarinizi (.env) kontrol edin veya test icin '--embedder fake' kullanin.")
+            sys.exit(1)
 
     # 2. LLM Hazırla
     is_fake_llm = args.llm == "fake"
