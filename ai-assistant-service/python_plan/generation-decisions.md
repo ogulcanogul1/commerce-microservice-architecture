@@ -31,5 +31,12 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 4. **Tekilleştirme:** Aynı `chunk.id`'ye sahip yinelenen arama sonuçları elenir.
 5. **Test Sayısı:** `tests/generation/test_context.py` altında 7 yeni test eklendi; toplam test sayısı 274'e yükseldi.
 
+## Adım 4 Kararları — Prompt Tasarımı
+1. **Sistem Promptu ve Grounding:** Modelin yalnızca `<kaynaklar>` etiketleri içindeki verileri kullanması, dış bilgi katmaması ve kaynaklarda cevap yoksa yalnızca `BULUNAMADI` yazması kuralı kesinleştirildi.
+2. **Sayıların Formatı:** Modelin sayıları ve süreleri yazıyla ("on dört") değil kaynaktaki gibi rakamla ("14") yazması zorunlu kılındı; bu kural deterministik sayı doğrulamasını (`number_not_in_source`) mümkün kılar.
+3. **Retry Geri Bildirimi ve Bütçe:** Doğrulama hatalarında modele gönderilen düzeltme mesajı en fazla 5 maddeyi listeler; 5'ten fazla sorun varsa `...ve N sorun daha` şeklinde özetlenerek context token israfı önlenir.
+4. **Test Sayısı:** `tests/generation/test_prompt.py` altında 3 yeni test eklendi; toplam test sayısı 277'ye yükseldi.
+
+
 
 
