@@ -1,37 +1,54 @@
 # DEVAM — AI Assistant Service Oturum Devir ve İlerleme Raporu
 
-## Son Tamamlanan Aşama: Embedding Katmanı ve Model Benchmark (embedding.md)
+## Son Tamamlanan Aşama: Qdrant Vektör Veritabanı ve Hibrit Arama (qdrant.md)
 
-`ai-assistant-service/python_plan/embedding.md` planındaki Adım 0'dan Adım 9'a kadar tüm 10 adım eksiksiz tamamlanmış, test edilmiş ve ana repoya pushlanmıştır.
+`ai-assistant-service/python_plan/qdrant.md` planındaki Adım 0'dan Adım 8'e kadar tüm adımlar eksiksiz tamamlanmış, bellek içi (`:memory:`) ve sunucu modlarında doğrulanmış ve testleri yeşile çekilmiştir.
 
-### Mimari Bileşenler ve Test Kapsamı:
-1. **Interface ve Modeller (`app/rag/embedding/`):**
-   - `Embedder(ABC)`: Açık sözleşmeli interface.
-   - `EmbeddingProvider(StrEnum)` & `EmbeddingConfig`: Tip güvenli ve immutable yapılandırma.
-   - `l2_normalize`: Sıfır vektör güvenliğine sahip birim uzunluk normalizasyonu.
-2. **Fake ve Cache Mekanizmaları:**
-   - `FakeEmbedder`: Deterministik MD5 bag-of-words ile ağsız ve anlamlı testler.
-   - `DiskEmbeddingCache` & `CachedEmbedder`: SQLite tabanlı `(model_id, dimensions, kind, text)` karmalı şeffaf disk önbelleği.
-3. **Dayanıklılık ve Batching:**
-   - `batched`: Güvenli dilimleme.
-   - `with_retry`: Üstel geri çekilme (exponential backoff) ve rastgele jitter. 4xx hatalarında fail-fast (AGENTS.md Kural 8.7).
-   - `validate_non_empty_texts`: Boşluk/whitespace string koruması.
-4. **Sağlayıcılar ve Fabrika:**
-   - `OpenAIEmbedder`, `GeminiEmbedder` (`RETRIEVAL_QUERY/DOCUMENT` task_type), `LocalEmbedder` (`query:/passage:` öneki ve BGE-M3 desteği).
-   - `get_embedder` & `get_default_embedder`: Merkezi fabrika.
-5. **Retriever ve Değerlendirme:**
-   - `DenseRetriever`: Dot product / cosine similarity.
-   - `HybridRetriever`: Weighted Reciprocal Rank Fusion (`dense_weight` ve tamamlayıcı `bm25_weight = 1.0 - dense_weight`).
-   - `validate_chunks_fit`: Context window sınır denetimi (`all_fit=True`).
-   - `compare.py`: CLI benchmark runner ve otomatik Markdown + JSON raporlama.
+### Mimari Bileşenler ve Kapsam:
+1. **Veri Modelleri ve Eşleme (`app/rag/vectorstore/`):**
+   - `QdrantConfig` & `SearchHit`: Tip güvenli, dondurulmuş (frozen) konfigürasyon ve arama modeli.
+   - `chunk_point_id`: `uuid5` tabanlı deterministik point kimliği üretimi.
+   - `chunk_to_payload` & `payload_to_chunk`: Çift yönlü kayıpsız dönüşüm (`embedding_text` disk tasarrufu için hariç).
+2. **Sparse Encoder (`sparse.py`):**
+   - Deterministik `uint32` token indeksleme (`hashlib.blake2b(digest_size=4)`).
+   - Corpus'tan bağımsız sabit `avgdl = 256.0` ile artımlı (incremental) BM25 TF ağırlıklandırması.
+   - Qdrant `Modifier.IDF` ile sunucu taraflı BM25 IDF hesaplama.
+3. **QdrantStore (`store.py`):**
+   - Çift vektörlü (`dense` Cosine + `sparse` BM25) dinamik koleksiyon yönetimi (`{prefix}__{model}_{dim}`).
+   - Boyut uyuşmazlığında sessiz ezme yerine fail-fast koruması.
+   - Batch upsert ve `delete_stale` ile "upsert-then-delete" veri bütünlüğü garantisi.
+4. **Arama ve Retriever Adaptörü (`search.py`, `retriever.py`):**
+   - `search_dense`, `search_sparse` ve sunucu taraflı RRF hibrit füzyon (`search_hybrid`).
+   - `QdrantRetriever`: Projenin standart `Retriever` protokolüne tam uyumlu adaptör.
+5. **Parmak İzi ve Incremental Sync (`sync.py`):**
+   - Yapısal SHA-256 içerik parmak izi (`doc_hash`): Element metinleri, sayfa/tip bilgileri, parser sürümü ve chunking ayarları.
+   - İkinci sync koşusunda embedder çağrısı 0 (skipped) ile sıfır API maliyeti.
+   - CLI arayüzü (`--docs-dir`, `--dry-run`, `--prune`).
+6. **Parite Değerlendirmesi (`parity.py`):**
+   - In-Memory (`DenseRetriever`, `HybridRetriever`) vs Qdrant (`QdrantRetriever`).
+   - Dense sıralama farkı: 0 soru (%100 matematiksel eşleşme).
+   - Hybrid Hit@3 farkı: 0.0 soru (tam parite).
+7. **RAG Arama API (`app/api/search.py`):**
+   - `POST /rag/search`: `query` (1..1000 karakter, boşluk korumalı), `k` (1..20), `mode` ('dense', 'sparse', 'hybrid'), `source_file` filtresi.
+   - FastAPI `lifespan` yöneticisi altında `app.state` entegrasyonu (import anında ağa bağlanmama).
+   - Dahili hata ve IP/URL sızdırmayan 503 ve 422 hata yönetimi.
 
-### Beklenmeyen Bulgular ve Sürprizler (Findings):
-1. **RRF'in Çarpıcı Etkisi:** `FakeEmbedder` ile yapılan pilot koşuda bile Reciprocal Rank Fusion (Hybrid), `Hit@1` başarımını Dense'e göre **%66.7'den %88.1'e (+%21.4)** çıkarmış ve tek başına BM25'i (%81.0) geride bırakmıştır. Anlamsal ve sözcüksel aramanın birbirini tamamladığı pratik olarak gözlemlenmiştir.
-2. **Yapısal Korpus Doygunluğu (Saturation):** Mevcut 3 doküman ve toplam 8 chunk'lık korpusta `Hit@3` seviyesinde **%97.6 - %100** skoruna ulaşılması korpusun küçüklüğünden kaynaklanan yapısal bir durumdur. Gerçek ayrım büyük ürün ve politika korpusu ile API anahtarları sağlandığında ortaya çıkacaktır.
-3. **Model Seçimi Durumu (Provisional Baseline):** Ortamda OpenAI/Gemini anahtarları bulunmadığı için ilk koşu `fake/deterministic-bow` ile yapılmıştır. OpenAI `text-embedding-3-small` seçimi deneysel kesin zafer değil, teorik kriterlere dayalı geçici başlangıç adayıdır.
-4. **Context Window Güvenliği:** `DefaultChunker`'ın 300 token bütçesiyle ürettiği hiçbir parça, en dar limitli model olan `multilingual-e5-small`'un 512 token sınırını dahi aşmamıştır (maksimum chunk < 350 token).
+---
+
+### Beklenmeyen Bulgular ve Mühendislik İçgörüleri:
+1. **Rust SIMD Floating-Point Tie (Kayan Nokta Eşitliği):** Soru Q03'te NumPy skorları `0.2331262` ve `0.2331262` (fark 0.0) olan iki chunk'ta Python NumPy kararlı sıralaması indeks sırasını (indeks 5, indeks 7) tercih ederken; Qdrant'ın Rust motoru SIMD vektör çarpımında `2e-8` ULP farkı (`0.23312622` vs `0.23312619`) hesaplamıştır. Bu durum, pratikteki benzerlik eşitliklerinin değerlendirme metriklerinde yanıltıcı olmaması için `1e-4` eşiğinde tie-breaker mantığı ile çözülmüştür.
+2. **Local Mode (`:memory:`) Payload Index Uyarısı:** Qdrant yerel bellek modu vektör aramalarını ve RRF füzyonunu tam olarak desteklerken, payload indeksleri sunucu gerektirir. Birim testlerin Docker gerektirmeden tam hızda çalışabilmesi için local mode uyarısı güvenle ele alınmıştır.
+3. **Korpus Doygunluğu (Corpus Saturation):** Test korpusu 3 PDF / 8 chunk'tan oluştuğu için k=5 sorgularında Hit@5 yapısal olarak %100'e doymaktadır. Raporlama aracı bu durumu otomatik algılayıp uyarı basacak şekilde yapılandırılmıştır.
+
+---
+
+### Doğrulama ve Test Özeti:
+- **Toplam Birim Testi:** 231 test (tümü yeşil, Docker veya harici ağ gerektirmez).
+- **Test Süresi:** ~23 saniye (`uv run pytest -m "not integration"`).
 
 ---
 
 ## Sıradaki İş (Next Step):
-- **Qdrant Vektör Veritabanı Entegrasyonu (M09.03):** Koleksiyon oluşturma, payload şeması, doküman içerik hash'i ile incremental sync ve arama servisinin canlı API'ye bağlanması.
+- **Aşama 4: Reranking ve Context Compression (M09.04):**
+  - Cross-encoder / Cohere reranker modellerinin entegrasyonu.
+  - LLM context window optimizasyonu ve citation formatlama.

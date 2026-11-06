@@ -44,3 +44,28 @@ Bu belge; kalıcı vektör veritabanı (Qdrant), koleksiyon şeması, hybrid ara
   - **Lifespan Yönetimi (Karar 9):** Qdrant istemcisi, konfigürasyonu, embedder ve store nesneleri FastAPI `lifespan` yöneticisi altında `app.state` üzerinde ayağa kaldırıldı ve kapanışta bağlantıların temizlenmesi sağlandı. Import anında ağa bağlanılmadı.
   - **Gateway Secret Durumu:** `AGENTS.md` kuralında belirtilen `X-Gateway-Secret` doğrulaması projenin mevcut Python kod tabanında henüz genel bir middleware veya güvenlik bağımlılığı olarak tanımlanmadığı için plandaki talimat uyarınca yapay bir kontrol eklenmedi; ayrı bir güvenlik altyapısı görevi olarak planlanması kararlaştırıldı.
   - **Hata Yönetimi ve Bilgi Sızıntısını Önleme:** Koleksiyon yoksa 503 ("Vektör koleksiyonu henüz indekslenmemiş"), veritabanı kesintilerinde veya beklenmeyen hatalarda ise iç IP/URL/şifre sızdırılmadan 503 ("Vektör veritabanına erişilemiyor" / "Vektör arama işlemi sırasında bir hata oluştu") iletildi. Geçersiz girişler (`k` sınır dışı, boş sorgu) 422 ile reddedildi.
+
+---
+
+## Nihai Mimari Kararlar ve Değerlendirmeler
+
+1. **Sparse Arama Neden Qdrant'ta Yapılandırıldı (Bellek İçi BM25 Yerine)?**
+   - **Gerekçe:** Qdrant v1.20+ ile birlikte gelen named sparse vectors ve `Modifier.IDF` desteği, BM25 TF-IDF ağırlıklandırmasını veritabanı motoru düzeyinde sunar. İstemci tarafında ayrı bir In-Memory BM25 indeksi tutup iki ayrı arama sonucu birleştirmek yerine; Qdrant'ın sunucu taraflı `query_points(prefetch=[dense, sparse], query=FusionQuery(fusion=Fusion.RRF))` yeteneği kullanılmıştır.
+   - **Kanıt (Parity Eval):** Adım 6 değerlendirmesinde hem Dense sıralamasında 0 fark (%100 matematiksel eşleşme), hem de Hybrid Hit@3 metriğinde 0.0 soru farkı elde edilmiş; harici bir Python BM25 motoruna ihtiyaç kalmadığı kanıtlanmıştır.
+
+2. **Sabit avgdl = 256.0 Kararı:**
+   - Incremental sync sırasında her yeni doküman eklendiğinde tüm korpusun ortalama doküman uzunluğunun (`avgdl`) yeniden hesaplanması, daha önce indekslenmiş dokümanların sparse vektörlerini geçersiz kılardı. Bunu önlemek ve her dokümanı bağımsız/idempotent indeksleyebilmek için `avgdl = 256.0` sabiti dondurulmuştur.
+
+3. **Koleksiyon İsimlendirme Güvencesi:**
+   - `{prefix}__{model_slug}_{dimensions}` şeması sayesinde model veya boyut değiştiğinde eski koleksiyon ezilmez veya farklı boyutlu vektörlerle bozulmaz; otomatik olarak yeni koleksiyona geçiş yapılır.
+
+4. **Yapısal İçerik Parmak İzi (Fingerprint / doc_hash):**
+   - Dosya bayt karması yerine yapısal elementler, parser sürümü ve chunking konfigürasyonunu kapsayan deterministik SHA-256 kullanılmıştır. Doküman değişmediğinde ikinci sync koşusunda embedder çağrısı 0 olmakta, API maliyeti ve zaman kaybı önlenmektedir.
+
+5. **Prune Güvenliği:**
+   - Kullanıcının yanlış bir dizin yolu belirtmesi halinde tüm koleksiyonun kazara silinmesini önlemek için `prune` varsayılan olarak `False` olarak belirlenmiştir.
+
+6. **Geçicilik Notu ve Yeniden Doğrulama:**
+   - Sentetik test korpusu 8 chunk'tan oluştuğu için k=5 sorgularında Hit@5 yapısal doygunluktadır. Gerçek 100+ sayfalık e-ticaret dokümanları eklendiğinde sistem şu komutlarla tekrar doğrulanmalıdır:
+     - `uv run python -m app.rag.evaluation.qdrant.parity --embedder default`
+     - `uv run python -m app.rag.embedding.compare`
