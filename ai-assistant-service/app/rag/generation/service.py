@@ -51,6 +51,7 @@ class RagAnswerService:
         tokenizer: Tokenizer,
         config: GenerationConfig,
     ) -> None:
+        # Gerekli tüm bileşenlerin bağımlılık enjeksiyonu (Dependency Injection) ile alınması
         self.store = store
         self.embedder = embedder
         self.llm = llm
@@ -65,16 +66,18 @@ class RagAnswerService:
         source_file: str | None = None,
     ) -> tuple[list[SearchHit], float | None]:
         """Execute synchronous vector retrieval and return hits alongside gate dense similarity score."""
+        # 1. Koleksiyonun veritabanında var olup olmadığını doğrula
         collection_name = self.store.collection_name
         if not self.store.client.collection_exists(collection_name):
             raise RuntimeError("Vektör koleksiyonu henüz indekslenmemiş.")
 
+        # İsteğe bağlı dosya filtresi (SearchFilter) oluştur
         filter_obj = SearchFilter(source_file=source_file) if source_file else None
 
-        # 1. Embed query exactly ONCE
+        # 2. Soru için embedding modelini YALNIZCA BİR KEZ çağır (Maliyet ve gecikme optimizasyonu)
         query_vec = self.embedder.embed_query(question)
 
-        # 2. Execute retrieval based on configured mode
+        # 3. Ayarlanan arama moduna göre Qdrant üzerinde arama yap
         mode = self.config.retrieval_mode
         if mode == "dense":
             hits = search_dense(
@@ -93,7 +96,7 @@ class RagAnswerService:
                 k=k,
                 filter=filter_obj,
             )
-        else:  # hybrid
+        else:  # hybrid (Dense + BM25 Sparse RRF füzyonu)
             query_sparse = self.store.sparse_encoder.encode_query(question)
             hits = search_hybrid(
                 client=self.store.client,
@@ -104,12 +107,15 @@ class RagAnswerService:
                 filter=filter_obj,
             )
 
-        # 3. Calculate gate score (Decision 5: gate inspects dense cosine score, not RRF)
+        # 4. Abstain Kapı Skoru (Karar 5):
+        # RRF skoru sıralamadan türediği için alaka seviyesini göstermez;
+        # bu yüzden kapı kontrolü için her zaman gerçek dense cosine benzerlik skoruna bakılır.
         top_dense_score: float | None = None
         if self.config.min_dense_score is not None:
             if mode == "dense":
                 top_dense_score = hits[0].score if hits else None
             else:
+                # Hibrit veya sparse modunda, aynı vektörle ek maliyetsiz en iyi 1 dense aday çekilir
                 dense_hits = search_dense(
                     client=self.store.client,
                     collection_name=collection_name,
@@ -140,11 +146,17 @@ class RagAnswerService:
         pii_types: list[str] = []
 
         try:
-            # 1. PII Masking: external LLM and embedder must never receive raw user secrets
+            # -------------------------------------------------------------------------
+            # 1. ADIM: PII Maskeleme (Kişisel Veri Koruması)
+            # Kullanıcının TCKN, kredi kartı, IBAN vb. hassas verileri dış API'lara açık gitmez.
+            # -------------------------------------------------------------------------
             masked_q, pii_types = mask_pii(question)
             has_pii = len(pii_types) > 0
 
-            # 2. Synchronous retrieval running in threadpool
+            # -------------------------------------------------------------------------
+            # 2. ADIM: Asenkron Threadpool Üzerinde Arama (Retrieval)
+            # Senkron Qdrant ve embedder çağrıları event loop'u kilitlemesin diye threadpool'a verilir.
+            # -------------------------------------------------------------------------
             target_k = k if k is not None else self.config.top_k
             t_retrieval_start = time.perf_counter()
             hits, top_score = await run_in_threadpool(
@@ -157,7 +169,10 @@ class RagAnswerService:
 
             retrieved_chunk_ids = [h.chunk.id for h in hits]
 
-            # 3. Gate: No results -> abstain: no_results
+            # -------------------------------------------------------------------------
+            # 3. ADIM: Sonuçsuz Arama Kapısı (Fail-Fast Abstain)
+            # Veritabanında eşleşen hiçbir kayıt yoksa LLM çağrılmadan hızlıca abstain dönülür.
+            # -------------------------------------------------------------------------
             if not hits:
                 final_answer = RagAnswer(
                     status="abstained",
@@ -174,7 +189,11 @@ class RagAnswerService:
                 )
                 return final_answer
 
-            # 4. Gate: Cosine similarity below threshold -> abstain: low_retrieval_score
+            # -------------------------------------------------------------------------
+            # 4. ADIM: Benzerlik Eşiği Kapısı (Low Retrieval Score)
+            # Bulunan en iyi sonucun benzerlik skoru belirlenen eşiğin altındaysa,
+            # modelin alakasız metinlerden uydurma yapmasını önlemek için doğrudan abstain edilir.
+            # -------------------------------------------------------------------------
             if self.config.min_dense_score is not None and (
                 top_score is None or top_score < self.config.min_dense_score
             ):
@@ -193,7 +212,10 @@ class RagAnswerService:
                 )
                 return final_answer
 
-            # 5. Build context blocks according to token budget
+            # -------------------------------------------------------------------------
+            # 5. ADIM: Context Bloklarının Oluşturulması ve Token Bütçesi
+            # Aday chunk'lar [1], [2] diye numaralandırılır, prompt enjeksiyon etiketleri kaçırılır.
+            # -------------------------------------------------------------------------
             blocks = build_context(
                 hits,
                 tokenizer=self.tokenizer,
@@ -217,7 +239,9 @@ class RagAnswerService:
                 )
                 return final_answer
 
-            # 6. LLM Generation and Validation Loop (up to max_attempts)
+            # -------------------------------------------------------------------------
+            # 6. ADIM: LLM Yanıt Üretimi ve Doğrulama Döngüsü (En Fazla max_attempts)
+            # -------------------------------------------------------------------------
             total_input_tokens = 0
             total_output_tokens = 0
             last_issues: list[ValidationIssue] = []
@@ -226,6 +250,7 @@ class RagAnswerService:
             last_model: str | None = None
 
             for attempt in range(1, self.config.max_attempts + 1):
+                # İlk denemede standart prompt; sonraki denemelerde hataların bildirildiği retry prompt'u
                 if attempt == 1:
                     messages = build_messages(masked_q, blocks)
                 else:
@@ -236,6 +261,7 @@ class RagAnswerService:
                         last_issues,
                     )
 
+                # LLM çağrısı zaman aşımı (timeout) korumasıyla çalıştırılır
                 t_llm_start = time.perf_counter()
                 resp = await asyncio.wait_for(
                     self.llm.generate(
@@ -251,6 +277,7 @@ class RagAnswerService:
                 last_provider = resp.provider
                 last_model = resp.model
 
+                # Harcanan token miktarlarını denemeler boyunca kümülatif topla
                 if resp.usage:
                     if resp.usage.input_tokens is not None:
                         total_input_tokens += resp.usage.input_tokens
@@ -262,7 +289,8 @@ class RagAnswerService:
                     output_tokens=total_output_tokens,
                 )
 
-                # Check explicit model abstain refusal
+                # Model kaynaklarda bilginin olmadığını açıkça söylediyse ("BULUNAMADI"):
+                # Israr edilmez, model tahmin yürütmeye zorlanmaz; doğrudan kurumsal mesajla abstain edilir.
                 if is_abstain(resp.content):
                     final_answer = RagAnswer(
                         status="abstained",
@@ -280,10 +308,11 @@ class RagAnswerService:
                     )
                     return final_answer
 
-                # Grounding validation
+                # Kod seviyesinde atıf ve sayı doğrulama kontrolü
                 issues = validate_answer(resp.content, blocks)
                 if not issues:
-                    # Valid grounded answer!
+                    # Başarılı ve kurallara tam uyan yanıt!
+                    # Cevapta gerçekten geçen [n] numaraları gerçek chunk ve sayfa bilgileriyle eşlenir.
                     used_nums = cited_numbers(resp.content)
                     block_map = {b.number: b for b in blocks}
                     citations = [
@@ -315,10 +344,14 @@ class RagAnswerService:
                     )
                     return final_answer
 
-                # Validation failed on this attempt
+                # Doğrulama geçilemediyse bulunan sorunlar kaydedilir ve döngü bir sonraki retry'a geçer
                 last_issues = issues
 
-            # All attempts exhausted without passing validation -> abstain: validation_failed
+            # -------------------------------------------------------------------------
+            # 7. ADIM: Tüm Denemeler Tükendi (Validation Failed)
+            # Model atıf hatalarını düzeltemediğinde, hatalı cevabı müşteriye göstermek yerine
+            # güvenli kurumsal abstain mesajı verilir.
+            # -------------------------------------------------------------------------
             final_answer = RagAnswer(
                 status="abstained",
                 answer=self.config.abstain_message,
@@ -339,6 +372,11 @@ class RagAnswerService:
             return final_answer
 
         finally:
+            # -------------------------------------------------------------------------
+            # 8. ADIM: Yapılandırılmış Gözlemlenebilirlik (Structured Logging - Karar 13)
+            # Güvenlik ve KVKK gereği kullanıcı sorusunun açık metni ASLA loglanmaz;
+            # sadece soru uzunluğu, PII varlığı, gecikmeler ve token sayıları kaydedilir.
+            # -------------------------------------------------------------------------
             total_latency_ms = (time.perf_counter() - t_total_start) * 1000
             if final_answer is not None:
                 log_data = {
