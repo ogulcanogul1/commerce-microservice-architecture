@@ -56,6 +56,17 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 5. **Gözlemlenebilirlik ve Log Gizliliği:** Kullanıcı sorusu loglanmaz (yalnızca soru uzunluğu ve `has_pii` loglanır); süreler, token kullanımları ve doğrulama hata tipleri yapılandırılmış log ile kaydedilir.
 6. **Test Sayısı:** `tests/generation/test_service.py` altında 12 yeni test eklendi; toplam test sayısı 298'e yükseldi.
 
+## Adım 7 Kararları — Answer API
+1. **Dahili Teşhis İzolasyonu:** `AnswerResponse` halka açık API yanıt zarfında yalnızca `status`, `answer`, `abstain_reason` ve `citations` alanları yer alır; `validation_issues`, `usage`, `top_dense_score` gibi dahili metrikler sızdırılmaz.
+2. **Girdi Doğrulama ve RFC 7807:** `question` alanı 1-1000 karakter aralığında sınırlandırıldı ve whitespace-only sorgular `field_validator` ile engellendi. `k` parametresi 1..10 aralığında sınırlandı.
+3. **Hata Maskeleme ve 503 Standartları:**
+   - İndekslenmemiş koleksiyonlarda 503 ("Vektör koleksiyonu henüz indekslenmemiş").
+   - Zaman aşımlarında 503 ("Cevap üretimi zaman aşımına uğradı").
+   - Beklenmeyen ve iç sistem hatalarında veritabanı şifreleri veya dahili URL'ler sızdırılmadan 503 ("Cevap üretilirken bir hata oluştu").
+   - Yapılandırılmamış servis durumunda 503 ("Cevap üretimi servisi yapılandırılmamış veya erişilemiyor").
+4. **Lifespan Entegrasyonu:** `RagAnswerService` başlatma mantığı `app/main.py` lifespan bloğuna eklendi; QdrantStore veya embedder başlatılamazsa uygulama çökmeden servis None olarak kaydedilir ve arama uç noktaları ile birlikte çalışmaya devam eder.
+5. **Test Sayısı:** `tests/api/test_answer.py` altında 14 yeni test eklendi; toplam test sayısı 298'den 312'ye yükseldi (312 passed, 4 deselected).
+
 
 
 

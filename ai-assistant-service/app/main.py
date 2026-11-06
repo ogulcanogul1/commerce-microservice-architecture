@@ -12,7 +12,11 @@ from qdrant_client import QdrantClient
 from app.api.api import api_router
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
+from app.llm.factory import LLMFactory
+from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.factory import get_default_embedder
+from app.rag.generation.models import GenerationConfig
+from app.rag.generation.service import RagAnswerService
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.store import QdrantStore
 
@@ -48,9 +52,28 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("QdrantStore başlatılamadı: %s", exc)
 
+    rag_answer_service = None
+    try:
+        provider_name = settings.RAG_LLM_PROVIDER or None
+        model_name = settings.RAG_LLM_MODEL or None
+        llm = LLMFactory.get_provider(provider_name, model_name=model_name)
+        tokenizer = TiktokenTokenizer()
+        gen_config = GenerationConfig.from_settings(settings)
+        if store is not None and embedder is not None:
+            rag_answer_service = RagAnswerService(
+                store=store,
+                embedder=embedder,
+                llm=llm,
+                tokenizer=tokenizer,
+                config=gen_config,
+            )
+    except Exception as exc:
+        logger.warning("RagAnswerService başlatılamadı: %s", exc)
+
     app.state.embedder = embedder
     app.state.qdrant_client = client
     app.state.qdrant_store = store
+    app.state.rag_answer_service = rag_answer_service
 
     yield
 
