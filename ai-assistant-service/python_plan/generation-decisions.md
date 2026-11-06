@@ -67,6 +67,26 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 4. **Lifespan Entegrasyonu:** `RagAnswerService` başlatma mantığı `app/main.py` lifespan bloğuna eklendi; QdrantStore veya embedder başlatılamazsa uygulama çökmeden servis None olarak kaydedilir ve arama uç noktaları ile birlikte çalışmaya devam eder.
 5. **Test Sayısı:** `tests/api/test_answer.py` altında 14 yeni test eklendi; toplam test sayısı 298'den 312'ye yükseldi (312 passed, 4 deselected).
 
+## Adım 8 Kararları — Generation Evaluation
+1. **Cevap Seti Tasarımı (`answer_set.json`):**
+   - Toplam 54 soru: 42 cevaplanabilir (Golden set Q01-Q42 referanslı, kanıt metinlerinden elle çıkarılmış `expected_facts`) ve 12 cevaplanamaz (U01-U12: 6 belirgin konu dışı + 6 tehlikeli yakın soru).
+   - `question_id` ve `question` alanlarından tam olarak birinin dolu olması kuralı getirildi; `dataset.py` ile altın set eşleşmesi ve veri doğrulaması CLI ile garanti altına alındı.
+2. **Deterministik Metrikler (`metrics.py`):**
+   - LLM-judge yerine deterministik string ve olgu taraması (`fact_recall`, `forbidden_hit`) uygulandı.
+   - Türkçe-duyarlı eşleştirme (`normalize_for_match`: İ/i, I/ı dönüşümü ve boşluk sadeleştirme) kullanıldı.
+   - Yasaklı olgu üretimi (`forbidden_hit`) durumunda fact_recall 1.0 olsa dahi cevap başarısız sayıldı.
+   - Cevaplanamaz sorularda tek başarı kriteri sessiz kalma (`status == "abstained"`) kabul edildi.
+3. **Abstain Eşiği ve Kapı Analizi (`gate.py`):**
+   - 54 soru için dense kosinüs benzerlik skor dağılımları ölçüldü:
+     - Cevaplanabilir (n=42): Min 0.2106, Medyan 0.4149, Max 0.6209
+     - Cevaplanamaz (n=12): Min 0.2489, Medyan 0.3749, Max 0.5129
+   - Skor dağılımlarının birbirine çok yakın ve iç içe geçmesi sebebiyle (0.30 eşiğinde bile 4 cevaplanabilir soru feda edilmektedir) suni bir eşik koyulmamış ve `RAG_MIN_DENSE_SCORE = None` olarak bırakılmıştır. Abstain yükü model kuralına (`BULUNAMADI`) devredilmiştir.
+4. **Runner ve Raporlama (`run.py`):**
+   - Geçici izole koleksiyon açma, chunk indeksleme, değerlendirme ve `finally` bloğunda koleksiyon silme yaşam döngüsü kuruldu.
+   - Smoke test koşuları için `--llm fake` ve `--embedder fake` desteği eklendi; markdown ve JSON raporlama tamamlandı.
+5. **Test Sayısı:** `tests/generation/test_eval.py` altında 12 yeni test eklendi; toplam test sayısı 312'den 324'e yükseldi (324 passed, 4 deselected).
+
+
 
 
 

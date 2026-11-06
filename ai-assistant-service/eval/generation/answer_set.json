@@ -1,0 +1,488 @@
+[
+  {
+    "id": "G01",
+    "question_id": "Q01",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["14 gün"],
+    "forbidden_facts": ["30 gün"],
+    "notes": "14 gün iade süresi"
+  },
+  {
+    "id": "G02",
+    "question_id": "Q02",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["ticari vasfını kaybetmemiş"],
+    "forbidden_facts": [],
+    "notes": "Ticari vasfını kaybetmemiş olması şartı"
+  },
+  {
+    "id": "G03",
+    "question_id": "Q03",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["şirketimiz tarafından"],
+    "forbidden_facts": ["müşteri öder", "alıcı öder"],
+    "notes": "Anlaşmalı kargo ücreti şirket tarafından karşılanır"
+  },
+  {
+    "id": "G04",
+    "question_id": "Q04",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["24 saat"],
+    "forbidden_facts": ["48 saat"],
+    "notes": "Standart kargo 24 saat içinde teslim edilir"
+  },
+  {
+    "id": "G05",
+    "question_id": "Q05",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["garanti kapsamı dışındadır"],
+    "forbidden_facts": ["garanti kapsamındadır"],
+    "notes": "Yetkisiz müdahale ve sıvı teması garanti dışıdır"
+  },
+  {
+    "id": "G06",
+    "question_id": "Q06",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["yapılamamaktadır"],
+    "forbidden_facts": ["yapılabilir"],
+    "notes": "Kargoya verildikten sonra adres değişikliği yapılamaz"
+  },
+  {
+    "id": "G07",
+    "question_id": "Q07",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["distribütör garantisi"],
+    "forbidden_facts": ["ithalatçı garantisi"],
+    "notes": "Elektronik aletler resmi distribütör garantilidir"
+  },
+  {
+    "id": "G08",
+    "question_id": "Q08",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["iade alınamaz"],
+    "forbidden_facts": ["iade alınabilir"],
+    "notes": "Ambalajı açılmış kozmetik iade alınamaz"
+  },
+  {
+    "id": "G09",
+    "question_id": "Q09",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["iade hakkını geçersiz"],
+    "forbidden_facts": ["iade hakkı saklıdır"],
+    "notes": "Servis gelmeden beyaz eşya ambalajı açılırsa iade geçersizdir"
+  },
+  {
+    "id": "G10",
+    "question_id": "Q10",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["kabul edilmeyecektir"],
+    "forbidden_facts": ["kabul edilir"],
+    "notes": "Anlaşmasız alıcı ödemeli kargo kabul edilmez"
+  },
+  {
+    "id": "G11",
+    "question_id": "Q11",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["kullanıcı hatası"],
+    "forbidden_facts": ["ücretsiz garanti"],
+    "notes": "Voltaj kaynaklı anakart yanması kullanıcı hatasıdır"
+  },
+  {
+    "id": "G12",
+    "question_id": "Q12",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["14 gün"],
+    "forbidden_facts": ["iade edilemez"],
+    "notes": "Ambalajı açılmamış kozmetik 14 gün içinde iade edilebilir"
+  },
+  {
+    "id": "G13",
+    "question_id": "Q13",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["garanti kapsamı dışındadır"],
+    "forbidden_facts": ["ücretsiz tamir edilir"],
+    "notes": "Kırık ekran garanti kapsamı dışındadır"
+  },
+  {
+    "id": "G14",
+    "question_id": "Q14",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["iade hakkını geçersiz"],
+    "forbidden_facts": [],
+    "notes": "Beyaz eşyada servis gelmeden kutuyu açmanın sonucu"
+  },
+  {
+    "id": "G15",
+    "question_id": "Q15",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["2 yıl", "yerinde servis"],
+    "forbidden_facts": [],
+    "notes": "Dizüstü bilgisayar 2 yıl yerinde servis"
+  },
+  {
+    "id": "G16",
+    "question_id": "Q16",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["2 yıl", "yetkili servis"],
+    "forbidden_facts": [],
+    "notes": "Akıllı telefon 2 yıl yetkili servis"
+  },
+  {
+    "id": "G17",
+    "question_id": "Q17",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["evde kurulum"],
+    "forbidden_facts": ["kargo ile teslim"],
+    "notes": "Televizyon modellerinde evde kurulum"
+  },
+  {
+    "id": "G18",
+    "question_id": "Q18",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["2 yıl"],
+    "forbidden_facts": ["3 yıl"],
+    "notes": "Bilgisayar garanti süresi 2 yıldır"
+  },
+  {
+    "id": "G19",
+    "question_id": "Q19",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["yetkili servis"],
+    "forbidden_facts": ["yerinde servis"],
+    "notes": "Akıllı telefon yetkili servis güvencesindedir"
+  },
+  {
+    "id": "G20",
+    "question_id": "Q20",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["3 yıl"],
+    "forbidden_facts": ["2 yıl"],
+    "notes": "Televizyon 3 yıl garanti"
+  },
+  {
+    "id": "G21",
+    "question_id": "Q21",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["yerinde servis"],
+    "forbidden_facts": ["kargo ile"],
+    "notes": "Dizüstü bilgisayar yerinde servis desteği"
+  },
+  {
+    "id": "G22",
+    "question_id": "Q22",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["3 yıl"],
+    "forbidden_facts": ["1 yıl"],
+    "notes": "Beyaz eşyalar 3 yıl garantilidir"
+  },
+  {
+    "id": "G23",
+    "question_id": "Q23",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["1 yıl"],
+    "forbidden_facts": ["2 yıl"],
+    "notes": "Aksesuar değişim servisi 1 yıldır"
+  },
+  {
+    "id": "G24",
+    "question_id": "Q24",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["kargo ile teslim"],
+    "forbidden_facts": ["yerinde servis"],
+    "notes": "Küçük ev aletleri kargo ile teslim edilir"
+  },
+  {
+    "id": "G25",
+    "question_id": "Q25",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["evde kurulum"],
+    "forbidden_facts": [],
+    "notes": "Beyaz eşyalar için evde kurulum yapılır"
+  },
+  {
+    "id": "G26",
+    "question_id": "Q26",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["1 yıl"],
+    "forbidden_facts": ["6 ay"],
+    "notes": "Aksesuar kategorisi 1 yıl değişim"
+  },
+  {
+    "id": "G27",
+    "question_id": "Q27",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["2 yıl"],
+    "forbidden_facts": ["3 yıl"],
+    "notes": "Küçük ev aletleri 2 yıl garanti"
+  },
+  {
+    "id": "G28",
+    "question_id": "Q28",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["beyaz eşya"],
+    "forbidden_facts": [],
+    "notes": "Tablonun devamında evde kurulum olan beyaz eşyadır"
+  },
+  {
+    "id": "G29",
+    "question_id": "Q29",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["hasar tespit tutanağı"],
+    "forbidden_facts": [],
+    "notes": "Hasarlı kargo için hasar tespit tutanağı tutturulmalıdır"
+  },
+  {
+    "id": "G30",
+    "question_id": "Q30",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["hasar tespit tutanağı"],
+    "forbidden_facts": [],
+    "notes": "Hasarlı teslimatta düzenlenmesi gereken evrak"
+  },
+  {
+    "id": "G31",
+    "question_id": "Q31",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["teslim alınmadan iade"],
+    "forbidden_facts": ["teslim alınmalıdır"],
+    "notes": "Hasarlı ürün teslim alınmadan iade edilir"
+  },
+  {
+    "id": "G32",
+    "question_id": "Q32",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["hasar tespit tutanağı"],
+    "forbidden_facts": [],
+    "notes": "Ezik yırtık pakette yasal hasar tespit prosedürü"
+  },
+  {
+    "id": "G33",
+    "question_id": "Q33",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["hasar tespit tutanağı"],
+    "forbidden_facts": [],
+    "notes": "Islak kolide tutanak tutulması zorunludur"
+  },
+  {
+    "id": "G34",
+    "question_id": "Q34",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["kargo görevlisi"],
+    "forbidden_facts": [],
+    "notes": "Tutanak kargo görevlisi huzurunda düzenlenir"
+  },
+  {
+    "id": "G35",
+    "question_id": "Q35",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["teslim alınmadan"],
+    "forbidden_facts": ["teslim almalıdır"],
+    "notes": "Müşteri ürünü teslim almadan iade etmelidir"
+  },
+  {
+    "id": "G36",
+    "question_id": "Q36",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["iade kargo ücretleri"],
+    "forbidden_facts": [],
+    "notes": "Alıcı ödemeli paket kuralı İade Kargo Ücretleri altındadır"
+  },
+  {
+    "id": "G37",
+    "question_id": "Q37",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["istisnai durumlar"],
+    "forbidden_facts": [],
+    "notes": "Hijyen kuralları İstisnai Durumlar başlığındadır"
+  },
+  {
+    "id": "G38",
+    "question_id": "Q38",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["garanti dışı haller"],
+    "forbidden_facts": [],
+    "notes": "Yetkisiz müdahale Garanti Dışı Haller başlığındadır"
+  },
+  {
+    "id": "G39",
+    "question_id": "Q39",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["adres değişikliği"],
+    "forbidden_facts": [],
+    "notes": "Adres değişikliği bildirimi Adres Değişikliği başlığındadır"
+  },
+  {
+    "id": "G40",
+    "question_id": "Q40",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["istisnai durumlar"],
+    "forbidden_facts": [],
+    "notes": "Beyaz eşya kutu açma kuralı İstisnai Durumlar başlığındadır"
+  },
+  {
+    "id": "G41",
+    "question_id": "Q41",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["kargo hasar tespiti"],
+    "forbidden_facts": [],
+    "notes": "Hasar tutanağı Kargo Hasar Tespiti başlığı altındadır"
+  },
+  {
+    "id": "G42",
+    "question_id": "Q42",
+    "question": null,
+    "answerable": true,
+    "expected_facts": ["iade kargo ücretleri"],
+    "forbidden_facts": [],
+    "notes": "Anlaşmalı kargo ücreti İade Kargo Ücretleri başlığındadır"
+  },
+  {
+    "id": "U01",
+    "question_id": null,
+    "question": "Kripto para ile ödeme kabul ediyor musunuz?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Dokümanlarda ödeme yöntemi ve kripto para bilgisi yok"
+  },
+  {
+    "id": "U02",
+    "question_id": null,
+    "question": "Şirketinizin genel merkezi hangi şehir ve ilçededir?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Dokümanlarda şirket genel merkez adresi yok"
+  },
+  {
+    "id": "U03",
+    "question_id": null,
+    "question": "Açık pozisyonlar ve iş başvurusu için hangi e-posta adresine özgeçmiş göndermeliyim?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Dokümanlarda kariyer ve İK bilgisi yok"
+  },
+  {
+    "id": "U04",
+    "question_id": null,
+    "question": "Yemek kartı (Sodexo, Multinet) ile sipariş verilebilir mi?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Dokümanlarda yemek kartı ödemeleri yok"
+  },
+  {
+    "id": "U05",
+    "question_id": null,
+    "question": "Franchise veya bayilik başvurusu şartları nelerdir?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Dokümanlarda bayilik ve franchise bilgisi yok"
+  },
+  {
+    "id": "U06",
+    "question_id": null,
+    "question": "Şirketin kurucusu ve mevcut genel müdürü (CEO) kimdir?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Dokümanlarda kurucu ve şirket yöneticisi bilgisi yok"
+  },
+  {
+    "id": "U07",
+    "question_id": null,
+    "question": "Yurt dışına sipariş gönderimi yapıyor musunuz, kargo süresi kaç gündür?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Tehlikeli yakın: teslimat dokümanında yalnızca yurtiçi teslimat var, yurtdışı yok"
+  },
+  {
+    "id": "U08",
+    "question_id": null,
+    "question": "Hediye çeki veya kupon ile satın alınan ürünlerin iadesinde geri ödeme nakit mi yapılır?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Tehlikeli yakın: iade politikasında hediye çeki/kupon iadesi kuralı yok"
+  },
+  {
+    "id": "U09",
+    "question_id": null,
+    "question": "Akıllı saat ve akıllı bilekliklerin garanti süresi ve servis tipi nedir?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Tehlikeli yakın: garanti tablosunda bilgisayar, telefon, TV, beyaz eşya var ama akıllı saat yok"
+  },
+  {
+    "id": "U10",
+    "question_id": null,
+    "question": "Müşteri adreste bulunamazsa paket kargo şubesinde en fazla kaç iş günü bekletilir?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Tehlikeli yakın: kargo şubesinden teslim alma belirtilmiş ancak bekleme süresi günü yok"
+  },
+  {
+    "id": "U11",
+    "question_id": null,
+    "question": "Yetkili servise verilen ürünün yasal azami tamir süresi kaç iş günüdür?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Tehlikeli yakın: garanti kapsamı ve servis tipleri var ancak tamir süresi iş günü yok"
+  },
+  {
+    "id": "U12",
+    "question_id": null,
+    "question": "Pazar ve resmi tatil günlerinde verilen siparişler aynı gün kargoya verilir mi?",
+    "answerable": false,
+    "expected_facts": [],
+    "forbidden_facts": [],
+    "notes": "Tehlikeli yakın: 24 saat kargo kuralı var fakat pazar/tatil istisnası yer almıyor"
+  }
+]
