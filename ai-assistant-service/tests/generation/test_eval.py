@@ -251,6 +251,19 @@ def test_compute_generation_summary():
 # ============================================================================
 
 
+def test_generation_config_override_frozen():
+    """Frozen GenerationConfig'in model_copy ile min_dense_score ve top_k güncellenebilmesi."""
+    from app.core.config import settings
+    from app.rag.generation.models import GenerationConfig
+
+    base_config = GenerationConfig.from_settings(settings)
+    updated = base_config.model_copy(update={"min_dense_score": 0.45, "top_k": 7})
+
+    assert updated.min_dense_score == 0.45
+    assert updated.top_k == 7
+    assert base_config.min_dense_score != 0.45 or base_config.top_k != 7
+
+
 def test_gate_analyze_thresholds():
     """Eşik analizi en fazla 1 cevaplanabilir kaybettiren en iyi eşiği bulmalıdır."""
     ans_scores = [0.85, 0.82, 0.80, 0.78, 0.75, 0.60]  # 0.60 bir uç değer

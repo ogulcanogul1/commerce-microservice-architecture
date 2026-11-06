@@ -386,10 +386,13 @@ def main() -> None:
     # 5. RagAnswerService Yapılandır
     tokenizer = TiktokenTokenizer()
     gen_config = GenerationConfig.from_settings(settings)
+    update_dict: dict[str, Any] = {}
     if args.min_dense_score is not None:
-        gen_config.min_dense_score = args.min_dense_score
+        update_dict["min_dense_score"] = args.min_dense_score
     if args.top_k is not None:
-        gen_config.top_k = args.top_k
+        update_dict["top_k"] = args.top_k
+    if update_dict:
+        gen_config = gen_config.model_copy(update=update_dict)
 
     service = RagAnswerService(
         store=store,
