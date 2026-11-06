@@ -265,6 +265,53 @@ def test_search_error_rfc7807_format(client: TestClient):
     assert body_405["instance"] == "/rag/search"
 
 
+def test_http_exception_headers_preserved_and_unhandled_500_rfc7807(client: TestClient, monkeypatch):
+    """HTTPException headers alanı kaybolmamalı ve yakalanmamış hatalar 500 RFC 7807 dönmelidir."""
+    from fastapi import HTTPException
+    from app.api import search as search_module
+
+    # 1. Custom Header testi (Retry-After)
+    def raise_retry_after(*args, **kwargs):
+        raise HTTPException(
+            status_code=503,
+            detail="Bakım çalışması",
+            headers={"Retry-After": "120"},
+        )
+
+    monkeypatch.setattr(search_module, "search_hybrid", raise_retry_after)
+
+    res_header = client.post("/rag/search", json={"query": "test", "k": 5, "mode": "hybrid"})
+    assert res_header.status_code == 503
+    assert res_header.headers.get("retry-after") == "120"
+    assert "application/problem+json" in res_header.headers.get("content-type", "")
+    assert res_header.json()["detail"] == "Bakım çalışması"
+
+    # 2. Beklenmeyen 500 Unhandled Exception testi
+    @app.get("/test-unhandled-crash")
+    def crash_endpoint():
+        raise ZeroDivisionError("Beklenmeyen dahili hesaplama hatası")
+
+    # Starlette debug=True iken custom 500 handler'ı atlayıp düz metin traceback döner.
+    # Üretim ortamını simüle etmek için debug=False yapılır ve middleware stack yeniden kurulur.
+    monkeypatch.setattr(app, "debug", False)
+    app.middleware_stack = None
+    app.middleware_stack = app.build_middleware_stack()
+
+    # TestClient raises_server_exceptions=False ile 500 cevabını yakala
+    with TestClient(app, raise_server_exceptions=False) as raw_client:
+        res_500 = raw_client.get("/test-unhandled-crash")
+        assert res_500.status_code == 500
+        assert "application/problem+json" in res_500.headers.get("content-type", "")
+        body_500 = res_500.json()
+        assert body_500["type"] == "about:blank"
+        assert body_500["title"] == "Internal Server Error"
+        assert body_500["status"] == 500
+        assert "beklenmeyen bir hata oluştu" in body_500["detail"]
+        # Hassas exception mesajı sızmamalıdır
+        assert "ZeroDivisionError" not in body_500["detail"]
+
+
+
 
 # ============================================================================
 # ENTEGRASYON TESTİ (GERÇEK DOCKER QDRANT İLE ÇALIŞTIRILIR)
@@ -329,35 +376,4 @@ def test_search_integration_real_qdrant():
         client.delete_collection(store.collection_name)
 
 
-def test_search_error_rfc7807_format(client: TestClient):
-    """Hata cevapları RFC 7807 ProblemDetails standart formatında dönmelidir."""
-    # 422 Unprocessable Entity testi
-    res_422 = client.post("/rag/search", json={"query": "", "k": 5})
-    assert res_422.status_code == 422
-    assert "application/problem+json" in res_422.headers.get("content-type", "")
-    body_422 = res_422.json()
-    assert body_422["type"] == "about:blank"
-    assert body_422["title"] == "Unprocessable Entity"
-    assert body_422["status"] == 422
-    assert body_422["instance"] == "/rag/search"
-    assert "errors" in body_422
-    assert isinstance(body_422["errors"], list)
-
-    # 404 Not Found testi (Starlette routing hatası)
-    res_404 = client.get("/non-existent-endpoint")
-    assert res_404.status_code == 404
-    assert "application/problem+json" in res_404.headers.get("content-type", "")
-    body_404 = res_404.json()
-    assert body_404["type"] == "about:blank"
-    assert body_404["status"] == 404
-    assert body_404["instance"] == "/non-existent-endpoint"
-
-    # 405 Method Not Allowed testi
-    res_405 = client.get("/rag/search")  # Sadece POST desteklenir
-    assert res_405.status_code == 405
-    assert "application/problem+json" in res_405.headers.get("content-type", "")
-    body_405 = res_405.json()
-    assert body_405["type"] == "about:blank"
-    assert body_405["status"] == 405
-    assert body_405["instance"] == "/rag/search"
 

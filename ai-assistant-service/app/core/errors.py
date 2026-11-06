@@ -50,9 +50,11 @@ def register_problem_details_handlers(app: FastAPI) -> None:
             detail=str(exc.detail),
             instance=request.url.path,
         )
+        headers = getattr(exc, "headers", None)
         return JSONResponse(
             status_code=exc.status_code,
             content=problem.model_dump(exclude_none=True),
+            headers=headers,
             media_type="application/problem+json",
         )
 
@@ -79,6 +81,23 @@ def register_problem_details_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=422,
+            content=problem.model_dump(exclude_none=True),
+            media_type="application/problem+json",
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Yakalanmamış tüm istisnaları (500) RFC 7807 formatında ve iç detay sızdırmadan döner."""
+        logger.exception("Beklenmeyen sunucu hatası (500): %s", exc)
+        problem = ProblemDetails(
+            type="about:blank",
+            title="Internal Server Error",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Sunucu tarafında beklenmeyen bir hata oluştu.",
+            instance=request.url.path,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=problem.model_dump(exclude_none=True),
             media_type="application/problem+json",
         )
