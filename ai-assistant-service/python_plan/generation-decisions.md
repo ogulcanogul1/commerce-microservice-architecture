@@ -13,3 +13,15 @@ Bu belge, RAG cevap üretimi (generation), atıf doğrulama (citation) ve abstai
 3. **Model İsmi Dinamikliği:** `LLMFactory.get_provider` metoduna `model_name` parametresi eklendi ve tüm sağlayıcı sınıflarına geçirildi.
 4. **TokenUsage & Ağsız Test:** `FakeLLMProvider` kelime bazlı deterministik token sayımı ve çağrı geçmişi (`calls`) kaydıyla `tests/llm/` altında 12 ağsız testle doğrulandı. Toplam test sayısı 258'e yükseldi.
 
+## Adım 2 Kararları — PII Maskeleme
+1. **PII Kapsamı ve Algoritmik Doğrulama:**
+   - `tckn`: 11 hane, ilk hane 0 değil ve resmi 10./11. hane checksum kuralları sağlandığında `[TCKN]` ile maskelenir. Checksum tutmayan 11 haneli sayılar (sipariş no vb.) bilerek serbest bırakılır.
+   - `card`: 13–19 hane arası tireli/boşluklu kartlar Luhn (mod 10) algoritması doğrulandığında `[KART]` ile maskelenir.
+   - `iban`: `TR` ile başlayan 24 haneli hesap numaraları `[IBAN]` ile maskelenir.
+   - `phone`: `+90` ve `0` ile başlayan 10 haneli `5xx` TR mobil telefon formatları `[TELEFON]` ile maskelenir.
+   - `email`: Standart e-posta formatları `[EPOSTA]` ile maskelenir.
+2. **İş Mantığı Korunumu:** Sipariş numaraları, para tutarları, süreler ("14 gün") ve tarihler soru bağlamını yok etmemek için maskeleme dışı bırakılmıştır.
+3. **Çakışma ve İndeks Yönetimi:** Varlıklar non-overlapping `_PIISpan` modeli ile tespit edilip sağdan sola değiştirilerek karakter offset kaymaları önlenmiştir.
+4. **Test Sayısı:** `tests/core/test_pii.py` altında 9 yeni test eklendi; toplam test sayısı 267'ye yükseldi.
+
+
