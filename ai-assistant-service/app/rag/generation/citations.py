@@ -21,9 +21,11 @@ ABBREVIATIONS: tuple[str, ...] = (
     "no",
     "dr",
     "prof",
+    "bkz",
 )
 
 _ABSTAIN_PATTERN = re.compile(r"\bbulunamadı\b")
+_LIST_MARKER_PATTERN = re.compile(r"^\s*\d{1,2}[.)]\s+")
 _CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 _SENTENCE_SPLIT_PATTERN = re.compile(r"([.!?]+(?:\s*\[\d+\])*)(?=\s+|$)")
 
@@ -54,7 +56,11 @@ def split_sentences(text: str) -> list[str]:
 
             text_before = line[pos : match.start()].strip()
             last_word = text_before.split()[-1].lower() if text_before.split() else ""
-            cleaned_last_word = last_word.rstrip(".!?,:;")
+            cleaned_last_word = last_word.strip("(\"'").rstrip(".!?,:;")
+
+            # 0. Liste numarası ("1. ...", "2. ...") cümle sonu değildir; metne bağlı kalır
+            if pos == 0 and re.fullmatch(r"\d{1,2}", text_before):
+                continue
 
             # 1. Check abbreviation boundary
             if cleaned_last_word in ABBREVIATIONS:
@@ -162,7 +168,7 @@ def validate_answer(answer: str, blocks: list[ContextBlock]) -> list[ValidationI
 
         # Check 3: Numeric consistency with cited sources
         # Strip citation brackets first so "[1]" is not mistaken for the number 1
-        sentence_clean = _CITATION_PATTERN.sub("", sentence)
+        sentence_clean = _LIST_MARKER_PATTERN.sub("", _CITATION_PATTERN.sub("", sentence))
         sentence_numbers = list(dict.fromkeys(re.findall(r"\d+", sentence_clean)))
 
         if sentence_numbers:

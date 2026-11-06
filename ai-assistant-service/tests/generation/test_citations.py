@@ -145,3 +145,19 @@ def test_extract_and_cited_numbers() -> None:
 def test_is_abstain_ignores_words_merely_starting_with_marker() -> None:
     assert not is_abstain("Adres bulunamadığında kargo şubeye döner [1].")
     assert is_abstain("Bulunamadı.")
+
+
+def test_split_sentences_keeps_list_numbers_attached() -> None:
+    assert split_sentences("1. İade 14 gündür [1].\n2. Kargo ücretsizdir [1].") == [
+        "1. İade 14 gündür [1].",
+        "2. Kargo ücretsizdir [1].",
+    ]
+
+
+def test_split_sentences_does_not_split_on_bkz() -> None:
+    assert len(split_sentences("Kargo ücretsiz değildir (bkz. s. 3) [1].")) == 1
+
+
+def test_numbered_list_answer_passes_validation() -> None:
+    blocks = [_make_block(1, "İade süresi 14 gündür. Kargo ücretsizdir.")]
+    assert validate_answer("1. İade 14 gündür [1].\n2. Kargo ücretsizdir [1].", blocks) == []
