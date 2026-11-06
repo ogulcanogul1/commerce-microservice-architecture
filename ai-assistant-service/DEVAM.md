@@ -49,6 +49,6 @@
 ---
 
 ## Sıradaki İş (Next Step):
-- **Aşama 4: Reranking ve Context Compression (M09.04):**
-  - Cross-encoder / Cohere reranker modellerinin entegrasyonu.
-  - LLM context window optimizasyonu ve citation formatlama.
+- **Aşama 4: Generation — kaynaklı cevap üretimi, citation doğrulama, abstain, `POST /rag/answer` ve generation eval.**
+  - Plan: `python_plan/generation.md` (Adım 0–9). Karar günlüğü: `python_plan/generation-decisions.md` (Adım 0'da açılır).
+  - Reranker bu aşamadan **sonraya** alındı: 8 chunk'lık corpus'ta Hit@5 doygun, reranker'ın faydası ölçülemez. Generation eval seti ve büyük corpus geldikten sonra ayrı planla ele alınacak.

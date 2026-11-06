@@ -28,6 +28,21 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_PREFIX: str = "commerce_docs"
 
+    # RAG Generation Configuration
+    RAG_LLM_PROVIDER: str = ""  # Boşsa DEFAULT_LLM_PROVIDER kullanılır
+    RAG_LLM_MODEL: str = ""     # Boşsa seçilen sağlayıcının varsayılan modeli kullanılır
+    RAG_TEMPERATURE: float = 0.0
+    RAG_MAX_OUTPUT_TOKENS: int = 400
+    RAG_LLM_TIMEOUT_SEC: float = 30.0
+    RAG_CONTEXT_TOKEN_BUDGET: int = 1500
+    RAG_TOP_K: int = 5
+    RAG_MIN_DENSE_SCORE: float | None = None
+    RAG_MAX_ATTEMPTS: int = 2
+    RAG_ABSTAIN_MESSAGE: str = (
+        "Bu konuda dokümanlarımızda bilgi bulamadım. Sizi bir müşteri temsilcisine yönlendirebilirim."
+    )
+    RAG_RETRIEVAL_MODE: str = "hybrid"  # 'dense', 'sparse', 'hybrid'
+
     # Pydantic Settings
     model_config = SettingsConfigDict(
         env_file=".env",
