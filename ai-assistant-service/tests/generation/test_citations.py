@@ -140,3 +140,8 @@ def test_extract_and_cited_numbers() -> None:
     full_answer = "İlk cümle [2]. İkinci cümle [1][2]. Üçüncü cümle [3]."
     all_cited = cited_numbers(full_answer)
     assert all_cited == [2, 1, 3]
+
+
+def test_is_abstain_ignores_words_merely_starting_with_marker() -> None:
+    assert not is_abstain("Adres bulunamadığında kargo şubeye döner [1].")
+    assert is_abstain("Bulunamadı.")

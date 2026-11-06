@@ -23,6 +23,7 @@ ABBREVIATIONS: tuple[str, ...] = (
     "prof",
 )
 
+_ABSTAIN_PATTERN = re.compile(r"\bbulunamadı\b")
 _CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 _SENTENCE_SPLIT_PATTERN = re.compile(r"([.!?]+(?:\s*\[\d+\])*)(?=\s+|$)")
 
@@ -101,12 +102,13 @@ def cited_numbers(answer: str) -> list[int]:
 def is_abstain(answer: str) -> bool:
     """Determine whether the answer represents an explicit abstain / refusal.
 
-    Returns True if 'bulunamadı' appears anywhere in the normalized answer text.
+    Returns True if the whole word 'bulunamadı' appears in the normalized answer text.
+    Kelime sınırı zorunlu: "bulunamadığında" gibi meşru kelimeler abstain sayılmaz.
     """
     if not answer or not answer.strip():
         return False
     normalized = normalize_for_match(answer)
-    return "bulunamadı" in normalized
+    return _ABSTAIN_PATTERN.search(normalized) is not None
 
 
 def validate_answer(answer: str, blocks: list[ContextBlock]) -> list[ValidationIssue]:
