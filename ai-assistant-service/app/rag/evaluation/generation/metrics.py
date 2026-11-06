@@ -76,13 +76,15 @@ class GenerationEvalSummary(BaseModel):
 
 def score_case(
     case: AnswerCase,
-    answer: RagAnswer,
+    answer: RagAnswer | None = None,
     latency_ms: float = 0.0,
     error: str | None = None,
 ) -> CaseResult:
     """Score a single generated RAG answer against golden case ground truth.
 
     Deterministik Değerlendirme Kuralları:
+    0. Hata Kontrolü: error doluysa sistem hatası oluşmuştur (timeout, kesinti vb.).
+       Hatalar metriklerden ayrı tutulur ve kesinlikle doğru sayılamaz (correct=False, status='error').
     1. fact_recall: expected_facts içindeki her olgunun normalize edilmiş hali cevapta aranır.
        Tümü bulunursa 1.0, hiçbiri bulunamazsa 0.0.
     2. forbidden_hit: forbidden_facts içindeki herhangi bir yanlış/uydurma olgu cevapta
@@ -92,6 +94,28 @@ def score_case(
        - Cevaplanamaz soru (answerable=False): status='abstained'.
     4. citations_valid: answered durumunda validation_issues boşsa True.
     """
+    if error is not None or answer is None:
+        return CaseResult(
+            case_id=case.id,
+            category=case.category,
+            question=case.question,
+            answerable=case.answerable,
+            status="error",
+            abstain_reason=None,
+            fact_recall=0.0,
+            forbidden_hit=False,
+            correct=False,
+            attempts=1,
+            citations_valid=False,
+            latency_ms=latency_ms,
+            input_tokens=0,
+            output_tokens=0,
+            answer_text="",
+            expected_facts=case.expected_facts,
+            notes=case.notes,
+            error=error or "Unknown error",
+        )
+
     normalized_answer = normalize_for_match(answer.answer)
 
     # 1. Beklenen olguların taranması (fact_recall)
@@ -174,16 +198,18 @@ def compute_generation_summary(
         )
 
     total_cases = len(results)
-    answerable_cases = [r for r in results if r.answerable]
-    unanswerable_cases = [r for r in results if not r.answerable]
     errors_count = sum(1 for r in results if r.error is not None)
 
+    # Hatalar metriklerden ayrı sayılır (Plan Karar 11 ve Adım 8.3)
+    valid_answerable = [r for r in results if r.answerable and r.error is None]
+    valid_unanswerable = [r for r in results if not r.answerable and r.error is None]
+
     # 1. Cevaplanabilir Metrikleri
-    ans_count = len(answerable_cases)
+    ans_count = len(valid_answerable)
     if ans_count > 0:
-        ans_correct = sum(1 for r in answerable_cases if r.correct)
+        ans_correct = sum(1 for r in valid_answerable if r.correct)
         answer_accuracy = ans_correct / ans_count
-        false_abstained = [r for r in answerable_cases if r.status == "abstained"]
+        false_abstained = [r for r in valid_answerable if r.status == "abstained"]
         false_abstain_rate = len(false_abstained) / ans_count
 
         false_abstain_by_reason: dict[str, int] = {}
@@ -196,10 +222,10 @@ def compute_generation_summary(
         false_abstain_by_reason = {}
 
     # 2. Cevaplanamaz Metrikleri (Halüsinasyon)
-    unans_count = len(unanswerable_cases)
+    unans_count = len(valid_unanswerable)
     if unans_count > 0:
         # Cevaplanamaz soruya cevap verilmesi en pahalı hatadır (halüsinasyon)
-        hallucinated_count = sum(1 for r in unanswerable_cases if r.status == "answered")
+        hallucinated_count = sum(1 for r in valid_unanswerable if r.status == "answered")
         hallucination_rate = hallucinated_count / unans_count
     else:
         hallucination_rate = 0.0
@@ -241,8 +267,9 @@ def compute_generation_summary(
         cases_by_cat.setdefault(r.category, []).append(r)
 
     for cat_name, cat_results in cases_by_cat.items():
-        cat_total = len(cat_results)
-        cat_correct = sum(1 for r in cat_results if r.correct)
+        valid_cat_results = [r for r in cat_results if r.error is None]
+        cat_total = len(valid_cat_results)
+        cat_correct = sum(1 for r in valid_cat_results if r.correct)
         cat_acc = cat_correct / cat_total if cat_total > 0 else 0.0
         warning = f"n={cat_total}, yorumlama" if cat_total < 10 else None
         categories[cat_name] = CategoryEvalSummary(

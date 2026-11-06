@@ -228,6 +228,30 @@ def test_score_case_unanswerable_proper_abstain():
     assert result.correct is True
 
 
+def test_score_case_error_not_counted_as_success():
+    """Sistem hatası (timeout, LLM hatası) durumunda unanswerable olsa dahi correct=False ve status='error' olmalıdır."""
+    case = AnswerCase(
+        id="U01",
+        question="Kripto para ile ödeme var mı?",
+        answerable=False,
+        expected_facts=[],
+        forbidden_facts=[],
+        category="unanswerable",
+    )
+
+    # İstisna oluştu ve error parametresi iletildi
+    result = score_case(case, answer=None, error="LLM call timed out after 30s")
+    assert result.correct is False
+    assert result.status == "error"
+    assert result.error == "LLM call timed out after 30s"
+
+    # Özet metriklerde hatanın ayrı sayıldığını doğrula
+    summary = compute_generation_summary([result])
+    assert summary.errors_count == 1
+    assert summary.unanswerable_count == 0  # Hatalı olan geçerli unanswerable metriklerine dahil edilmez
+    assert summary.hallucination_rate == 0.0
+
+
 def test_compute_generation_summary():
     """Özet metriklerin ve kategori kırılımlarının hesaplanması."""
     case_ans = AnswerCase(id="G01", question="Q1", answerable=True, expected_facts=["14 gün"], category="single_fact")

@@ -207,6 +207,14 @@ def generate_markdown_report(
     # 4. Hata Analizi ve İnceleme Listeleri
     md.append("## 4. Hata İnceleme ve Güvenlik Analizi\n")
 
+    # 4.0 Sistem Hataları
+    error_cases = [r for r in results if r.error is not None]
+    if error_cases:
+        md.append(f"### 4.0 Çalışma Hatası Alan Sorular ({len(error_cases)})\n")
+        for idx, ec in enumerate(error_cases, 1):
+            md.append(f"{idx}. **[{ec.case_id}] Soru:** {ec.question}")
+            md.append(f"   - **Hata Mesajı:** `{ec.error}`\n")
+
     # 4.1 Halüsinasyonlar (Cevaplanamaz iken cevap verilenler)
     hallucinations = [r for r in results if not r.answerable and r.status == "answered"]
     md.append(f"### 4.1 Halüsinasyon Üretilen Cevaplanamaz Sorular ({len(hallucinations)})\n")
@@ -255,20 +263,16 @@ async def run_evaluation(
     for idx, case in enumerate(cases, 1):
         start_time = time.perf_counter()
         error_msg = None
+        rag_answer: RagAnswer | None = None
         try:
-            rag_answer: RagAnswer = await service.answer(
+            rag_answer = await service.answer(
                 question=case.question,
                 k=service.config.top_k,
                 correlation_id=f"eval-{case.id}",
             )
         except Exception as exc:
             error_msg = str(exc)
-            rag_answer = RagAnswer(
-                status="abstained",
-                answer="Servis hatası nedeniyle cevap üretilemedi.",
-                abstain_reason=None,
-                citations=[],
-            )
+            rag_answer = None
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
         case_res = score_case(case=case, answer=rag_answer, latency_ms=latency_ms, error=error_msg)
