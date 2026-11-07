@@ -64,7 +64,7 @@ class CrossEncoderReranker(Reranker):
                 return self._model
             except Exception as exc:
                 raise RerankError(
-                    f"CrossEncoder modeli ({self.model_name}) yüklenemedi: {exc}"
+                    f"CrossEncoder modeli ({self.model_name}) yüklenemedi: {type(exc).__name__}"
                 ) from exc
 
     def rerank(self, query: str, documents: Sequence[str]) -> list[RerankResult]:
@@ -80,7 +80,7 @@ class CrossEncoderReranker(Reranker):
             with self._predict_lock:
                 scores = model.predict(pairs, batch_size=self.batch_size)
         except Exception as exc:
-            raise RerankError(f"CrossEncoder rerank çağrısı başarısız: {exc}") from exc
+            raise RerankError(f"CrossEncoder rerank çağrısı başarısız: {type(exc).__name__}") from exc
 
         # Skorlar numpy array veya liste gelebilir
         results = [RerankResult(index=i, score=float(scores[i])) for i in range(n)]

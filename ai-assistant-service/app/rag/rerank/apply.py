@@ -49,7 +49,7 @@ def rerank_hits(
     except Exception as exc:
         if not fail_open:
             raise
-        logger.exception(
+        logger.error(
             "Reranker sırasında beklenmeyen hata oluştu (fail-open devrede, orijinal sıra kullanılıyor): %s",
             type(exc).__name__,
         )

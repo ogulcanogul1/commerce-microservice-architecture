@@ -110,7 +110,7 @@ def test_cross_encoder_predict_failure(monkeypatch):
     monkeypatch.setitem(sys.modules, "sentence_transformers", mock_module)
 
     reranker = CrossEncoderReranker()
-    with pytest.raises(RerankError, match="CrossEncoder rerank çağrısı başarısız: CUDA out of memory"):
+    with pytest.raises(RerankError, match="CrossEncoder rerank çağrısı başarısız: RuntimeError"):
         reranker.rerank("soru", ["doc1"])
 
 
