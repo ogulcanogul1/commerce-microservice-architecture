@@ -149,8 +149,11 @@ class ToolRegistry:
             logger.exception("Unexpected error executing tool '%s'", name)
             return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.")
         except ValueError as exc:
-            # Dahili kod ayrıntılarını veya parser istisnalarını modele sızdırma
-            logger.warning("Tool '%s' raised ValueError: %s", name, exc)
+            # Dahili kod ayrıntılarını, stack detaylarını veya kötü niyetli input yankılarını sızdırma
+            msg = str(exc)
+            logger.warning("Tool '%s' raised ValueError: %s", name, msg)
+            if "Geçersiz sipariş numarası" in msg:
+                return ToolResult(ok=False, error="Geçersiz sipariş numarası.")
             return ToolResult(ok=False, error="Geçersiz parametre veya işlem değeri.")
         except Exception as exc:
             logger.exception("Unexpected error executing tool '%s': %s", name, exc)
