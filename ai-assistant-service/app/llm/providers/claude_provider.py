@@ -66,8 +66,41 @@ class ClaudeProvider(BaseLLMProvider):
         for msg in messages:
             if msg.role == "system":
                 system_prompt = msg.content
-            elif msg.role in ("user", "assistant"):
-                anthropic_messages.append({"role": msg.role, "content": msg.content})
+            elif msg.role == "assistant":
+                if msg.tool_calls:
+                    blocks: list[dict[str, Any]] = []
+                    if msg.content:
+                        blocks.append({"type": "text", "text": msg.content})
+                    for tc in msg.tool_calls:
+                        blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.call_id,
+                                "name": tc.tool_name,
+                                "input": tc.arguments,
+                            }
+                        )
+                    anthropic_messages.append({"role": "assistant", "content": blocks})
+                else:
+                    anthropic_messages.append({"role": "assistant", "content": msg.content})
+            elif msg.role == "tool":
+                tool_block = {
+                    "type": "tool_result",
+                    "tool_use_id": msg.tool_call_id,
+                    "content": msg.content,
+                }
+                if (
+                    anthropic_messages
+                    and anthropic_messages[-1]["role"] == "user"
+                    and isinstance(anthropic_messages[-1]["content"], list)
+                    and anthropic_messages[-1]["content"]
+                    and anthropic_messages[-1]["content"][0].get("type") == "tool_result"
+                ):
+                    anthropic_messages[-1]["content"].append(tool_block)
+                else:
+                    anthropic_messages.append({"role": "user", "content": [tool_block]})
+            elif msg.role == "user":
+                anthropic_messages.append({"role": "user", "content": msg.content})
 
         kwargs: dict[str, Any] = {
             "model": self.model_name,

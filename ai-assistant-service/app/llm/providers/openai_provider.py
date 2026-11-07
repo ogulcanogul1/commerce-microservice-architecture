@@ -59,10 +59,36 @@ class OpenAIProvider(BaseLLMProvider):
         """
         Execute an asynchronous chat completion request against OpenAI.
         """
-        formatted_messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
+        formatted_messages: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.role == "assistant" and msg.tool_calls:
+                formatted_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content or None,
+                        "tool_calls": [
+                            {
+                                "id": call.call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": call.tool_name,
+                                    "arguments": json.dumps(call.arguments, ensure_ascii=False),
+                                },
+                            }
+                            for call in msg.tool_calls
+                        ],
+                    }
+                )
+            elif msg.role == "tool":
+                formatted_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id,
+                        "content": msg.content,
+                    }
+                )
+            else:
+                formatted_messages.append({"role": msg.role, "content": msg.content})
 
         kwargs: dict[str, Any] = {
             "model": self.model_name,

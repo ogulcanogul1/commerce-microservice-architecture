@@ -21,8 +21,8 @@ class FakeLLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        responses: list[str] | None = None,
-        responder: Callable[[list[ChatMessage]], str] | None = None,
+        responses: list[str | list[ToolCallRequest]] | None = None,
+        responder: Callable[[list[ChatMessage]], str | list[ToolCallRequest]] | None = None,
         model_name: str = "fake-llm",
         raise_on_call: Exception | None = None,
         delay_sec: float = 0.0,
@@ -32,7 +32,9 @@ class FakeLLMProvider(BaseLLMProvider):
 
         super().__init__(model_name=model_name)
         self._has_responses = responses is not None
-        self.responses: list[str] = list(responses) if responses is not None else []
+        self.responses: list[str | list[ToolCallRequest]] = (
+            list(responses) if responses is not None else []
+        )
         self.responder = responder
         self.raise_on_call = raise_on_call
         self.delay_sec = delay_sec
@@ -61,11 +63,18 @@ class FakeLLMProvider(BaseLLMProvider):
             raise self.raise_on_call
 
         if self.responder is not None:
-            content = self.responder(messages)
+            raw_result = self.responder(messages)
         elif self.responses:
-            content = self.responses.pop(0)
+            raw_result = self.responses.pop(0)
         else:
             raise RuntimeError("FakeLLMProvider: yanıt kalmadı")
+
+        if isinstance(raw_result, list):
+            content = ""
+            tool_calls = raw_result
+        else:
+            content = raw_result
+            tool_calls = []
 
         # Deterministic token count based on whitespace separation
         input_tokens = sum(len(m.content.split()) for m in messages if m.content)
@@ -73,7 +82,7 @@ class FakeLLMProvider(BaseLLMProvider):
 
         return LLMResponse(
             content=content,
-            tool_calls=[],
+            tool_calls=tool_calls,
             provider="fake",
             model=self.model_name,
             usage=TokenUsage(

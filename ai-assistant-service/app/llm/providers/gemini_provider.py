@@ -71,12 +71,27 @@ class GeminiProvider(BaseLLMProvider):
                     )
                 )
             elif msg.role == "assistant":
-                contents.append(
-                    types.Content(
-                        role="model",
-                        parts=[types.Part.from_text(text=msg.content)],
-                    )
+                parts: list[types.Part] = []
+                if msg.content:
+                    parts.append(types.Part.from_text(text=msg.content))
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        parts.append(types.Part.from_function_call(name=tc.tool_name, args=tc.arguments))
+                contents.append(types.Content(role="model", parts=parts))
+            elif msg.role == "tool":
+                tool_part = types.Part.from_function_response(
+                    name=msg.name or "tool",
+                    response={"result": msg.content},
                 )
+                if (
+                    contents
+                    and contents[-1].role == "user"
+                    and contents[-1].parts
+                    and getattr(contents[-1].parts[0], "function_response", None) is not None
+                ):
+                    contents[-1].parts.append(tool_part)
+                else:
+                    contents.append(types.Content(role="user", parts=[tool_part]))
 
         config_kwargs: dict[str, Any] = {
             "temperature": temperature,
@@ -104,10 +119,11 @@ class GeminiProvider(BaseLLMProvider):
         tool_calls: list[ToolCallRequest] = []
 
         if response.function_calls:
-            for call in response.function_calls:
+            for idx, call in enumerate(response.function_calls):
+                call_id = getattr(call, "id", None) or f"call_{idx}"
                 tool_calls.append(
                     ToolCallRequest(
-                        call_id=f"call_{call.name}",
+                        call_id=call_id,
                         tool_name=call.name,
                         arguments=dict(call.args) if call.args else {},
                     )
