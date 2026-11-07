@@ -2,10 +2,11 @@ import re
 import time
 from collections.abc import Sequence
 from app.rag.evaluation.chunking.dataset import normalize_for_match
+from app.rag.rerank.base import Reranker
 from app.rag.rerank.models import RerankError, RerankResult, validate_rerank_results
 
 
-class FakeReranker:
+class FakeReranker(Reranker):
     """Testler ve duman (smoke) koşuları için deterministik sahte reranker."""
 
     def __init__(

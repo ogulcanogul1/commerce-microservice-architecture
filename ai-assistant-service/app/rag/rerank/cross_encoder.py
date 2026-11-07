@@ -2,6 +2,7 @@ import logging
 import threading
 from collections.abc import Sequence
 from typing import Any
+from app.rag.rerank.base import Reranker
 from app.rag.rerank.models import RerankError, RerankResult, validate_rerank_results
 
 logger = logging.getLogger(__name__)
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CROSS_ENCODER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 
-class CrossEncoderReranker:
+class CrossEncoderReranker(Reranker):
     """Yerel sentence-transformers tabanlı Cross-Encoder reranker.
 
     Özellikler:
