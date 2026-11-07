@@ -111,6 +111,8 @@ class ToolRegistry:
         except (DownstreamNotFound, DownstreamForbidden):
             # Varlık sızdırmama kuralı: 404 ve 403 aynı hata metnine çevrilir
             return ToolResult(ok=False, error="Sipariş bulunamadı.")
+        except ValueError as exc:
+            return ToolResult(ok=False, error=str(exc))
         except Exception as exc:
             logger.exception("Unexpected error executing tool '%s': %s", name, exc)
             return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.")
