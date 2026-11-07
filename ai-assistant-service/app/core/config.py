@@ -43,6 +43,34 @@ class Settings(BaseSettings):
     )
     RAG_RETRIEVAL_MODE: str = "hybrid"  # 'dense', 'sparse', 'hybrid'
 
+    # Gateway Security Configuration
+    GATEWAY_INTERNAL_SECRET: str = "dgl-internal-gateway-secret-token-2026"
+    GATEWAY_SECURITY_ENABLED: bool = True
+
+    # Downstream Microservices URLs
+    ORDER_SERVICE_URL: str = "http://localhost:8082"
+    SHIPPING_SERVICE_URL: str = "http://localhost:8085"
+    DOWNSTREAM_TIMEOUT_SEC: float = 5.0
+
+    # Agent Configuration
+    AGENT_LLM_PROVIDER: str = ""  # Boşsa DEFAULT_LLM_PROVIDER kullanılır
+    AGENT_LLM_MODEL: str = ""     # Boşsa seçilen sağlayıcının varsayılan modeli kullanılır
+    AGENT_TEMPERATURE: float = 0.0
+    AGENT_MAX_OUTPUT_TOKENS: int = 500
+    AGENT_LLM_TIMEOUT_SEC: float = 30.0
+    AGENT_TOOL_TIMEOUT_SEC: float = 8.0
+    AGENT_MAX_STEPS: int = 4
+    AGENT_MAX_TOOL_RESULT_CHARS: int = 2000
+    AGENT_PENDING_TTL_SEC: int = 300
+    AGENT_FALLBACK_MESSAGE: str = (
+        "Şu an bu isteğinizi güvenle tamamlayamadım. Sizi bir müşteri temsilcisine yönlendirebilirim."
+    )
+
+    # Support Ticket & Kafka Configuration
+    TICKET_PUBLISHER: str = "log"  # 'log' veya 'kafka'
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    SUPPORT_TICKET_TOPIC: str = "support.ticket.created"
+
     # Pydantic Settings
     model_config = SettingsConfigDict(
         env_file=".env",
