@@ -24,6 +24,9 @@ dependencies = [
 local-embedding = [
     "sentence-transformers>=3.0.0",
 ]
+kafka = [
+    "aiokafka>=0.11.0",
+]
 
 [dependency-groups]
 dev = [

@@ -36,3 +36,12 @@ class AgentReply(BaseModel):
     pending_action: PendingAction | None = None
     steps: int = 1
     usage: TokenUsage | None = None
+
+
+class ExecutionResult(BaseModel):
+    """Result of executing a confirmed pending action."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ok: bool
+    message: str
