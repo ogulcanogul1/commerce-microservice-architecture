@@ -332,6 +332,7 @@ def create_fake_eval_llm() -> BaseLLMProvider:
 async def run_evaluation(
     cases: list[AgentCase],
     llm_mode: str = "fake",
+    embedder_mode: str = "fake",
 ) -> list[CaseEvaluationResult]:
     """Execute evaluation cases and record comprehensive turn results."""
     scenario = ScenarioEnvironment()
@@ -500,6 +501,12 @@ def main() -> None:
         help="LLM provider mode ('fake' for smoke testing, 'default' for real API models)",
     )
     parser.add_argument(
+        "--embedder",
+        choices=["fake", "default"],
+        default="fake",
+        help="Embedder provider mode ('fake' for mock store, 'default' for active embedder)",
+    )
+    parser.add_argument(
         "--cases",
         type=Path,
         default=DEFAULT_CASES_PATH,
@@ -523,8 +530,8 @@ def main() -> None:
     if args.limit is not None and args.limit > 0:
         cases = cases[: args.limit]
 
-    print(f"[*] Toplam {len(cases)} vaka '{args.llm}' LLM modu ile değerlendiriliyor...")
-    results = asyncio.run(run_evaluation(cases, llm_mode=args.llm))
+    print(f"[*] Toplam {len(cases)} vaka '{args.llm}' LLM ve '{args.embedder}' embedder modu ile değerlendiriliyor...")
+    results = asyncio.run(run_evaluation(cases, llm_mode=args.llm, embedder_mode=args.embedder))
     metrics = calculate_metrics(results)
 
     commit_hash, is_dirty = get_git_info()
