@@ -57,6 +57,10 @@ def test_grounding_turkish_currency_formats_accepted() -> None:
     reply4 = "Toplam tutarınız 150 TL."
     assert check_reply_grounding(reply4, tool_results_round, tools_called=True) == []
 
+    # 5. '1.299 TL' binlik ayırıcılı tam sayı formatı (kuruşsuz)
+    reply5 = "Sipariş tutarınız 1.299 TL olarak kaydedilmiştir."
+    assert check_reply_grounding(reply5, tool_results, tools_called=True) == []
+
 
 def test_grounding_turkish_currency_hallucination_detected() -> None:
     """Türkçe para formatında yazılsa bile araç sonucunda olmayan uydurma tutarlar yakalanmalıdır."""

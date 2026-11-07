@@ -22,6 +22,8 @@ class ClaudeProvider(BaseLLMProvider):
     Requires a valid ANTHROPIC_API_KEY in settings / .env.
     """
 
+    provider = "claude"
+
     def __init__(
         self,
         model_name: str = "claude-3-5-sonnet-20241022",

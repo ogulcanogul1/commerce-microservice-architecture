@@ -23,6 +23,8 @@ class OpenAIProvider(BaseLLMProvider):
     Requires a valid OPENAI_API_KEY in settings / .env.
     """
 
+    provider = "openai"
+
     def __init__(
         self,
         model_name: str = "gpt-4o-mini",

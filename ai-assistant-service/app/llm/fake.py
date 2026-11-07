@@ -19,6 +19,8 @@ class FakeLLMProvider(BaseLLMProvider):
     and supports sequential responses, custom responders, delay, and error injection.
     """
 
+    provider = "fake"
+
     def __init__(
         self,
         responses: list[str | list[ToolCallRequest]] | None = None,

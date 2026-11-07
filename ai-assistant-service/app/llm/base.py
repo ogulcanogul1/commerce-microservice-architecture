@@ -97,10 +97,14 @@ class BaseLLMProvider(ABC):
     must implement to ensure a unified contract.
     """
 
+    provider: str = ""
+
     def __init__(self, model_name: str, api_key: str = "", base_url: str = "") -> None:
         self.model_name = model_name
         self.api_key = api_key
         self.base_url = base_url
+        if not getattr(self, "provider", ""):
+            self.provider = self.__class__.__name__.lower().replace("provider", "")
 
     @abstractmethod
     async def generate(

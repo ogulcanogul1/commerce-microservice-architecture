@@ -23,6 +23,8 @@ class LocalProvider(BaseLLMProvider):
     Communicates via OpenAI-compatible REST API endpoints.
     """
 
+    provider = "local"
+
     def __init__(
         self,
         model_name: str | None = None,

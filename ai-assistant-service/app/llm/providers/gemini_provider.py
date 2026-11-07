@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini LLM provider utilizing the modern official google-genai SDK."""
 
+    provider = "gemini"
+
     def __init__(
         self,
         model_name: str = "gemini-2.5-flash",

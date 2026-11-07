@@ -273,6 +273,16 @@ class AgentService:
                 if captured_pending_action
                 else None
             )
+            provider_str = (
+                getattr(self._llm, "provider", None)
+                or self._llm.__class__.__name__.lower().replace("provider", "")
+                or "unknown"
+            )
+            model_str = (
+                getattr(self._llm, "model_name", None)
+                or getattr(self._llm, "model", None)
+                or "unknown"
+            )
             logger.info(
                 "Agent turn completed: kind=%s, steps=%s, tool_calls=%s, pending_action_type=%s, "
                 "input_tokens=%s, output_tokens=%s, latency_ms_total=%.2f, latency_ms_llm=%.2f, "
@@ -286,8 +296,8 @@ class AgentService:
                 total_duration_ms,
                 llm_time_ms,
                 tool_time_ms,
-                getattr(self._llm, "provider", "unknown"),
-                getattr(self._llm, "model_name", "unknown"),
+                provider_str,
+                model_str,
                 user_id_hash,
                 ctx.correlation_id,
             )

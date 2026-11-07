@@ -41,6 +41,8 @@ def _generate_allowed_number_representations(corpus: str) -> set[str]:
             formatted_thousands = f"{int(int_part):,}".replace(",", ".")
             allowed.add(f"{formatted_thousands},{dec_part}")
             allowed.add(f"{int_part},{dec_part}")
+            # Binlik ayırıcılı tam sayı biçimi (ör. 1.299 TL veya 1.500 TL)
+            allowed.add(formatted_thousands)
         except Exception:
             pass
 
@@ -81,14 +83,21 @@ def check_reply_grounding(
         if tok in allowed_numbers:
             continue
 
-        # Model Türkçe biçimde '1.299,90' veya '150,00' yazdıysa normalize edip bak
+        # Model Türkçe biçimde '1.299,90', '1.299' veya '150,00' yazdıysa normalize edip bak
         matched = False
         try:
-            val_str = tok.replace(".", "").replace(",", ".") if ("." in tok and "," in tok) else tok.replace(",", ".")
+            if "." in tok and "," in tok:
+                val_str = tok.replace(".", "").replace(",", ".")
+            elif "." in tok and len(tok.split(".")[1]) == 3:
+                val_str = tok.replace(".", "")
+            else:
+                val_str = tok.replace(",", ".")
+
             f = float(val_str)
             if (
                 f"{f:.2f}" in allowed_numbers
                 or (f.is_integer() and f"{int(f)}" in allowed_numbers)
+                or tok in allowed_numbers
             ):
                 matched = True
         except Exception:

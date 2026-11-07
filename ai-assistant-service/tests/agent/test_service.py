@@ -355,6 +355,8 @@ async def test_service_logging_hygiene(
     # Log hijyeni kontrolü
     assert "Agent turn completed:" in log_text
     assert "user_id_hash=" in log_text
+    assert "provider=fake" in log_text
+    assert "provider=unknown" not in log_text
     # Ham soru metni ve ham user_id loglanmamalı
     assert "Sipariş no 100 nerede?" not in log_text
     assert "user-123" not in log_text
