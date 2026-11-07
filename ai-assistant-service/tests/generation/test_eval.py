@@ -388,3 +388,33 @@ def test_gate_with_rerank():
         assert scored[0]["top_rerank_score"] == 0.95
     finally:
         client.delete_collection(col_name)
+
+
+def test_score_case_rerank_error_fail_closed():
+    case = AnswerCase(
+        id="C_ERR",
+        question="Hatalı soru?",
+        category="single_fact",
+        answerable=True,
+        expected_facts=["bilgi"],
+    )
+    # RerankError fırlatıldığında score_case'in status="error" ve rerank_status="failed" kaydetmesi gerekir
+    res = score_case(
+        case=case,
+        answer=None,
+        error="RerankError: Cohere API timeout",
+        rerank_status=None,  # error'dan otomatik tespit etmeli
+    )
+    assert res.status == "error"
+    assert res.rerank_status == "failed"
+    assert res.correct is False
+
+    # Açıkça rerank_status verildiğinde
+    res_explicit = score_case(
+        case=case,
+        answer=None,
+        error="Beklenmeyen hata",
+        rerank_status="failed",
+    )
+    assert res_explicit.rerank_status == "failed"
+

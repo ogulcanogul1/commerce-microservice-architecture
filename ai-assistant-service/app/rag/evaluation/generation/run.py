@@ -54,6 +54,7 @@ from app.rag.generation.models import GenerationConfig, RagAnswer
 from app.rag.generation.service import RagAnswerService
 from app.rag.ingestion.pdf.loader import PDFLoader
 from app.rag.rerank.factory import get_reranker
+from app.rag.rerank.models import RerankError
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.store import QdrantStore
 
@@ -174,10 +175,16 @@ def generate_markdown_report(
     md.append(f"- **Reranker:** `{rerank_setting}`" + (f" ({meta.get('reranker_id')}, candidates={meta.get('rerank_candidates')})" if rerank_setting == "on" else ""))
     if meta.get("rerank_status_counts"):
         counts = meta["rerank_status_counts"]
-        md.append(f"- **Rerank Durum Dağılımı:** `ok: {counts.get('ok', 0)}`, `failed: {counts.get('failed', 0)}`, `disabled: {counts.get('disabled', 0)}`")
+        md.append(
+            f"- **Rerank Durum Dağılımı:** `ok: {counts.get('ok', 0)}`, `failed: {counts.get('failed', 0)}`, `disabled: {counts.get('disabled', 0)}`"
+            + (f", `errors: {counts.get('errors')}`" if counts.get("errors") else "")
+        )
         if counts.get("failed", 0) > 0:
             md.append("> [!WARNING]")
-            md.append(f"> **UYARI:** {counts['failed']} soruda reranker çağrısı başarısız oldu!")
+            md.append(
+                f"> **UYARI:** {counts['failed']} soruda reranker çağrısı başarısız oldu (fail-closed/hata)! "
+                "Bu soruların sonuçları model kalitesi gibi değerlendirilmemelidir."
+            )
     md.append(f"- **Toplam Soru Sayısı:** `{summary.total_cases}` (Cevaplanabilir: `{summary.answerable_count}`, Cevaplanamaz: `{summary.unanswerable_count}`)\n")
 
     # 2. Özet Metrikler Tablosu
@@ -273,18 +280,28 @@ async def run_evaluation(
         start_time = time.perf_counter()
         error_msg = None
         rag_answer: RagAnswer | None = None
+        rerank_st: str | None = None
         try:
             rag_answer = await service.answer(
                 question=case.question,
                 k=service.config.top_k,
                 correlation_id=f"eval-{case.id}",
             )
+            rerank_st = getattr(rag_answer, "rerank_status", None)
         except Exception as exc:
             error_msg = str(exc)
             rag_answer = None
+            if isinstance(exc, RerankError) or "Rerank" in type(exc).__name__:
+                rerank_st = "failed"
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
-        case_res = score_case(case=case, answer=rag_answer, latency_ms=latency_ms, error=error_msg)
+        case_res = score_case(
+            case=case,
+            answer=rag_answer,
+            latency_ms=latency_ms,
+            error=error_msg,
+            rerank_status=rerank_st,
+        )
         results.append(case_res)
 
         status_flag = "✓" if case_res.correct else "✗"
@@ -468,11 +485,17 @@ def main() -> None:
         run_hash = uuid.uuid4().hex[:6]
         base_name = f"{now_str}_{run_hash}"
 
-        rerank_status_counts = {"ok": 0, "failed": 0, "disabled": 0}
+        rerank_status_counts = {"ok": 0, "failed": 0, "disabled": 0, "errors": 0}
         for r in results:
             st = getattr(r, "rerank_status", None)
-            if st in rerank_status_counts:
-                rerank_status_counts[st] += 1
+            if st in ("ok", "applied"):
+                rerank_status_counts["ok"] += 1
+            elif st in ("failed", "fallback_error", "fallback_timeout"):
+                rerank_status_counts["failed"] += 1
+            elif st in ("disabled", "bypassed_insufficient_hits"):
+                rerank_status_counts["disabled"] += 1
+            elif r.status == "error":
+                rerank_status_counts["errors"] += 1
 
         meta = {
             "run_date": datetime.datetime.now().isoformat(),
@@ -481,6 +504,7 @@ def main() -> None:
             "llm_model": llm_model_name,
             "embedder": embedder_name,
             "is_fake_llm": is_fake_llm,
+            "retrieval_mode": gen_config.retrieval_mode,
             "min_dense_score": gen_config.min_dense_score,
             "top_k": gen_config.top_k,
             "token_budget": gen_config.context_token_budget,

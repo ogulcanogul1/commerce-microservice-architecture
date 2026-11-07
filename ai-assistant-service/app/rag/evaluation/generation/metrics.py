@@ -80,6 +80,7 @@ def score_case(
     answer: RagAnswer | None = None,
     latency_ms: float = 0.0,
     error: str | None = None,
+    rerank_status: str | None = None,
 ) -> CaseResult:
     """Score a single generated RAG answer against golden case ground truth.
 
@@ -96,6 +97,10 @@ def score_case(
     4. citations_valid: answered durumunda validation_issues boşsa True.
     """
     if error is not None or answer is None:
+        err_str = error or "Unknown error"
+        st = rerank_status
+        if st is None and ("rerank" in err_str.lower() or "rerankerror" in err_str.lower()):
+            st = "failed"
         return CaseResult(
             case_id=case.id,
             category=case.category,
@@ -114,7 +119,8 @@ def score_case(
             answer_text="",
             expected_facts=case.expected_facts,
             notes=case.notes,
-            error=error or "Unknown error",
+            error=err_str,
+            rerank_status=st,
         )
 
     normalized_answer = normalize_for_match(answer.answer)
@@ -179,7 +185,7 @@ def score_case(
         expected_facts=case.expected_facts,
         notes=case.notes,
         error=error,
-        rerank_status=getattr(answer, "rerank_status", None) if answer else None,
+        rerank_status=rerank_status or (getattr(answer, "rerank_status", None) if answer else None),
     )
 
 
