@@ -121,6 +121,40 @@ async def test_registry_downstream_404_and_403_mapped_identically(
     assert res.error == "Sipariş bulunamadı."
 
 
+@pytest.mark.anyio
+async def test_registry_sanitizes_validation_and_value_errors() -> None:
+    """ValidationError, JSONDecodeError ve ValueError iç ayrıntılarını modele sızdırmamalıdır."""
+    class ValueFailingTool(Tool):
+        name = "value_fail_tool"
+        description = "Fails with internal ValueError"
+        args_model = DummyArgs
+
+        async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
+            raise ValueError("SECRET_INTERNAL_DB_TABLE_NAME_OR_PATH_C:/private/keys")
+
+    registry = ToolRegistry()
+    registry.register(ValueFailingTool())
+    ctx = ToolContext(user_id="user-1", correlation_id=None, question="q")
+
+    # 1. ValueError sızdırmazlık testi
+    res_val = await registry.execute("value_fail_tool", {"query": "test"}, ctx)
+    assert res_val.ok is False
+    assert "SECRET_INTERNAL_DB_TABLE_NAME" not in (res_val.error or "")
+    assert res_val.error == "Geçersiz parametre veya işlem değeri."
+
+    # 2. JSONDecodeError / bozuk string sızdırmazlık testi
+    res_json = await registry.execute("value_fail_tool", "{malformed_json: true,", ctx)
+    assert res_json.ok is False
+    assert "Geçersiz araç parametreleri" in (res_json.error or "")
+    assert "Expecting property name" not in (res_json.error or "")
+
+    # 3. ValidationError sızdırmazlık testi
+    res_valerr = await registry.execute("value_fail_tool", {"extra_illegal_field": "val"}, ctx)
+    assert res_valerr.ok is False
+    assert "Geçersiz araç parametreleri" in (res_valerr.error or "")
+    assert "pydantic" not in (res_valerr.error or "").lower()
+
+
 def test_render_for_model_escaping_and_truncation() -> None:
     # 1. Indirect Prompt Injection kaçırma kontrolü
     malicious_res = ToolResult(

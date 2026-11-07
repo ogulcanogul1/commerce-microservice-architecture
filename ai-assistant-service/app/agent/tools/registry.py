@@ -92,17 +92,35 @@ class ToolRegistry:
         if tool is None:
             return ToolResult(ok=False, error=f"Bilinmeyen araç: {name}")
 
+        parsed_args = raw_args
+        if isinstance(raw_args, str):
+            try:
+                parsed_args = json.loads(raw_args)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning("Tool '%s' raw_args JSON decoding failed: %s", name, e)
+                return ToolResult(ok=False, error="Geçersiz araç parametreleri (JSON format hatası).")
+
+        if not isinstance(parsed_args, dict):
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri (parametreler sözlük formatında olmalıdır).")
+
         try:
-            validated_args = tool.args_model.model_validate(raw_args)
+            validated_args = tool.args_model.model_validate(parsed_args)
         except ValidationError as e:
-            # Model ekstra veya hatalı alan girdiyse değer sızdırmadan alan adı ve hatayı özetle
-            error_details = []
-            for err in e.errors():
-                loc = ".".join(str(p) for p in err.get("loc", []))
-                msg = err.get("msg", "geçersiz değer")
-                error_details.append(f"{loc}: {msg}")
-            return ToolResult(ok=False, error=f"Geçersiz araç parametreleri ({', '.join(error_details)})")
-        except Exception:
+            logger.warning("Tool '%s' validation failed: %s", name, e)
+            # Dahili Python türlerini veya sınıf ayrıntılarını sızdırmadan yalnızca parametre alanlarını özetle
+            invalid_fields = [
+                ".".join(str(p) for p in err.get("loc", []) if str(p) != "__root__")
+                for err in e.errors()
+            ]
+            fields_str = ", ".join(f for f in invalid_fields if f)
+            if fields_str:
+                return ToolResult(ok=False, error=f"Geçersiz araç parametreleri ({fields_str})")
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning("Tool '%s' parameter decode failed: %s", name, e)
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
+        except Exception as e:
+            logger.warning("Tool '%s' unexpected parameter validation exception: %s", name, e)
             return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
 
         timeout = getattr(tool, "timeout_sec", None) or self._timeout_sec
@@ -121,11 +139,19 @@ class ToolRegistry:
             return ToolResult(ok=False, error="Sipariş bulunamadı.")
         except DownstreamBadRequest as exc:
             return ToolResult(ok=False, error=exc.detail or "Geçersiz işlem parametreleri.")
-        except (DownstreamUnavailable, RuntimeError):
-            # Altyapı kesintileri (Qdrant, LLM, Downstream) gizlenmez; HTTP 503 olarak yukarı taşınır
+        except DownstreamUnavailable:
+            # Altyapı kesintileri HTTP 503 olarak yukarı taşınır
             raise
+        except RuntimeError:
+            if name == "search_policy":
+                # RAG altyapı kesintileri (Qdrant, LLM vb.) gizlenmez; HTTP 503 olarak yukarı taşınır
+                raise
+            logger.exception("Unexpected error executing tool '%s'", name)
+            return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.")
         except ValueError as exc:
-            return ToolResult(ok=False, error=str(exc))
+            # Dahili kod ayrıntılarını veya parser istisnalarını modele sızdırma
+            logger.warning("Tool '%s' raised ValueError: %s", name, exc)
+            return ToolResult(ok=False, error="Geçersiz parametre veya işlem değeri.")
         except Exception as exc:
             logger.exception("Unexpected error executing tool '%s': %s", name, exc)
             return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.")
