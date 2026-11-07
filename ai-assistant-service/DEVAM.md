@@ -38,9 +38,10 @@
 ---
 
 ### Doğrulama ve Test Özeti:
-- **Toplam Birim Testi:** **533 test** (Tümü passed, 7 deselected, 0 failure).
-- **Test Süresi:** ~26 saniye (`uv run pytest -m "not integration"`).
+- **Toplam Birim Testi:** **538 test** (Tümü passed, 7 deselected, 0 failure).
+- **Test Süresi:** ~42 saniye (`uv run pytest -m "not integration"`).
 - **Ağ ve Docker Bağımsızlığı:** Tüm rerank birim testleri (Fake, CrossEncoder mock, Cohere MockTransport, Service, Compare, Diff) harici ağ ve model indirme gerektirmeden çalışır.
+- **Sağlamlık İyileştirmeleri:** Settings sınır doğrulaması (1..50), `search_by_budget` aday tutarlılığı, Cohere tekil paylaşılan client ve deadline zaman aşımı, CrossEncoder lifespan warmup, `compare.py` önbellekli tekil getirme ile kategori kırılımı ve fail-closed eval hata telemetrisi tamamlandı.
 
 ---
 
