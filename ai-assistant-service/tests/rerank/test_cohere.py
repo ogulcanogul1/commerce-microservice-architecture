@@ -64,7 +64,11 @@ def test_cohere_empty_documents():
 
 
 def test_cohere_missing_index_raises():
+    attempt_count = 0
+
     def handle_request(request: httpx.Request) -> httpx.Response:
+        nonlocal attempt_count
+        attempt_count += 1
         response_data = {
             "results": [
                 {"index": 1, "relevance_score": 0.95},
@@ -78,6 +82,17 @@ def test_cohere_missing_index_raises():
 
     with pytest.raises(RerankError, match="eksik veya fazla sonuç"):
         reranker.rerank("soru", ["d0", "d1"])
+
+    # Bozuk 200 cevabında tekrar deneme yapılmamalıdır
+    assert attempt_count == 1
+
+
+def test_cohere_client_context_manager():
+    reranker = CohereReranker(api_key="test-key")
+    with reranker as r:
+        assert not r._client.is_closed
+    assert reranker._client.is_closed
+
 
 
 def test_cohere_rate_limit_retry_success():
