@@ -3,21 +3,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-class ChatMessage(BaseModel):
-    """Represents a single chat turn in the conversation history."""
-
-    role: Literal["system", "user", "assistant", "tool"] = Field(
-        description="Role of the message sender: system (instructions), user, assistant (LLM), or tool (function execution output)"
-    )
-    content: str = Field(
-        description="Text content of the message"
-    )
-    tool_call_id: str | None = Field(
-        default=None,
-        description="Identifier of the specific tool call if this message is a response from a tool"
-    )
-
-
 class ToolDefinition(BaseModel):
     """Defines an agentic tool/function schema that the LLM is permitted to invoke."""
 
@@ -44,6 +29,29 @@ class ToolCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(
         default_factory=dict,
         description="Dictionary of validated arguments parsed from the model's function call"
+    )
+
+
+class ChatMessage(BaseModel):
+    """Represents a single chat turn in the conversation history."""
+
+    role: Literal["system", "user", "assistant", "tool"] = Field(
+        description="Role of the message sender: system (instructions), user, assistant (LLM), or tool (function execution output)"
+    )
+    content: str = Field(
+        description="Text content of the message"
+    )
+    tool_call_id: str | None = Field(
+        default=None,
+        description="Identifier of the specific tool call if this message is a response from a tool"
+    )
+    tool_calls: list[ToolCallRequest] | None = Field(
+        default=None,
+        description="List of tool invocations requested by the assistant in this turn"
+    )
+    name: str | None = Field(
+        default=None,
+        description="Name of the tool that produced this result (required by some providers like Gemini)"
     )
 
 
