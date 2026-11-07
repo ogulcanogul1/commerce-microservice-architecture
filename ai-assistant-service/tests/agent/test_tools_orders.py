@@ -65,7 +65,7 @@ async def test_get_order_tool_happy_path() -> None:
     assert res.data["order_number"] == "ORD-12345"
     assert res.data["status"] == "CONFIRMED"
     assert "onaylandı ve tamamlandı" in res.data["status_aciklama"]
-    assert res.data["total_amount"] == 250.75
+    assert res.data["total_amount"] == "250.75"
     assert len(res.data["items"]) == 2
     # PII kontrolü: adres veya correlation_id verisi tool çıktısında olmamalı
     assert "shipping_address" not in res.data

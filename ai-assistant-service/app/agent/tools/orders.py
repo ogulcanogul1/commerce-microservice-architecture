@@ -59,7 +59,7 @@ class GetOrderTool(Tool):
             "order_number": order.order_number,
             "status": order.status,
             "status_aciklama": status_aciklama,
-            "total_amount": float(order.total_amount),
+            "total_amount": f"{order.total_amount:.2f}",
             "currency": order.currency,
             "item_count": len(order.items),
             "items": [
@@ -122,7 +122,7 @@ class ListMyOrdersTool(Tool):
                     o.status,
                     f"{o.status} (Durum ayrıntısı bilinmiyor.)",
                 ),
-                "total_amount": float(o.total_amount),
+                "total_amount": f"{o.total_amount:.2f}",
                 "currency": o.currency,
                 "created_at": o.created_at.isoformat(),
             }
