@@ -67,6 +67,11 @@ class CrossEncoderReranker(Reranker):
                     f"CrossEncoder modeli ({self.model_name}) yüklenemedi: {type(exc).__name__}"
                 ) from exc
 
+    def warmup(self) -> None:
+        """Uygulama başlangıcında modeli yükleyip tek bir duman tahmini ile ısıtır."""
+        self._get_model()
+        self.rerank("warmup query", ["warmup document"])
+
     def rerank(self, query: str, documents: Sequence[str]) -> list[RerankResult]:
         docs_list = list(documents)
         n = len(docs_list)

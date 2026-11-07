@@ -74,8 +74,11 @@ async def lifespan(app: FastAPI):
         reranker = None
         try:
             reranker = build_reranker_from_settings(settings)
+            if reranker is not None and hasattr(reranker, "warmup"):
+                logger.info("Reranker modeli ısıtılıyor...")
+                reranker.warmup()
         except Exception as exc:
-            logger.warning("Reranker başlatılamadı (devre dışı bırakıldı): %s", exc)
+            logger.warning("Reranker başlatılamadı veya ısıtılamadı (devre dışı bırakıldı): %s", exc)
 
         if store is not None and embedder is not None:
             rag_answer_service = RagAnswerService(

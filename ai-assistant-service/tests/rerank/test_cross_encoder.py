@@ -135,6 +135,17 @@ def test_cross_encoder_concurrent_threads(monkeypatch):
     assert MockCrossEncoder.init_count == 1
 
 
+def test_cross_encoder_warmup(monkeypatch):
+    mock_module = types.ModuleType("sentence_transformers")
+    mock_module.CrossEncoder = MockCrossEncoder  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sentence_transformers", mock_module)
+
+    reranker = CrossEncoderReranker()
+    assert reranker._model is None
+    reranker.warmup()
+    assert reranker._model is not None
+
+
 @pytest.mark.integration
 def test_cross_encoder_real_model():
     try:
