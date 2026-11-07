@@ -73,6 +73,7 @@ def test_reranking_retriever_search_by_budget():
 
     # bütçe sadece 1-2 chunk sığdırabilecek kadar olsun
     selected = reranking_retriever.search_by_budget("sorgu", budget=20, tokenizer=tokenizer)
+    assert dummy.last_search_k == 10
     assert len(selected) >= 1
     # İlk seçilen chunk en yüksek rerank skorlu c1 olmalı
     assert selected[0].id == "c1"

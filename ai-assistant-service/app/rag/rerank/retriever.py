@@ -50,7 +50,7 @@ class RerankingRetriever(Retriever):
     def search_by_budget(
         self, query: str, budget: int, tokenizer: Tokenizer
     ) -> list[Chunk]:
-        candidate_chunks = self.inner.search(query, k=max(self.candidates, 20))
+        candidate_chunks = self.inner.search(query, k=self.candidates)
         if not candidate_chunks:
             return []
 
