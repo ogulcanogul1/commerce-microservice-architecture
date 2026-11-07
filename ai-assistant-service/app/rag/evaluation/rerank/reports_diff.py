@@ -26,6 +26,7 @@ def check_fairness(meta_a: dict[str, Any], meta_b: dict[str, Any], count_a: int,
         ("embedder", "Embedder modeli"),
         ("llm_provider", "LLM Sağlayıcısı"),
         ("llm_model", "LLM Modeli"),
+        ("retrieval_mode", "Retrieval Modu (dense/sparse/hybrid)"),
         ("min_dense_score", "Min Dense Skoru (Abstain Eşiği)"),
         ("top_k", "Top-K Arama Parametresi"),
         ("token_budget", "Token Bütçesi"),
@@ -36,6 +37,13 @@ def check_fairness(meta_a: dict[str, Any], meta_b: dict[str, Any], count_a: int,
         val_b = meta_b.get(key)
         if val_a != val_b:
             warnings.append(f"{label} farklı: A='{val_a}' vs B='{val_b}'")
+
+    rerank_a = meta_a.get("rerank")
+    rerank_b = meta_b.get("rerank")
+    if rerank_a and rerank_b and rerank_a == rerank_b:
+        warnings.append(
+            f"Reranker ayarı her iki raporda da aynı (A='{rerank_a}', B='{rerank_b}'). Biri 'off' diğeri 'on' olmalıdır."
+        )
 
     if count_a != count_b:
         warnings.append(f"Toplam soru sayısı farklı: A={count_a} vs B={count_b}")
@@ -124,9 +132,9 @@ def generate_diff_report(
     lines: list[str] = []
     lines.append("# RAG Generation Karşılaştırma Raporu (A/B Diff)\n")
     lines.append(f"- **Rapor A (Referans):** `{report_a_path}`")
-    lines.append(f"  - Reranker: `{meta_a.get('rerank', 'off')}` ({meta_a.get('reranker_id', 'none')})")
+    lines.append(f"  - Reranker: `{meta_a.get('rerank', 'unknown')}` ({meta_a.get('reranker_id', 'none')})")
     lines.append(f"- **Rapor B (Karşılaştırılan):** `{report_b_path}`")
-    lines.append(f"  - Reranker: `{meta_b.get('rerank', 'on')}` ({meta_b.get('reranker_id', 'none')})")
+    lines.append(f"  - Reranker: `{meta_b.get('rerank', 'unknown')}` ({meta_b.get('reranker_id', 'none')})")
     lines.append(f"- **Tarih:** `{datetime.datetime.now().isoformat()}`\n")
 
     # Adalet Uyarısı

@@ -11,15 +11,34 @@ def test_check_fairness_equal():
         "embedder": "openai/text-embedding-3-small",
         "llm_provider": "gemini",
         "llm_model": "gemini-2.0-flash",
+        "retrieval_mode": "hybrid",
         "min_dense_score": 0.5,
         "top_k": 5,
         "token_budget": 1500,
         "git_commit": "abc1234",
+        "rerank": "off",
     }
     meta_b = dict(meta_a)
+    meta_b["rerank"] = "on"
 
     warnings = check_fairness(meta_a, meta_b, count_a=42, count_b=42)
     assert warnings == []
+
+
+def test_check_fairness_same_rerank_and_mismatched_mode():
+    meta_a = {
+        "retrieval_mode": "dense",
+        "rerank": "on",
+    }
+    meta_b = {
+        "retrieval_mode": "hybrid",
+        "rerank": "on",
+    }
+    warnings = check_fairness(meta_a, meta_b, count_a=10, count_b=10)
+    warn_text = " ".join(warnings)
+    assert "Retrieval Modu" in warn_text
+    assert "Reranker ayarı her iki raporda da aynı" in warn_text
+
 
 
 def test_check_fairness_differences():
