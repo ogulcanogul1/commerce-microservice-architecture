@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.agent.models import AgentReply
 from app.agent.tools.base import Tool, ToolContext, ToolResult
+from app.api.answer import CitationResponse
 from app.rag.generation.service import RagAnswerService
 
 
@@ -39,10 +40,21 @@ class SearchPolicyTool(Tool):
         )
 
         if rag_resp.status == "answered":
+            citations = [
+                c if isinstance(c, CitationResponse) else CitationResponse(
+                    number=c.number,
+                    chunk_id=c.chunk_id,
+                    source_file=c.source_file,
+                    page_start=c.page_start,
+                    page_end=c.page_end,
+                    heading_path=getattr(c, "heading_path", []),
+                )
+                for c in getattr(rag_resp, "citations", [])
+            ]
             terminal_reply = AgentReply(
                 kind="policy_answer",
                 reply=rag_resp.answer,
-                citations=rag_resp.citations,
+                citations=citations,
             )
             return ToolResult(
                 ok=True,
