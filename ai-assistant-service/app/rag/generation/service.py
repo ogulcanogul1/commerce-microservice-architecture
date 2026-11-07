@@ -19,12 +19,15 @@ from app.rag.generation.models import (
     Citation,
     GenerationConfig,
     RagAnswer,
+    RetrievalOutcome,
     ValidationIssue,
 )
 from app.rag.generation.prompt import (
     build_messages,
     build_retry_messages,
 )
+from app.rag.rerank.apply import rerank_hits
+from app.rag.rerank.base import Reranker
 from app.rag.vectorstore.search import (
     SearchFilter,
     search_dense,
@@ -50,6 +53,7 @@ class RagAnswerService:
         llm: BaseLLMProvider,
         tokenizer: Tokenizer,
         config: GenerationConfig,
+        reranker: Reranker | None = None,
     ) -> None:
         # Gerekli tüm bileşenlerin bağımlılık enjeksiyonu (Dependency Injection) ile alınması
         self.store = store
@@ -57,15 +61,22 @@ class RagAnswerService:
         self.llm = llm
         self.tokenizer = tokenizer
         self.config = config
+        self.reranker = reranker
 
-    def retrieve(
+        if self.config.rerank_enabled and self.reranker is None:
+            logger.warning(
+                "RAG rerank_enabled=True olarak ayarlanmış ancak servise reranker örneği verilmemiş. "
+                "Reranker devre dışı ('disabled') kalacaktır."
+            )
+
+    def retrieve_with_rerank(
         self,
         question: str,
         *,
         k: int,
         source_file: str | None = None,
-    ) -> tuple[list[SearchHit], float | None]:
-        """Execute synchronous vector retrieval and return hits alongside gate dense similarity score."""
+    ) -> RetrievalOutcome:
+        """Execute synchronous vector retrieval, apply optional reranking, and return complete outcome."""
         # 1. Koleksiyonun veritabanında var olup olmadığını doğrula
         collection_name = self.store.collection_name
         if not self.store.client.collection_exists(collection_name):
@@ -77,6 +88,9 @@ class RagAnswerService:
         # 2. Soru için embedding modelini YALNIZCA BİR KEZ çağır (Maliyet ve gecikme optimizasyonu)
         query_vec = self.embedder.embed_query(question)
 
+        use_rerank = self.config.rerank_enabled and self.reranker is not None
+        k_search = max(self.config.rerank_candidates, k) if use_rerank else k
+
         # 3. Ayarlanan arama moduna göre Qdrant üzerinde arama yap
         mode = self.config.retrieval_mode
         if mode == "dense":
@@ -84,7 +98,7 @@ class RagAnswerService:
                 client=self.store.client,
                 collection_name=collection_name,
                 query_vec=query_vec,
-                k=k,
+                k=k_search,
                 filter=filter_obj,
             )
         elif mode == "sparse":
@@ -93,7 +107,7 @@ class RagAnswerService:
                 client=self.store.client,
                 collection_name=collection_name,
                 query_sparse=query_sparse,
-                k=k,
+                k=k_search,
                 filter=filter_obj,
             )
         else:  # hybrid (Dense + BM25 Sparse RRF füzyonu)
@@ -103,7 +117,7 @@ class RagAnswerService:
                 collection_name=collection_name,
                 query_vec=query_vec,
                 query_sparse=query_sparse,
-                k=k,
+                k=k_search,
                 filter=filter_obj,
             )
 
@@ -125,7 +139,43 @@ class RagAnswerService:
                 )
                 top_dense_score = dense_hits[0].score if dense_hits else None
 
-        return hits, top_dense_score
+        # 5. İsteğe bağlı Reranker adımı (İki aşamalı arama)
+        if use_rerank and self.reranker is not None:
+            t0 = time.perf_counter()
+            reordered_hits, status, _ = rerank_hits(
+                question,
+                hits,
+                self.reranker,
+                top_k=k,
+                fail_open=self.config.rerank_fail_open,
+            )
+            rerank_ms = (time.perf_counter() - t0) * 1000.0
+            return RetrievalOutcome(
+                hits=reordered_hits,
+                top_dense_score=top_dense_score,
+                rerank_status=status,
+                rerank_candidates=len(hits),
+                rerank_ms=rerank_ms,
+            )
+
+        return RetrievalOutcome(
+            hits=hits[:k],
+            top_dense_score=top_dense_score,
+            rerank_status="disabled",
+            rerank_candidates=0,
+            rerank_ms=0.0,
+        )
+
+    def retrieve(
+        self,
+        question: str,
+        *,
+        k: int,
+        source_file: str | None = None,
+    ) -> tuple[list[SearchHit], float | None]:
+        """Execute synchronous vector retrieval and return hits alongside gate dense similarity score."""
+        outcome = self.retrieve_with_rerank(question, k=k, source_file=source_file)
+        return outcome.hits, outcome.top_dense_score
 
     async def answer(
         self,
@@ -139,6 +189,9 @@ class RagAnswerService:
         t_total_start = time.perf_counter()
         retrieval_latency_ms = 0.0
         llm_latency_ms = 0.0
+        rerank_ms = 0.0
+        rerank_status: Literal["disabled", "ok", "failed"] = "disabled"
+        rerank_candidates = 0
 
         final_answer: RagAnswer | None = None
         masked_q = ""
@@ -158,18 +211,24 @@ class RagAnswerService:
             has_pii = len(pii_types) > 0
 
             # -------------------------------------------------------------------------
-            # 2. ADIM: Asenkron Threadpool Üzerinde Arama (Retrieval)
+            # 2. ADIM: Asenkron Threadpool Üzerinde Arama (Retrieval + Rerank)
             # Senkron Qdrant ve embedder çağrıları event loop'u kilitlemesin diye threadpool'a verilir.
             # -------------------------------------------------------------------------
             target_k = k if k is not None else self.config.top_k
             t_retrieval_start = time.perf_counter()
-            hits, top_score = await run_in_threadpool(
-                self.retrieve,
+            outcome = await run_in_threadpool(
+                self.retrieve_with_rerank,
                 masked_q,
                 k=target_k,
                 source_file=source_file,
             )
             retrieval_latency_ms = (time.perf_counter() - t_retrieval_start) * 1000
+
+            hits = outcome.hits
+            top_score = outcome.top_dense_score
+            rerank_status = outcome.rerank_status
+            rerank_candidates = outcome.rerank_candidates
+            rerank_ms = outcome.rerank_ms
 
             retrieved_chunk_ids = [h.chunk.id for h in hits]
 
@@ -190,6 +249,7 @@ class RagAnswerService:
                     usage=TokenUsage(input_tokens=0, output_tokens=0),
                     provider=None,
                     model=None,
+                    rerank_status=rerank_status,
                 )
                 return final_answer
 
@@ -213,6 +273,7 @@ class RagAnswerService:
                     usage=TokenUsage(input_tokens=0, output_tokens=0),
                     provider=None,
                     model=None,
+                    rerank_status=rerank_status,
                 )
                 return final_answer
 
@@ -240,6 +301,7 @@ class RagAnswerService:
                     usage=TokenUsage(input_tokens=0, output_tokens=0),
                     provider=None,
                     model=None,
+                    rerank_status=rerank_status,
                 )
                 return final_answer
 
@@ -309,6 +371,7 @@ class RagAnswerService:
                         usage=aggregated_usage,
                         provider=resp.provider,
                         model=resp.model,
+                        rerank_status=rerank_status,
                     )
                     return final_answer
 
@@ -345,6 +408,7 @@ class RagAnswerService:
                         usage=aggregated_usage,
                         provider=resp.provider,
                         model=resp.model,
+                        rerank_status=rerank_status,
                     )
                     return final_answer
 
@@ -372,6 +436,7 @@ class RagAnswerService:
                 ),
                 provider=last_provider,
                 model=last_model,
+                rerank_status=rerank_status,
             )
             return final_answer
 
@@ -408,7 +473,10 @@ class RagAnswerService:
                     "output_tokens": final_answer.usage.output_tokens,
                     "latency_retrieval_ms": round(retrieval_latency_ms, 2),
                     "latency_llm_ms": round(llm_latency_ms, 2),
+                    "latency_rerank_ms": round(rerank_ms, 2),
                     "latency_total_ms": round(total_latency_ms, 2),
+                    "rerank_status": rerank_status,
+                    "rerank_candidates": rerank_candidates,
                     "provider": final_answer.provider,
                     "model": final_answer.model,
                 }
@@ -429,7 +497,10 @@ class RagAnswerService:
                     "top_dense_score": top_score,
                     "latency_retrieval_ms": round(retrieval_latency_ms, 2),
                     "latency_llm_ms": round(llm_latency_ms, 2),
+                    "latency_rerank_ms": round(rerank_ms, 2),
                     "latency_total_ms": round(total_latency_ms, 2),
+                    "rerank_status": rerank_status,
+                    "rerank_candidates": rerank_candidates,
                 }
                 if correlation_id:
                     log_data["correlation_id"] = correlation_id

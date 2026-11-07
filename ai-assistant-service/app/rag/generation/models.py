@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.llm.base import TokenUsage
 from app.rag.chunking.models import Chunk
+from app.rag.vectorstore.models import SearchHit
 
 AbstainReason = Literal[
     "no_results",
@@ -38,6 +39,11 @@ class GenerationConfig(BaseModel):
     )
     retrieval_mode: Literal["dense", "sparse", "hybrid"] = "hybrid"
 
+    # Reranker Configuration
+    rerank_enabled: bool = False
+    rerank_candidates: int = Field(default=20, ge=1, le=50)
+    rerank_fail_open: bool = True
+
     model_config = {"frozen": True}
 
     @classmethod
@@ -53,7 +59,24 @@ class GenerationConfig(BaseModel):
             llm_timeout_sec=settings.RAG_LLM_TIMEOUT_SEC,
             abstain_message=settings.RAG_ABSTAIN_MESSAGE,
             retrieval_mode=getattr(settings, "RAG_RETRIEVAL_MODE", "hybrid"),
+            rerank_enabled=getattr(settings, "RAG_RERANK_ENABLED", False),
+            rerank_candidates=getattr(settings, "RAG_RERANK_CANDIDATES", 20),
+            rerank_fail_open=getattr(settings, "RAG_RERANK_FAIL_OPEN", True),
         )
+
+
+class RetrievalOutcome(BaseModel):
+    """Retrieval aşamasının (rerank dahil) tüm çıktısını ve telemetrisini temsil eden model."""
+
+    hits: list[SearchHit] = Field(default_factory=list, description="Nihai arama eşleşmeleri")
+    top_dense_score: float | None = Field(default=None, description="En iyi dense cosine benzerlik skoru")
+    rerank_status: Literal["disabled", "ok", "failed"] = Field(
+        default="disabled", description="Reranker işlem durumu"
+    )
+    rerank_candidates: int = Field(default=0, description="Reranker'a gönderilen aday sayısı")
+    rerank_ms: float = Field(default=0.0, description="Rerank aşamasında harcanan süre (ms)")
+
+    model_config = {"frozen": True}
 
 
 class ContextBlock(BaseModel):
@@ -105,3 +128,6 @@ class RagAnswer(BaseModel):
     usage: TokenUsage = Field(default_factory=TokenUsage, description="Aggregated token usage across all attempts")
     provider: str | None = Field(default=None, description="LLM provider name utilized")
     model: str | None = Field(default=None, description="Specific LLM model utilized")
+    rerank_status: Literal["disabled", "ok", "failed"] = Field(
+        default="disabled", description="Reranker invocation outcome status"
+    )

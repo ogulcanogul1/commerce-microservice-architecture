@@ -28,6 +28,7 @@ from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.factory import get_default_embedder
 from app.rag.generation.models import GenerationConfig
 from app.rag.generation.service import RagAnswerService
+from app.rag.rerank.factory import build_reranker_from_settings
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.store import QdrantStore
 
@@ -70,6 +71,12 @@ async def lifespan(app: FastAPI):
         llm = LLMFactory.get_provider(provider_name, model_name=model_name)
         tokenizer = TiktokenTokenizer()
         gen_config = GenerationConfig.from_settings(settings)
+        reranker = None
+        try:
+            reranker = build_reranker_from_settings(settings)
+        except Exception as exc:
+            logger.warning("Reranker başlatılamadı (devre dışı bırakıldı): %s", exc)
+
         if store is not None and embedder is not None:
             rag_answer_service = RagAnswerService(
                 store=store,
@@ -77,6 +84,7 @@ async def lifespan(app: FastAPI):
                 llm=llm,
                 tokenizer=tokenizer,
                 config=gen_config,
+                reranker=reranker,
             )
     except Exception as exc:
         logger.warning("RagAnswerService başlatılamadı: %s", exc)
