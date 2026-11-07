@@ -139,3 +139,8 @@ class DownstreamClient:
             raise DownstreamUnavailable("Servise ulaşılamadı veya zaman aşımı oluştu.") from exc
         except Exception as exc:
             raise DownstreamUnavailable("Servis isteği sırasında beklenmeyen bir hata oluştu.") from exc
+
+    async def close(self) -> None:
+        """Close the underlying HTTPX async client."""
+        await self._client.aclose()
+

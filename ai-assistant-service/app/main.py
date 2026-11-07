@@ -9,7 +9,18 @@ import logging
 from fastapi import FastAPI
 from qdrant_client import QdrantClient
 
+from app.agent.executor import ActionExecutor
+from app.agent.pending import InMemoryPendingActionStore
+from app.agent.service import AgentService
+from app.agent.tickets import KafkaTicketPublisher, LoggingTicketPublisher, TicketPublisher
+from app.agent.tools.actions import RequestOrderCancellationTool, RequestSupportTicketTool
+from app.agent.tools.orders import GetOrderTool, ListMyOrdersTool
+from app.agent.tools.policy import SearchPolicyTool
+from app.agent.tools.registry import ToolRegistry
+from app.agent.tools.shipping import GetShipmentTool
 from app.api.api import api_router
+from app.clients.order import OrderClient
+from app.clients.shipping import ShippingClient
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
 from app.llm.factory import LLMFactory
@@ -70,14 +81,96 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("RagAnswerService başlatılamadı: %s", exc)
 
+    # Downstream Clients & Action Infrastructure
+    order_client = OrderClient(
+        base_url=settings.ORDER_SERVICE_URL,
+        timeout_sec=settings.DOWNSTREAM_TIMEOUT_SEC,
+    )
+    shipping_client = ShippingClient(
+        base_url=settings.SHIPPING_SERVICE_URL,
+        timeout_sec=settings.DOWNSTREAM_TIMEOUT_SEC,
+    )
+    action_store = InMemoryPendingActionStore()
+
+    ticket_publisher: TicketPublisher
+    if settings.TICKET_PUBLISHER == "kafka":
+        ticket_publisher = KafkaTicketPublisher()
+    else:
+        ticket_publisher = LoggingTicketPublisher()
+
+    action_executor = ActionExecutor(
+        order_client=order_client,
+        ticket_publisher=ticket_publisher,
+    )
+
+    # Customer Support Agent Service
+    agent_service = None
+    try:
+        agent_provider = settings.AGENT_LLM_PROVIDER or None
+        agent_model = settings.AGENT_LLM_MODEL or None
+        agent_llm = LLMFactory.get_provider(agent_provider, model_name=agent_model)
+
+        registry = ToolRegistry()
+        if rag_answer_service is not None:
+            registry.register(SearchPolicyTool(rag_answer_service))
+        else:
+            logger.warning(
+                "RagAnswerService mevcut olmadığı için SearchPolicyTool kaydedilmedi."
+            )
+
+        registry.register(GetOrderTool(order_client))
+        registry.register(ListMyOrdersTool(order_client))
+        registry.register(GetShipmentTool(order_client, shipping_client))
+        registry.register(
+            RequestOrderCancellationTool(
+                order_client,
+                action_store,
+                ttl_sec=settings.AGENT_PENDING_TTL_SEC,
+            )
+        )
+        registry.register(
+            RequestSupportTicketTool(
+                action_store,
+                ttl_sec=settings.AGENT_PENDING_TTL_SEC,
+            )
+        )
+
+        agent_service = AgentService(llm=agent_llm, registry=registry)
+    except Exception as exc:
+        logger.warning("AgentService başlatılamadı: %s", exc)
+
     app.state.embedder = embedder
     app.state.qdrant_client = client
     app.state.qdrant_store = store
     app.state.rag_answer_service = rag_answer_service
+    app.state.order_client = order_client
+    app.state.shipping_client = shipping_client
+    app.state.action_store = action_store
+    app.state.action_executor = action_executor
+    app.state.ticket_publisher = ticket_publisher
+    app.state.agent_service = agent_service
 
     yield
 
     # Shutdown
+    if hasattr(order_client, "close"):
+        try:
+            await order_client.close()
+        except Exception as exc:
+            logger.warning("OrderClient kapatılırken hata: %s", exc)
+
+    if hasattr(shipping_client, "close"):
+        try:
+            await shipping_client.close()
+        except Exception as exc:
+            logger.warning("ShippingClient kapatılırken hata: %s", exc)
+
+    if isinstance(ticket_publisher, KafkaTicketPublisher):
+        try:
+            await ticket_publisher.stop()
+        except Exception as exc:
+            logger.warning("KafkaTicketPublisher kapatılırken hata: %s", exc)
+
     if client is not None:
         try:
             client.close()

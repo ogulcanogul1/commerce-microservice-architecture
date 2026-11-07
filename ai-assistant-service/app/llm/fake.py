@@ -69,6 +69,9 @@ class FakeLLMProvider(BaseLLMProvider):
         else:
             raise RuntimeError("FakeLLMProvider: yanıt kalmadı")
 
+        if isinstance(raw_result, LLMResponse):
+            return raw_result
+
         if isinstance(raw_result, list):
             content = ""
             tool_calls = raw_result
