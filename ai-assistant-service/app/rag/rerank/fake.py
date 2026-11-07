@@ -26,13 +26,13 @@ class FakeReranker(Reranker):
         if self.delay_sec > 0:
             time.sleep(self.delay_sec)
 
+        docs_list = list(documents)
+        self.calls.append({"query": query, "documents": docs_list})
+
         if self.raise_on_call is not None:
             if isinstance(self.raise_on_call, RerankError):
                 raise self.raise_on_call
             raise RerankError(f"Fake rerank failure: {self.raise_on_call}") from self.raise_on_call
-
-        docs_list = list(documents)
-        self.calls.append({"query": query, "documents": docs_list})
 
         n = len(docs_list)
         if n == 0:

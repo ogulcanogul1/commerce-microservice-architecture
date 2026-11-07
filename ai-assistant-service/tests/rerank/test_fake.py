@@ -63,10 +63,14 @@ def test_fake_reranker_raise_on_call():
     reranker_custom = FakeReranker(raise_on_call=ValueError("bağlantı koptu"))
     with pytest.raises(RerankError, match="Fake rerank failure: bağlantı koptu"):
         reranker_custom.rerank("soru", ["d1"])
+    # Hata fırlatılsa dahi çağrı kaydedilmiş olmalı
+    assert len(reranker_custom.calls) == 1
+    assert reranker_custom.calls[0] == {"query": "soru", "documents": ["d1"]}
 
     reranker_direct = FakeReranker(raise_on_call=RerankError("özel hata"))
     with pytest.raises(RerankError, match="özel hata"):
         reranker_direct.rerank("soru", ["d1"])
+    assert len(reranker_direct.calls) == 1
 
 
 def test_fake_reranker_scores_mismatch_raises():
