@@ -130,6 +130,7 @@ async def lifespan(app: FastAPI):
         )
         registry.register(
             RequestSupportTicketTool(
+                order_client,
                 action_store,
                 ttl_sec=settings.AGENT_PENDING_TTL_SEC,
             )

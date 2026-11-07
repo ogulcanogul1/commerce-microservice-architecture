@@ -64,7 +64,6 @@
 
 ### Sıradaki Aşama (Next Step):
 - **Aşama 5: Agent (tool calling, onaylı aksiyonlar, güvenlik paketi, agent eval)** — uygulanacak plan: `python_plan/agent.md` (Adım 0 → 10, sırayla).
-  - **Adım 0-8 TAMAMLANDI:** Hazırlık, LLM Tool Round-Trip, Güvenlik Bağlamı (`RequestContext`), Downstream HTTP İstemcileri (`OrderClient`, `ShippingClient`), Tool Çatısı ve Okuma Araçları (`search_policy`, `get_order`, `list_my_orders`, `get_shipment`), Onaylı Aksiyonlar (`PendingActionStore`, `Kafka/LoggingTicketPublisher`, `ActionExecutor`), Prompt, Grounding & `AgentService` ReAct döngüsü, Agent HTTP API (`/agent/chat`, `/confirm`, `/reject`), `lifespan` entegrasyonu ve 16 senaryolu Güvenlik Test Paketi (`tests/agent/test_security_suite.py`).
-  - **Sırada:** **Adım 9 — Agent Evaluation (`app/agent/evaluation/`, `eval/agent/cases.json`)** (30+ vaka, 9 kategori, deterministik metrikler).
-  - **Ardından:** Adım 10 (Karar & Devir dokümantasyonu, README ve rehberlerin güncellenmesi).
-- Toplam test sayısı: **450 test** (Tümü passed, 0 failure).
+  - **Adım 0-9 TAMAMLANDI:** Hazırlık, LLM Tool Round-Trip, Güvenlik Bağlamı (`RequestContext`), Downstream HTTP İstemcileri (`OrderClient`, `ShippingClient`), Tool Çatısı ve Okuma Araçları (`search_policy`, `get_order`, `list_my_orders`, `get_shipment`), Onaylı Aksiyonlar (`PendingActionStore`, `Kafka/LoggingTicketPublisher`, `ActionExecutor`), Prompt, Grounding & `AgentService` ReAct döngüsü, Agent HTTP API (`/agent/chat`, `/confirm`, `/reject`), `lifespan` entegrasyonu, 16 senaryolu Güvenlik Test Paketi (`tests/agent/test_security_suite.py`) ve 39 vakalı Agent Değerlendirme Çerçevesi (`dataset.py`, `scenarios.py`, `metrics.py`, `run.py`, `eval/agent/cases.json`).
+  - **Sırada:** **Adım 10 — Karar, Devir ve Dokümantasyon (`python_plan/agent-decisions.md`, `README.md`, `DEVAM.md`, `AGENTS.md`)**.
+- Toplam test sayısı: **457 test** (Tümü passed, 0 failure).
