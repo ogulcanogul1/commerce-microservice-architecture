@@ -327,3 +327,64 @@ def test_temporary_store_lifecycle_and_cleanup():
     # Silme işlemi
     client.delete_collection(col_name)
     assert client.collection_exists(col_name) is False
+
+
+def test_generation_config_frozen_model_copy_with_rerank():
+    from app.rag.generation.models import GenerationConfig
+
+    config = GenerationConfig(top_k=5, rerank_enabled=False)
+    # Donmuş (frozen) model doğrudan atamaya izin vermemeli
+    with pytest.raises(Exception):
+        config.rerank_enabled = True  # type: ignore[misc]
+
+    # model_copy ile güvenle güncellenmeli
+    updated = config.model_copy(update={"rerank_enabled": True, "rerank_fail_open": False, "rerank_candidates": 30})
+    assert updated.rerank_enabled is True
+    assert updated.rerank_fail_open is False
+    assert updated.rerank_candidates == 30
+    assert config.rerank_enabled is False
+
+
+def test_gate_with_rerank():
+    from app.rag.evaluation.generation.gate import measure_dense_scores
+    from app.rag.rerank.fake import FakeReranker
+
+    client = QdrantClient(":memory:")
+    embedder = FakeEmbedder(dimensions=16)
+    chunks = [
+        Chunk(
+            id="c1",
+            text="İade politikası 14 gündür.",
+            source_file="test.pdf",
+            page_start=1,
+            page_end=1,
+            char_start=0,
+            char_end=26,
+            chunk_index=0,
+            strategy=ChunkStrategy.STRUCTURE,
+            token_count=5,
+            heading_path=[],
+        )
+    ]
+    store, col_name = setup_temporary_store(client=client, embedder=embedder, chunks=chunks)
+    try:
+        case = AnswerCase(
+            id="C1",
+            question="İade süresi?",
+            category="single_fact",
+            answerable=True,
+            expected_facts=["14 gün"],
+        )
+        fake_reranker = FakeReranker(scores=[0.95])
+        scored = measure_dense_scores(
+            store=store,
+            embedder=embedder,
+            cases=[case],
+            reranker=fake_reranker,
+            candidates=5,
+        )
+        assert len(scored) == 1
+        assert scored[0]["top_dense_score"] is not None
+        assert scored[0]["top_rerank_score"] == 0.95
+    finally:
+        client.delete_collection(col_name)

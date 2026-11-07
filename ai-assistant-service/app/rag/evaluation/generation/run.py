@@ -53,6 +53,7 @@ from app.rag.evaluation.generation.metrics import (
 from app.rag.generation.models import GenerationConfig, RagAnswer
 from app.rag.generation.service import RagAnswerService
 from app.rag.ingestion.pdf.loader import PDFLoader
+from app.rag.rerank.factory import get_reranker
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.store import QdrantStore
 
@@ -169,6 +170,14 @@ def generate_markdown_report(
     md.append(f"- **RAG_MIN_DENSE_SCORE:** `{meta.get('min_dense_score')}`")
     md.append(f"- **RAG_TOP_K:** `{meta.get('top_k')}`")
     md.append(f"- **RAG_CONTEXT_TOKEN_BUDGET:** `{meta.get('token_budget')}`")
+    rerank_setting = meta.get("rerank", "off")
+    md.append(f"- **Reranker:** `{rerank_setting}`" + (f" ({meta.get('reranker_id')}, candidates={meta.get('rerank_candidates')})" if rerank_setting == "on" else ""))
+    if meta.get("rerank_status_counts"):
+        counts = meta["rerank_status_counts"]
+        md.append(f"- **Rerank Durum Dağılımı:** `ok: {counts.get('ok', 0)}`, `failed: {counts.get('failed', 0)}`, `disabled: {counts.get('disabled', 0)}`")
+        if counts.get("failed", 0) > 0:
+            md.append("> [!WARNING]")
+            md.append(f"> **UYARI:** {counts['failed']} soruda reranker çağrısı başarısız oldu!")
     md.append(f"- **Toplam Soru Sayısı:** `{summary.total_cases}` (Cevaplanabilir: `{summary.answerable_count}`, Cevaplanamaz: `{summary.unanswerable_count}`)\n")
 
     # 2. Özet Metrikler Tablosu
@@ -343,6 +352,30 @@ def main() -> None:
         default=DEFAULT_REPORTS_DIR,
         help="Raporların kaydedileceği dizin",
     )
+    parser.add_argument(
+        "--rerank",
+        choices=["off", "on"],
+        default="off",
+        help="Reranker kullanımını aç/kapa (varsayılan: off)",
+    )
+    parser.add_argument(
+        "--reranker",
+        choices=["fake", "cross_encoder", "cohere"],
+        default=None,
+        help="Reranker sağlayıcısı (varsayılan: RAG_RERANK_PROVIDER)",
+    )
+    parser.add_argument(
+        "--rerank-model",
+        type=str,
+        default="",
+        help="Reranker özel model adı",
+    )
+    parser.add_argument(
+        "--rerank-candidates",
+        type=int,
+        default=None,
+        help="Retrieval'dan reranker'a iletilecek aday chunk sayısı",
+    )
 
     args = parser.parse_args()
 
@@ -395,6 +428,20 @@ def main() -> None:
         update_dict["min_dense_score"] = args.min_dense_score
     if args.top_k is not None:
         update_dict["top_k"] = args.top_k
+
+    reranker = None
+    if args.rerank == "on":
+        provider = args.reranker or getattr(settings, "RAG_RERANK_PROVIDER", "cross_encoder")
+        model = args.rerank_model or getattr(settings, "RAG_RERANK_MODEL", "")
+        reranker = get_reranker(provider, model_name=model or None)
+        update_dict["rerank_enabled"] = True
+        update_dict["rerank_fail_open"] = False  # Eval süreci her zaman fail-closed olmalıdır!
+        update_dict["rerank_candidates"] = (
+            args.rerank_candidates
+            if args.rerank_candidates is not None
+            else getattr(settings, "RAG_RERANK_CANDIDATES", 20)
+        )
+
     if update_dict:
         gen_config = gen_config.model_copy(update=update_dict)
 
@@ -404,6 +451,7 @@ def main() -> None:
         llm=llm,
         tokenizer=tokenizer,
         config=gen_config,
+        reranker=reranker,
     )
 
     try:
@@ -420,6 +468,12 @@ def main() -> None:
         run_hash = uuid.uuid4().hex[:6]
         base_name = f"{now_str}_{run_hash}"
 
+        rerank_status_counts = {"ok": 0, "failed": 0, "disabled": 0}
+        for r in results:
+            st = getattr(r, "rerank_status", None)
+            if st in rerank_status_counts:
+                rerank_status_counts[st] += 1
+
         meta = {
             "run_date": datetime.datetime.now().isoformat(),
             "git_commit": get_git_commit_hash(),
@@ -430,6 +484,10 @@ def main() -> None:
             "min_dense_score": gen_config.min_dense_score,
             "top_k": gen_config.top_k,
             "token_budget": gen_config.context_token_budget,
+            "rerank": args.rerank,
+            "reranker_id": getattr(reranker, "model_id", None) if reranker else None,
+            "rerank_candidates": gen_config.rerank_candidates,
+            "rerank_status_counts": rerank_status_counts,
         }
 
         md_content = generate_markdown_report(summary=summary, results=results, meta=meta)

@@ -42,6 +42,7 @@ class CaseResult(BaseModel):
     expected_facts: list[str] = Field(default_factory=list, description="Expected key facts")
     notes: str | None = Field(default=None, description="Case notes")
     error: str | None = Field(default=None, description="Exception message if execution crashed")
+    rerank_status: str | None = Field(default=None, description="Rerank execution status ('ok', 'failed', 'disabled')")
 
 
 class CategoryEvalSummary(BaseModel):
@@ -178,6 +179,7 @@ def score_case(
         expected_facts=case.expected_facts,
         notes=case.notes,
         error=error,
+        rerank_status=getattr(answer, "rerank_status", None) if answer else None,
     )
 
 

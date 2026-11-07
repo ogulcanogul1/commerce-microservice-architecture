@@ -38,6 +38,8 @@ from app.rag.evaluation.generation.dataset import (
     load_answer_set,
 )
 from app.rag.ingestion.pdf.loader import PDFLoader
+from app.rag.rerank.base import Reranker
+from app.rag.rerank.factory import get_reranker
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.search import search_dense
 from app.rag.vectorstore.store import QdrantStore
@@ -90,19 +92,28 @@ def measure_dense_scores(
     store: QdrantStore,
     embedder: Embedder,
     cases: list[AnswerCase],
+    reranker: Reranker | None = None,
+    candidates: int = 20,
 ) -> list[dict[str, Any]]:
-    """Measure top dense cosine similarity score for each evaluation case."""
+    """Measure top dense cosine similarity and optional top rerank score for each evaluation case."""
     results: list[dict[str, Any]] = []
 
     for case in cases:
         query_vec = embedder.embed_query(case.question)
+        k_search = max(candidates, 1) if reranker is not None else 1
         hits = search_dense(
             client=store.client,
             collection_name=store.collection_name,
             query_vec=query_vec,
-            k=1,
+            k=k_search,
         )
-        top_score = hits[0].score if hits else 0.0
+        top_dense = hits[0].score if hits else 0.0
+
+        top_rerank: float | None = None
+        if reranker is not None and hits:
+            docs = [h.chunk.embedding_text for h in hits]
+            rerank_res = reranker.rerank(case.question, docs)
+            top_rerank = rerank_res[0].score if rerank_res else 0.0
 
         results.append(
             {
@@ -110,7 +121,8 @@ def measure_dense_scores(
                 "question": case.question,
                 "answerable": case.answerable,
                 "category": case.category,
-                "top_dense_score": top_score,
+                "top_dense_score": top_dense,
+                "top_rerank_score": top_rerank,
             }
         )
     return results
@@ -187,6 +199,8 @@ def print_gate_report(
     table: list[dict[str, Any]],
     recommended_thresh: float | None,
     rationale: str,
+    ans_rerank_scores: list[float] | None = None,
+    unans_rerank_scores: list[float] | None = None,
 ) -> None:
     """Print formatted gate evaluation report to console."""
     ans_stats = compute_distribution_stats(ans_scores)
@@ -214,7 +228,27 @@ def print_gate_report(
     print(f"    Max:    {unans_stats['max']:.4f}")
     print(f"    Sirali Tam Liste: {', '.join(f'{s:.4f}' for s in sorted_unans)}")
 
-    print("\n[2] Aday Esik Degerleri Tablosu:")
+    if ans_rerank_scores and unans_rerank_scores:
+        ans_rr_stats = compute_distribution_stats(ans_rerank_scores)
+        unans_rr_stats = compute_distribution_stats(unans_rerank_scores)
+        print("\n" + "=" * 70)
+        print(" RERANK SKOR DAGILIMI (YALNIZCA OLCUM / BILGI AMACLI - ESIK ONERILMEZ)")
+        print("=" * 70)
+        print(f"  Cevaplanabilir Rerank (n={len(ans_rerank_scores)}):")
+        print(f"    Min:    {ans_rr_stats['min']:.4f}")
+        print(f"    p25:    {ans_rr_stats['p25']:.4f}")
+        print(f"    Medyan: {ans_rr_stats['median']:.4f}")
+        print(f"    Max:    {ans_rr_stats['max']:.4f}")
+        print(f"    Sirali Tam Liste: {', '.join(f'{s:.4f}' for s in sorted(ans_rerank_scores))}")
+
+        print(f"\n  Cevaplanamaz Rerank (n={len(unans_rerank_scores)}):")
+        print(f"    Min:    {unans_rr_stats['min']:.4f}")
+        print(f"    p25:    {unans_rr_stats['p25']:.4f}")
+        print(f"    Medyan: {unans_rr_stats['median']:.4f}")
+        print(f"    Max:    {unans_rr_stats['max']:.4f}")
+        print(f"    Sirali Tam Liste: {', '.join(f'{s:.4f}' for s in sorted(unans_rerank_scores))}")
+
+    print("\n[2] Aday Esik Degerleri Tablosu (Dense Cosine):")
     print(f"{'Esik':<8} | {'Kaybedilen Cevap':<18} | {'Elenen Cevaplanamaz':<20}")
     print("-" * 52)
     for r in table:
@@ -261,6 +295,30 @@ def main() -> None:
         default="memory",
         help="Qdrant modu: memory veya server",
     )
+    parser.add_argument(
+        "--rerank",
+        action="store_true",
+        default=False,
+        help="Reranker skor dağılımını da ölç",
+    )
+    parser.add_argument(
+        "--reranker",
+        choices=["fake", "cross_encoder", "cohere"],
+        default="fake",
+        help="Reranker sağlayıcısı",
+    )
+    parser.add_argument(
+        "--rerank-model",
+        type=str,
+        default="",
+        help="Özel model adı",
+    )
+    parser.add_argument(
+        "--candidates",
+        type=int,
+        default=20,
+        help="Aday chunk sayısı",
+    )
 
     args = parser.parse_args()
 
@@ -274,6 +332,10 @@ def main() -> None:
             print(f"[HATA] Gercek embedder baslatilamadi: {exc}")
             print("Lutfen API anahtarlarinizi (.env) kontrol edin veya test icin '--embedder fake' kullanin.")
             sys.exit(1)
+
+    reranker: Reranker | None = None
+    if args.rerank:
+        reranker = get_reranker(args.reranker, model_name=args.rerank_model or None)
 
     # 2. Qdrant İstemcisi
     if args.client_mode == "server":
@@ -294,13 +356,30 @@ def main() -> None:
         cases = load_answer_set(path=args.answer_set_path, golden_path=args.golden_path)
         print(f"[*] {len(cases)} soru için dense cosine benzerlik skorları hesaplanıyor...")
 
-        scored_items = measure_dense_scores(store=store, embedder=embedder, cases=cases)
+        scored_items = measure_dense_scores(
+            store=store,
+            embedder=embedder,
+            cases=cases,
+            reranker=reranker,
+            candidates=args.candidates,
+        )
 
         ans_scores = [item["top_dense_score"] for item in scored_items if item["answerable"]]
         unans_scores = [item["top_dense_score"] for item in scored_items if not item["answerable"]]
 
+        ans_rr = [item["top_rerank_score"] for item in scored_items if item["answerable"] and item["top_rerank_score"] is not None]
+        unans_rr = [item["top_rerank_score"] for item in scored_items if not item["answerable"] and item["top_rerank_score"] is not None]
+
         table, best_thresh, rationale = analyze_thresholds(ans_scores, unans_scores)
-        print_gate_report(ans_scores, unans_scores, table, best_thresh, rationale)
+        print_gate_report(
+            ans_scores,
+            unans_scores,
+            table,
+            best_thresh,
+            rationale,
+            ans_rerank_scores=ans_rr if args.rerank else None,
+            unans_rerank_scores=unans_rr if args.rerank else None,
+        )
 
     finally:
         # 5. Geçici koleksiyonu mutlaka sil
