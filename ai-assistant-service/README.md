@@ -315,3 +315,57 @@ Otomatik raporlar `eval/agent/reports/` dizinine Markdown (`.md`) ve JSON format
 | `KAFKA_BOOTSTRAP_SERVERS`| `"localhost:9092"` | Kafka broker adresi |
 | `SUPPORT_TICKET_TOPIC` | `"support.ticket.created"` | Destek biletleri Kafka konu başlığı |
 
+---
+
+## 13. Reranker Altyapısı (Opsiyonel İki Aşamalı Arama & A/B Ölçüm)
+
+Platform, hibrit arama (Dense Cosine + Sparse BM25 + Sunucu Taraflı RRF) sonuçlarının üzerine opsiyonel bir ikinci aşama (cross-encoder reranking) katmanı içerir.
+`RAG_RERANK_ENABLED=False` (varsayılan) iken arama doğrudan hibrit sonuçları döner, sistemde sıfır gecikme ve sıfır ağır kütüphane import yükü oluşturur.
+
+### Yerel Model Bağımlılıkları Kurulumu
+Yerel cross-encoder modeli (`BAAI/bge-reranker-v2-m3`) çalıştırmak için opsiyonel bağımlılık grubu:
+```powershell
+uv sync --extra local-embedding
+```
+
+### Retrieval A/B Karşılaştırması (`compare.py`)
+Mevcut retrieval veri seti üzerinde temel hibrit arama ile reranker performansını (MRR, Hit@k, rank kaymaları) kıyaslar:
+```powershell
+# Fake reranker ile duman testi (ağsız)
+uv run python -m app.rag.evaluation.rerank.compare --reranker fake
+
+# Gerçek yerel model ile kıyaslama (candidates=20, top-k=3)
+uv run python -m app.rag.evaluation.rerank.compare --reranker cross_encoder --rerank-model BAAI/bge-reranker-v2-m3 --candidates 20 --top-k 3
+```
+
+### Generation A/B Değerlendirmesi ve Rapor Fark Analizi (`reports_diff.py`)
+Üretim aşamasında reranker etkisini (doğruluk, halüsinasyon, çekinme kararları) uçtan uca ölçmek için:
+```powershell
+# 1. Temel değerlendirme (Rerank kapalı)
+uv run python -m app.rag.evaluation.generation.run --llm fake --output-file eval/rag/reports/baseline.json
+
+# 2. Rerank devrede değerlendirme (Fail-closed eval)
+uv run python -m app.rag.evaluation.generation.run --llm fake --rerank on --reranker fake --output-file eval/rag/reports/rerank_on.json
+
+# 3. İki rapor arasındaki fark analizi (Metrik deltaları, flip tablosu, halüsinasyon uyarıları)
+uv run python -m app.rag.evaluation.rerank.reports_diff eval/rag/reports/baseline.json eval/rag/reports/rerank_on.json
+
+# 4. Dense ve Rerank skor dağılımlarını yan yana ölçme (Eşik önerisi yapmaz)
+uv run python -m app.rag.evaluation.generation.gate --rerank
+```
+
+---
+
+## 14. Reranker Yapılandırma Parametreleri
+
+| Ortam Değişkeni | Varsayılan | Açıklama |
+| :--- | :--- | :--- |
+| `RAG_RERANK_ENABLED` | `false` | İki aşamalı reranker katmanını aktif/pasif eder (`true`/`false`) |
+| `RAG_RERANK_PROVIDER` | `"cross_encoder"` | Reranker sağlayıcısı (`fake`, `cross_encoder`, `cohere`) |
+| `RAG_RERANK_MODEL` | `"BAAI/bge-reranker-v2-m3"` | Reranker model kimliği (Cohere için varsayılan `rerank-v3.5`) |
+| `RAG_RERANK_CANDIDATES` | `20` | Reranker'a gönderilecek birinci aşama (hibrit) aday sayısı |
+| `RAG_RERANK_TIMEOUT_SEC` | `2.0` | Reranker çağrısı zaman aşımı süresi |
+| `RAG_RERANK_FAIL_OPEN` | `true` | Üretimde hata durumunda hibrit ilk k adayı dönme (`true`). Eval için `false`. |
+| `COHERE_API_KEY` | `""` | Cohere sağlayıcısı için API anahtarı (cross_encoder veya fake için gerekmez) |
+
+

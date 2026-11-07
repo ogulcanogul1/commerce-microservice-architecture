@@ -1,77 +1,62 @@
 # DEVAM — AI Assistant Service Oturum Devir ve İlerleme Raporu
 
-## Tamamlanan Aşama: Müşteri Destek Ajanı (Agent), Onaylı Aksiyonlar ve Güvenlik Paketi (`agent.md`)
+## Tamamlanan Aşama: Reranker Altyapısı, İki Aşamalı Arama ve A/B Ölçüm Çerçevesi (`python_plan/reranker.md`)
 
-`ai-assistant-service/python_plan/agent.md` planındaki Adım 0'dan Adım 10'a kadar tüm adımlar eksiksiz tamamlanmış, Docker veya harici ağ gerektirmeden ağsız modda 457 birim test ile doğrulanmış ve GitHub `main` dalına pushlanmıştır.
+`ai-assistant-service/python_plan/reranker.md` planındaki Adım 0'dan Adım 8'e kadar tüm adımlar eksiksiz tamamlanmış, Docker veya harici ağ gerektirmeden ağsız modda 533 birim test ile doğrulanmış ve adım adım commitlenmiştir. Karar günlüğü `python_plan/rerank-decisions.md` dosyasına kaydedilmiştir.
 
 ---
 
 ### Mimari Bileşenler ve Kapsam:
 
-1. **LLM Tool Round-Trip Desteği (`app/llm/`):**
-   - OpenAI/Local: `role="assistant", tool_calls=[...]` ve `role="tool", tool_call_id="..."`.
-   - Anthropic Claude: `tool_use` blokları ve ardışık `tool_result` bloklarının tek user mesajında birleştirilmesi.
-   - Google Gemini: `Part.from_function_call` ve `Part.from_function_response` tek `role="user"` altında birleştirme.
-   - `FakeLLMProvider`: Scripted tool çağrıları ile ağsız ve deterministik test.
+1. **Reranker Protokolü ve Veri Modelleri (`app/rag/rerank/models.py`, `base.py`):**
+   - `@runtime_checkable` `Reranker` protokolü: `rerank(query, hits, top_n) -> list[RerankResult]`.
+   - `RerankResult`: `frozen=True` Pydantic v2 modeli (`hit`, `new_score`, `old_score`, `original_rank`, `metadata`).
+   - `RerankError`: Reranker istisna sınıfı. Hatalı sıralama veya boş liste durumları `validate_rerank_results()` ile doğrulanır.
 
-2. **Güvenlik Bağlamı (`app/core/security.py`):**
-   - API Gateway'in ilettiği `X-User-Id` başlığından doğrulanmış `RequestContext` üretimi (UUIDv4 denetimi, `401 Unauthorized`).
-   - `require_gateway_secret` ile `hmac.compare_digest` doğrudan erişim koruması (`403 Forbidden`).
+2. **Reranker Sağlayıcıları (`app/rag/rerank/`):**
+   - Tüm sağlayıcılar (`FakeReranker`, `CrossEncoderReranker`, `CohereReranker`) açıkça `Reranker` arayüzüne bağlıdır.
+   - `FakeReranker`: Kelime örtüşmesi (Jaccard-benzeri) veya enjekte edilen skorlarla çalışan deterministik, ağsız test motoru.
+   - `CrossEncoderReranker`: Varsayılan `BAAI/bge-reranker-v2-m3`. Bellek ve thread güvenliği için `threading.Lock` ile korunan lazy model yüklemesi ve senkronize `predict()`.
+   - `CohereReranker`: `httpx` üzerinden Cohere v2 API (`/v2/rerank`, `rerank-v3.5`). 429/5xx hatalarında 1 kez üstel geri çekilme, 4xx iş hatalarında fail-fast. Loglarda ve hata mesajlarında API key sızdırılmaz.
 
-3. **Downstream Mikroservis İstemcileri (`app/clients/`):**
-   - `OrderClient` ve `ShippingClient` sınıfları. GET isteklerinde 1 kez otomatik retry, POST (iptal) işlemlerinde 0 retry.
-   - `X-User-Roles` başlığı admin bypass açığını engellemek için downstream'e iletilmez.
-   - `OrderView` ve `ShipmentView` PII filtreleme (adres ve alıcı bilgileri dış LLM'e sızdırılmaz). Path injection regex kontrolü (`_validate_order_number`).
+3. **Fabrika, Uygulama ve Retriever Adaptörü (`app/rag/rerank/factory.py`, `apply.py`, `retriever.py`):**
+   - `build_reranker_from_settings()` ve `get_reranker()`: Ayarlardan reranker nesnesi üretimi.
+   - `rerank_hits()`: Güvenli rerank yürütücüsü. Üretimde `RAG_RERANK_FAIL_OPEN=True` ile hata anında fallback olarak ilk $k$ hibrit sonucunu döner; değerlendirme modunda (`fail_open=False`) sessiz bozulmayı önlemek için hatayı yükseltir.
+   - `RerankingRetriever`: `Retriever` protokolünü (`retrieve()`) uygulayan adaptör sınıfı. Değerlendirme çatısıyla sıfır sürtünmeyle çalışır.
 
-4. **Tool Çatısı ve Okuma Araçları (`app/agent/tools/`):**
-   - `get_order`, `list_my_orders`, `get_shipment`, `search_policy`, `request_order_cancellation`, `request_support_ticket`.
-   - `extra="forbid"` ile modelden kimlik argümanı kabul edilmez (`ToolContext.user_id` kullanılır).
-   - `render_for_model`: Indirect prompt injection etiket kaçırma (`<arac_sonucu>` -> `‹arac_sonucu›`) ve 2000 karakter sınırı.
-   - 404 ve 403 hataları ID tarama saldırılarını önlemek için genel "Sipariş bulunamadı." metnine eşlenir.
-   - Kargo sorgulaması doğrudan takip numarası ile yapılamaz; önce sipariş sahipliği doğrulanır.
+4. **RagAnswerService ve Yaşam Döngüsü Entegrasyonu (`app/rag/generation/service.py`, `app/main.py`):**
+   - `retrieve_with_rerank()`: İki aşamalı getirme (aday havuzu -> reranker -> top_k).
+   - `RetrievalOutcome` ve `RagAnswer.rerank_status`: `disabled`, `applied`, `fallback_error`, `fallback_timeout`, `bypassed_insufficient_hits`.
+   - Lifespan: Başlangıçta reranker hazır bulunur; kapanışta `close()` temizliği yapılır. `RAG_RERANK_ENABLED=False` iken sıfır çalışma zamanı yükü.
 
-5. **Onaylı Aksiyonlar ve Bilet Yayını (`app/agent/pending.py`, `executor.py`, `tickets.py`):**
-   - `InMemoryPendingActionStore`: Thread-safe, 300 sn TTL, tek kullanımlık atomik `consume` (pop) ile replay koruması.
-   - `ActionExecutor`: Onay anında sipariş durumunu yeniden sorgular, zaten iptal ise gereksiz POST yapmaz.
-   - Unified Event Envelope formatında `LoggingTicketPublisher` ve `KafkaTicketPublisher` (`support.ticket.created`).
-
-6. **AgentService ReAct Orkestrasyonu ve Grounding (`app/agent/service.py`, `grounding.py`, `prompt.py`):**
-   - En fazla 4 adım, adım başına en fazla 3 araç.
-   - `search_policy` çağrıldığında döngü terminal sonlanır ve RAG cevabı atıflarıyla birlikte birebir döner.
-   - `check_reply_grounding`: Yanıttaki tüm rakam dizilerinin araç çıktılarında yer alması zorunludur. Uydurma sayılarda 1 düzeltme hakkı tanınır; tekrarlanırsa güvenli fallback döner.
-   - Yapılandırılmış audit logu (`user_id_hash` sha256 12 karakter; soru metni, tool argümanı ve tutar sızdırılmaz).
-
-7. **Agent HTTP API (`app/api/agent.py`) ve Lifespan Entegrasyonu (`app/main.py`):**
-   - `POST /agent/chat`, `POST /agent/actions/{action_id}/confirm`, `POST /agent/actions/{action_id}/reject`.
-   - `action_id` regex doğrulaması (`^[A-Za-z0-9_\-]{16,64}$`).
-   - Tekil ve temiz yaşam döngüsü yönetimi; kapanışta açık HTTP ve Kafka istemcileri güvenle kapatılır.
-
-8. **Güvenlik Test Paketi (`tests/agent/test_security_suite.py`):**
-   - IDOR, prompt injection, replay, TTL, aksiyon çalma, durum yarışı, path traversal ve log hijyeni kapsayan 16 saldırgan senaryo (16/16 yeşil).
-
-9. **Agent Değerlendirme Çerçevesi (`app/agent/evaluation/`, `eval/agent/cases.json`):**
-   - 9 kategoride 39 vaka. CLI `--validate`, `ScenarioEnvironment` ve LLM-judge gerektirmeyen deterministik metrikler.
-   - Markdown ve JSON raporlama (`eval/agent/reports/`).
+5. **Retrieval ve Generation A/B Değerlendirme Çerçevesi (`app/rag/evaluation/rerank/`):**
+   - `compare.py`: CLI retrieval karşılaştırıcısı (`--reranker`, `--rerank-model`, `--candidates`, `--top-k`). `first_correct_rank`, `classify_flips`, doyum (saturation) ve tavan (ceiling) uyarıları.
+   - `run.py --rerank`: Generation değerlendirme çalıştırıcısına fail-closed reranker bayrakları ve rerank durum istatistikleri.
+   - `gate.py --rerank`: Dense skor ile en üst rerank skorunu yan yana ölçen analizör. Abstain eşiğini bozmaz.
+   - `reports_diff.py`: İki generation raporu arasındaki metrik farklarını (`overall`, `answerable`, `unanswerable`), flip analizini, yeni halüsinasyon (`new_hallucination_queries`) ve gürültü uyarılarını CLI tablosu olarak sunar.
 
 ---
 
 ### Doğrulama ve Test Özeti:
-- **Toplam Birim Testi:** **457 test** (Tümü passed, 4 deselected, 0 failure).
+- **Toplam Birim Testi:** **533 test** (Tümü passed, 7 deselected, 0 failure).
 - **Test Süresi:** ~26 saniye (`uv run pytest -m "not integration"`).
-- **Ağ ve Docker Bağımsızlığı:** Tüm testler ağ bağlantısı veya Docker gerektirmeden bellek içi çalışır.
+- **Ağ ve Docker Bağımsızlığı:** Tüm rerank birim testleri (Fake, CrossEncoder mock, Cohere MockTransport, Service, Compare, Diff) harici ağ ve model indirme gerektirmeden çalışır.
 
 ---
 
 ### Sıradaki Aşama ve Gelecek Oturumlar İçin Notlar:
-1. **Java Mikroservislerinde Tespit Edilen Açıkların Kapatılması (Ayrı Java İşi):**
+1. **Aşama 7 / Adım 9: Corpus Büyütme ve Canlı Reranker Karar Koşusu:**
+   - Mevcut 3 dokümanlık (~8 chunk) toy corpus aday havuzu (k=20) için doyuma ulaştığından (`saturation warning`), doküman havuzu 10+ doküman ve 100+ chunk seviyesine çıkarılacaktır.
+   - Ardından canlı Cross-Encoder ve Cohere eval koşuları yapılarak `RAG_RERANK_ENABLED` bayrağının prod varsayılanı kararlaştırılacaktır.
+2. **Java Mikroservislerinde Tespit Edilen Açıkların Kapatılması (Ayrı Java İşi):**
    - `shipping-service`: `ShipmentResponse`'a `customerId` eklenmeli ve `/track/{trackingNumber}` uç noktasına sahiplik doğrulaması getirilmelidir.
    - `order-service`: `enforceOwnership` metodunda `X-User-Id` başlığı yoksa fail-fast (`401`/`403`) reddedilmelidir.
-2. **Kalıcı Aksiyon Deposu:** Çok örnekli (multi-instance) üretim ortamı için `RedisPendingActionStore` uygulaması.
-3. **Multi-Turn Sohbet Geçmişi:** Takip soruları için geçmiş taşıma ve query rewriting altyapısı.
-4. **Aşama 6: Reranker Değerlendirmesi:** Genişletilmiş korpus ile Cross-Encoder / FlashRank incelemesi.
+3. **Kalıcı Aksiyon Deposu:** Çok örnekli (multi-instance) üretim ortamı için `RedisPendingActionStore` uygulaması.
+4. **Multi-Turn Sohbet Geçmişi:** Takip soruları için geçmiş taşıma ve query rewriting altyapısı.
 
 ### Yeni Oturumda İlk Okunacak Dosyalar:
-1. `python_plan/agent-decisions.md` (Karar ve güvenlik ilkeleri)
+1. `python_plan/rerank-decisions.md` (Reranker kararları, model özellikleri ve baseline sayıları)
 2. `DEVAM.md` (Bu dosya)
-3. `README.md` (Uç nokta curl örnekleri ve eval komutları)
-4. `app/agent/service.py` ve `app/api/agent.py` (Asistan ana mantığı ve API)
+3. `python_plan/agent-decisions.md` (Agent güvenlik ve karar ilkeleri)
+4. `app/rag/rerank/` (Reranker çekirdek protokol ve uygulayıcıları)
+5. `app/rag/evaluation/rerank/` (Rerank A/B ve diff araçları)

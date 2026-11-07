@@ -18,3 +18,10 @@
 - **Terminal Politika Kuralı:** İade, kargo, garanti gibi şirket politikası sorularında `search_policy` çağrıldığında RAG cevabı modele özetletilmeden atıflarıyla birlikte doğrudan kullanıcıya döndürülür.
 - **Grounding Kuralı:** Asistan, araç çağırmadan sayısal bilgi veremez veya araç çıktısında yer almayan uydurma rakamlar üretemez. İhlal durumunda 1 düzeltme hakkı tanınır, aksi halde güvenli fallback mesajı dönülür.
 - **Log Hijyeni:** Loglarda ham `user_id` (yerine SHA-256 hash'i kullanılır), serbest kullanıcı mesajı ve sipariş tutarları asla yer alamaz.
+
+## 4. Reranker ve İki Aşamalı Arama Kuralları
+- **Opsiyonellik ve Bayrak Koruması:** Reranker `RAG_RERANK_ENABLED=False` (varsayılan) ile tamamen izoledir. Bayrak kapalıyken çalışma zamanı ek gecikmesi ve ağır bağımlılık importu yapılmaz.
+- **Fail-Open vs Fail-Closed:** Üretim ortamında reranker arızası veya zaman aşımı kullanıcı deneyimini bozamaz (`RAG_RERANK_FAIL_OPEN=True` ile ilk $k$ hibrit sonuca dönülür). Değerlendirme (eval) ve test modlarında ise sessiz kalite bozulmalarını gizlememek için kesinlikle fail-closed çalışır (`fail_open=False`).
+- **Abstain Gate İzolasyonu:** `RAG_MIN_DENSE_SCORE` doğrudan dense arama benzerlik skoruna bakar. Reranker skorları modeller arasında farklı ölçeklerde (logit, olasılık vb.) olduğu için çekinme (abstain) karar mekanizmasına karıştırılamaz.
+- **Güvenlik ve Gizlilik:** Cohere veya dış reranker sağlayıcılarının API anahtarları asla loglanamaz veya hata mesajlarında sızdırılamaz.
+
