@@ -3,7 +3,9 @@ from qdrant_client import QdrantClient
 from app.rag.chunking.models import Chunk, ChunkStrategy
 from app.rag.embedding.fake import FakeEmbedder
 from app.rag.evaluation.chunking.dataset import GoldenQuestion
+from app.rag.evaluation.chunking.retrieval import Retriever
 from app.rag.evaluation.rerank.compare import (
+    CachedRetriever,
     classify_flips,
     compute_percentiles,
     first_correct_rank,
@@ -142,4 +144,47 @@ def test_run_comparison_e2e(tmp_path: Path):
 
     # Mükerrer arama önlendiği için reranker soru başına yalnızca 1 kez çağrılmış olmalı
     assert len(reranker.calls) == 1
+
+
+def test_cached_retriever_partitions_by_query_and_k():
+    class CountingRetriever(Retriever):
+        def __init__(self):
+            self.call_log = []
+
+        def index(self, chunks):
+            pass
+
+        def search(self, query: str, k: int = 5):
+            self.call_log.append((query, k))
+            return [_make_chunk(f"c_{i}", f"doc {i}") for i in range(k)]
+
+        def search_by_budget(self, query, budget, tokenizer):
+            return []
+
+    inner = CountingRetriever()
+    cached = CachedRetriever(inner)
+
+    # 1. İlk k=5 çağrısı inner'ı çağırır
+    res1 = cached.search("soru1", k=5)
+    assert len(res1) == 5
+    assert len(inner.call_log) == 1
+    assert inner.call_log[0] == ("soru1", 5)
+
+    # 2. İkinci k=5 çağrısı önbellekten gelir, inner tekrar çağrılmaz
+    res2 = cached.search("soru1", k=5)
+    assert len(res2) == 5
+    assert len(inner.call_log) == 1
+
+    # 3. Aynı soru için k=20 çağrısı yapılırsa anahtar farklıdır ((soru1, 20)), inner çağrılır
+    res3 = cached.search("soru1", k=20)
+    assert len(res3) == 20
+    assert len(inner.call_log) == 2
+    assert inner.call_log[1] == ("soru1", 20)
+
+    # 4. Farklı bir soru sorulursa ((soru2, 5)), inner çağrılır
+    res4 = cached.search("soru2", k=5)
+    assert len(res4) == 5
+    assert len(inner.call_log) == 3
+    assert inner.call_log[2] == ("soru2", 5)
+
 

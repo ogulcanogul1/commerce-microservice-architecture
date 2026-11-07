@@ -8,7 +8,7 @@
   - Değerlendirmede (`eval` / `compare.py` / `run.py`): Her zaman `fail_open=False` çalışır; bir reranker hatası gizlenip temel çizgi gibi görünmesin diye hata derhal fırlatılır.
 - **Birim Test Sayıları:**
   - Baseline: 471 passed, 5 deselected
-  - Tamamlanma (Adım 0 → 8): 533 passed, 7 deselected (+62 yeni test, sıfır gerileme).
+  - Tamamlanma (Adım 0 → 8 + Sağlamlık Paketi): 539 passed, 7 deselected (+68 yeni test, sıfır gerileme).
 
 ## 2. Sağlayıcılar ve Model Detayları
 1. **Yerel Model (`CrossEncoderReranker`):**
@@ -31,6 +31,7 @@
 ## 4. Abstain Kapısı Kararı
 - Abstain kapısı (`min_dense_score`), önceden olduğu gibi `search_dense(k=1)` cosine skoruna bakmaya devam eder.
 - Rerank skorları cosine ile aynı ölçekte olmadığı için kapı eşiği reranker'a bağlanmaz. `gate.py --rerank` aracı yalnızca skor dağılımını gözlemlemek için kullanılır; eşik önermez.
+- **Reranker ve Abstain Kapısı Sıralaması:** Mevcut mimaride reranker iki aşamalı getirme (`retrieve_with_rerank`) içinde çalışır ve ardından `answer()` metodunda `min_dense_score` kontrolü yapılır. Bu sayede kapının reddettiği sorguların da reranker skor dağılımı `gate.py --rerank` ile analiz edilebilir. Ancak kapının reddedeceği alakasız sorgularda da reranker çağrısı (Cohere API maliyeti / yerel CPU süresi) yapılmış olur. Üretimde aşırı maliyet hassasiyeti oluşursa, kapıyı rerank öncesine çekmek (veya dense skor eşiğin altındaysa rerank'i atlamak) ileride ayrı bir optimizasyon kararı olarak değerlendirilebilir.
 
 ## 5. Dış Sağlayıcıya Veri ve Gizlilik Notu
 - Cohere kullanıldığında soru ve politika chunk metinleri harici API'ye gider. PII maskelemesi aktif olsa da şirket içi dokümanların dışarı çıkmasını istemeyen ortamlar için yerel `CrossEncoderReranker` tam bir alternatiftir.
@@ -49,3 +50,9 @@
 - Rerank skoruyla abstain kapısı (dağılımlar yeterince ayrışırsa).
 - LLM tabanlı reranking ("modele sırala dedirtmek").
 - Reranker sonuç önbelleklemesi (caching).
+
+## 8. Gerçek Model Ölçümleri Durumu (Doğrulama ve Şeffaflık)
+- **Gerçek Model Ölçümleri HÂLÂ YAPILMADI:** Gerçek Cross-Encoder (`BAAI/bge-reranker-v2-m3`) veya Cohere API ile genişletilmiş korpus üzerinde canlı kalite ölçümleri henüz gerçekleştirilmemiştir.
+- **Neden Yapılmadı?** Mevcut 3 dokümanlık (~8 chunk) toy corpus, aday havuzu $k=20$ için doyumda (`saturation warning`) olduğundan, küçük korpusta ölçüm yapmak yanıltıcı sonuçlar üretir (baseline zaten tavandadır).
+- **Yürütülen Koşular:** Şimdiye kadar yapılan tüm değerlendirmeler ve testler deterministik `FakeReranker` ve `FakeLLM` ile duman testi (smoke test) olarak icra edilmiştir. Kalite iddiası yapılmamıştır.
+- Canlı ölçümler Adım 9'da korpus 10+ PDF ve 100+ chunk seviyesine çıkarıldığında yapılacaktır.
