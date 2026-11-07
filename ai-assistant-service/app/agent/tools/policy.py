@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from app.agent.models import AgentReply
 from app.agent.tools.base import Tool, ToolContext, ToolResult
 from app.api.answer import CitationResponse
+from app.core.config import settings
 from app.rag.generation.service import RagAnswerService
 
 
@@ -29,8 +30,11 @@ class SearchPolicyTool(Tool):
     )
     args_model = SearchPolicyArgs
 
-    def __init__(self, rag_service: RagAnswerService) -> None:
+    def __init__(self, rag_service: RagAnswerService, timeout_sec: float | None = None) -> None:
         self._rag_service = rag_service
+        self.timeout_sec = (
+            timeout_sec if timeout_sec is not None else settings.AGENT_POLICY_TOOL_TIMEOUT_SEC
+        )
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
         # Karar 4: Modelin ürettiği sorgu değil, kullanıcının maskelenmiş orijinal sorusu iletilir

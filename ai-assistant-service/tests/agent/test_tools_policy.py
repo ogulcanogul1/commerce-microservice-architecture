@@ -145,3 +145,32 @@ async def test_search_policy_tool_with_real_rag_answer_and_citation() -> None:
     assert citation.page_start == 2
     assert citation.page_end == 3
     assert citation.heading_path == ["Politikalar", "İade"]
+
+
+@pytest.mark.anyio
+async def test_search_policy_tool_uses_dedicated_timeout() -> None:
+    # SearchPolicyTool varsayılan olarak AGENT_POLICY_TOOL_TIMEOUT_SEC (30.0s) değerini kullanmalıdır
+    tool = SearchPolicyTool(rag_service=MagicMock())
+    assert tool.timeout_sec >= 30.0
+
+
+@pytest.mark.anyio
+async def test_search_policy_timeout_bubbles_up() -> None:
+    # Politika arama aracı zaman aşımına uğradığında hata gizlenmemeli, TimeoutError yukarı fırlatılmalıdır
+    mock_rag = AsyncMock()
+
+    async def slow_answer(*args, **kwargs):
+        import asyncio
+        await asyncio.sleep(0.5)
+
+    mock_rag.answer = slow_answer
+    tool = SearchPolicyTool(rag_service=mock_rag, timeout_sec=0.05)
+
+    registry = ToolRegistry(timeout_sec=5.0)
+    registry.register(tool)
+
+    ctx = ToolContext(user_id="user-1", correlation_id=None, question="iade")
+
+    import asyncio
+    with pytest.raises(asyncio.TimeoutError):
+        await registry.execute("search_policy", {}, ctx)

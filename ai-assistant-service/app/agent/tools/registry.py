@@ -105,13 +105,16 @@ class ToolRegistry:
         except Exception:
             return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
 
+        timeout = getattr(tool, "timeout_sec", None) or self._timeout_sec
         try:
             return await asyncio.wait_for(
                 tool.run(validated_args, ctx),
-                timeout=self._timeout_sec,
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
-            logger.warning("Tool '%s' timed out after %s seconds", name, self._timeout_sec)
+            logger.warning("Tool '%s' timed out after %s seconds", name, timeout)
+            if name == "search_policy":
+                raise
             return ToolResult(ok=False, error="Araç zaman aşımına uğradı.")
         except (DownstreamNotFound, DownstreamForbidden):
             # Varlık sızdırmama kuralı: 404 ve 403 aynı hata metnine çevrilir

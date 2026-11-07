@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     AGENT_MAX_OUTPUT_TOKENS: int = 500
     AGENT_LLM_TIMEOUT_SEC: float = 30.0
     AGENT_TOOL_TIMEOUT_SEC: float = 8.0
+    AGENT_POLICY_TOOL_TIMEOUT_SEC: float = 30.0
     AGENT_MAX_STEPS: int = 4
     AGENT_MAX_TOOL_RESULT_CHARS: int = 2000
     AGENT_PENDING_TTL_SEC: int = 300
