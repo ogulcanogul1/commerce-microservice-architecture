@@ -558,3 +558,63 @@ def test_api_v1_chat_route_resolves_and_responds(test_client: TestClient):
     )
     assert resp2.status_code == 200
     assert resp2.json()["reply"] == "Tekrar merhaba!"
+
+
+def test_confirm_action_restores_store_on_downstream_failure(test_client: TestClient):
+    """Downstream kesintisinde tüketilen aksiyon depoya geri yüklenmeli ve 503 dönmelidir."""
+    from datetime import timedelta
+    from app.clients.base import DownstreamUnavailable
+    from app.agent.models import ExecutionResult
+
+    now = datetime.now(timezone.utc)
+    store = InMemoryPendingActionStore()
+    action = PendingAction(
+        action_id="act-failover-test-12345",
+        user_id=USER_A,
+        action_type="cancel_order",
+        params={"order_number": "ORD-DOWN-1"},
+        summary="Sipariş iptali onayı",
+        created_at=now,
+        expires_at=now + timedelta(minutes=5),
+    )
+    store.create(action)
+
+    call_count = 0
+
+    class FlakyExecutor:
+        async def execute(self, act, context):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # İlk çağrıda downstream kesintisi
+                raise DownstreamUnavailable("Order service connection refused")
+            # İkinci çağrıda başarılı
+            return ExecutionResult(ok=True, message="Sipariş başarıyla iptal edildi.")
+
+    app.state.action_store = store
+    app.state.action_executor = FlakyExecutor()
+
+    # 1. İlk deneme: Downstream kesintisi sebebiyle 503 dönmeli
+    resp1 = test_client.post(
+        f"/agent/actions/{action.action_id}/confirm",
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp1.status_code == 503
+    assert "lütfen kısa süre sonra tekrar deneyin" in resp1.json()["detail"]
+
+    # Aksiyon depodan silinmemiş (geri yüklenmiş) olmalı
+    # 2. İkinci deneme (retry): Başarılı olmalı
+    resp2 = test_client.post(
+        f"/agent/actions/{action.action_id}/confirm",
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["status"] == "executed"
+    assert resp2.json()["message"] == "Sipariş başarıyla iptal edildi."
+
+    # 3. Üçüncü deneme: Başarılı tüketimden sonra artık 404 dönmeli (replay koruması)
+    resp3 = test_client.post(
+        f"/agent/actions/{action.action_id}/confirm",
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp3.status_code == 404

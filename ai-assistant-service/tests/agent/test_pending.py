@@ -146,3 +146,24 @@ def test_pending_store_concurrent_consume_race_condition() -> None:
     # Tam olarak 1 thread başarılı olmalı, diğer 49'u None dönmeli
     successes = [r for r in results if r is not None]
     assert len(successes) == 1
+
+
+def test_pending_store_restore_allows_reconsume() -> None:
+    """Downstream arızasında restore çağrıldığında aksiyon depoya geri yüklenmeli ve tekrar tüketilebilmelidir."""
+    now = datetime(2026, 11, 1, 12, 0, 0, tzinfo=timezone.utc)
+    store = InMemoryPendingActionStore(clock=lambda: now)
+    action = _sample_action(action_id="act-restore-1", user_id="user-1")
+    store.create(action)
+
+    consumed = store.consume("act-restore-1", user_id="user-1")
+    assert consumed is not None
+    # Depodan silindi
+    assert store.consume("act-restore-1", user_id="user-1") is None
+
+    # Geri yükle
+    store.restore(consumed)
+
+    # Artık tekrar tüketilebilir
+    reconsumed = store.consume("act-restore-1", user_id="user-1")
+    assert reconsumed is not None
+    assert reconsumed.action_id == "act-restore-1"

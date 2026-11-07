@@ -143,10 +143,14 @@ async def confirm_action(
         exec_res = await executor.execute(action, ctx)
     except Exception as exc:
         logger.exception("Action execution failed: %s", exc)
+        if hasattr(store, "restore"):
+            store.restore(action)
+        else:
+            store.create(action)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="İşlem yürütülürken beklenmeyen bir hata oluştu.",
-        )
+            detail="İşlem yürütülürken bir hata oluştu, lütfen kısa süre sonra tekrar deneyin.",
+        ) from exc
 
     return ActionResultResponse(
         status="executed" if exec_res.ok else "failed",

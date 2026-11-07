@@ -28,6 +28,10 @@ class PendingActionStore(Protocol):
         """Discard/reject a pending action."""
         ...
 
+    def restore(self, action: PendingAction) -> None:
+        """Restore a previously consumed pending action back to the store (e.g. on transient failure)."""
+        ...
+
 
 class InMemoryPendingActionStore:
     """Thread-safe, in-memory pending action store with atomic consume, dedup, and TTL eviction."""
@@ -115,3 +119,11 @@ class InMemoryPendingActionStore:
 
             del self._actions[action_id]
             return True
+
+    def restore(self, action: PendingAction) -> None:
+        """Restore a previously consumed pending action back to the store (e.g. on transient downstream failure)."""
+        now = self._clock()
+        with self._lock:
+            self._cleanup_expired(now)
+            if action.expires_at > now:
+                self._actions[action.action_id] = action
