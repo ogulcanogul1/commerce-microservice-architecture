@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     )
     RAG_RETRIEVAL_MODE: str = "hybrid"  # 'dense', 'sparse', 'hybrid'
 
+    # Reranker Configuration
+    RAG_RERANK_ENABLED: bool = False
+    RAG_RERANK_PROVIDER: str = "cross_encoder"  # 'cross_encoder', 'cohere', 'fake'
+    RAG_RERANK_MODEL: str = ""  # Boşsa sağlayıcının varsayılanı kullanılır
+    RAG_RERANK_CANDIDATES: int = 20  # Retrieval'dan reranker'a gidecek aday sayısı (1..50)
+    RAG_RERANK_TIMEOUT_SEC: float = 10.0  # Reranker API çağrısı zaman aşımı (saniye)
+    RAG_RERANK_FAIL_OPEN: bool = True  # Hata anında orijinal retrieval sırasıyla devam et
+    COHERE_API_KEY: str = ""  # Cohere sağlayıcısı için API anahtarı
+
     # Gateway Security Configuration
     GATEWAY_INTERNAL_SECRET: str = "dgl-internal-gateway-secret-token-2026"
     GATEWAY_SECURITY_ENABLED: bool = True

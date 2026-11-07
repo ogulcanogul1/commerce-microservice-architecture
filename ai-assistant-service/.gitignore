@@ -18,4 +18,5 @@ eval/embedding/reports/
 eval/qdrant/reports/
 eval/generation/reports/
 eval/agent/reports/
+eval/rerank/reports/
 
