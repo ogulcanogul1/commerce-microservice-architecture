@@ -99,7 +99,22 @@ class AgentService:
                 if not resp.tool_calls:
                     final_text = (resp.content or "").strip()
 
-                    # Boş veya yalnızca boşluklardan oluşan yanıtlar doğrudan fallback'e düşmelidir
+                    # Karar 3 & 6: Bekleyen aksiyon varsa onay cümlesi daima action.summary'dir
+                    # Model sonraki adımda boş metin ("") dahi dönse aksiyon korunmalı ve istemciye iletilmelidir
+                    if captured_pending_action is not None:
+                        final_kind = "pending_action"
+                        return AgentReply(
+                            kind="pending_action",
+                            reply=captured_pending_action.summary,
+                            pending_action=captured_pending_action,
+                            steps=steps_taken,
+                            usage=TokenUsage(
+                                input_tokens=total_input_tokens,
+                                output_tokens=total_output_tokens,
+                            ),
+                        )
+
+                    # Aksiyon yokken boş veya yalnızca boşluklardan oluşan yanıtlar doğrudan fallback'e düşmelidir
                     if not final_text:
                         final_kind = "fallback"
                         return AgentReply(
@@ -140,20 +155,6 @@ class AgentService:
                         )
 
                     # Grounding başarılı
-                    if captured_pending_action is not None:
-                        final_kind = "pending_action"
-                        # Karar 3 & 6: Onay cümlesi modelin yeniden yazdığı değil, action.summary olmalı
-                        return AgentReply(
-                            kind="pending_action",
-                            reply=captured_pending_action.summary,
-                            pending_action=captured_pending_action,
-                            steps=steps_taken,
-                            usage=TokenUsage(
-                                input_tokens=total_input_tokens,
-                                output_tokens=total_output_tokens,
-                            ),
-                        )
-
                     final_kind = "answer"
                     return AgentReply(
                         kind="answer",

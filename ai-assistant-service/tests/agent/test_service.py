@@ -251,6 +251,44 @@ async def test_service_pending_action_returns_summary(base_context: RequestConte
 
 
 @pytest.mark.anyio
+async def test_service_pending_action_preserved_when_model_returns_empty_text(
+    base_context: RequestContext,
+) -> None:
+    """Model aksiyon aracını çağırdıktan sonra boş metinle bitirse dahi bekleyen aksiyon yutulmamalıdır."""
+    mock_order_client = AsyncMock()
+    mock_order_client.get_order_by_number.return_value = _sample_order()
+    store = InMemoryPendingActionStore()
+
+    registry = ToolRegistry()
+    registry.register(RequestOrderCancellationTool(order_client=mock_order_client, action_store=store))
+
+    # Adım 1: Tool çağrısı
+    # Adım 2: Boş metin ""
+    fake_llm = FakeLLMProvider(
+        responses=[
+            [
+                ToolCallRequest(
+                    call_id="call-c",
+                    tool_name="request_order_cancellation",
+                    arguments={"order_number": "ORD-100", "reason": "Vazgeçtim"},
+                )
+            ],
+            "",  # Boş LLM yanıtı
+        ]
+    )
+
+    service = AgentService(llm=fake_llm, registry=registry)
+    reply = await service.chat("Siparişimi iptal et", base_context)
+
+    # Boş metin sebebiyle fallback'e düşmemeli; bekleyen aksiyon korunmalıdır
+    assert reply.kind == "pending_action"
+    assert reply.pending_action is not None
+    assert reply.pending_action.action_type == "cancel_order"
+    assert reply.reply == reply.pending_action.summary
+    assert "ORD-100" in reply.reply
+
+
+@pytest.mark.anyio
 async def test_service_pii_masked_in_messages_to_llm(base_context: RequestContext) -> None:
     fake_llm = FakeLLMProvider(responses=["Yardımcı olabilirim."])
     registry = ToolRegistry()
