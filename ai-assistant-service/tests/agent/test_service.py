@@ -320,3 +320,21 @@ async def test_service_logging_hygiene(
     # Ham soru metni ve ham user_id loglanmamalı
     assert "Sipariş no 100 nerede?" not in log_text
     assert "user-123" not in log_text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("empty_content", ["", "   ", "\n\t  \n"])
+async def test_service_empty_or_whitespace_llm_response_returns_fallback(
+    base_context: RequestContext,
+    empty_content: str,
+) -> None:
+    """Model araç çağırmadan boş veya yalnızca boşluk döndüğünde kind='fallback' üretilmelidir."""
+    fake_llm = FakeLLMProvider(responses=[empty_content])
+    registry = ToolRegistry()
+
+    service = AgentService(llm=fake_llm, registry=registry)
+    reply = await service.chat("Merhaba", base_context)
+
+    assert reply.kind == "fallback"
+    assert reply.reply == service._fallback_message
+    assert len(reply.reply) > 0

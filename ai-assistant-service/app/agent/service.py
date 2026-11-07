@@ -97,7 +97,20 @@ class AgentService:
 
                 # Durum A: Model tool çağırmadı, nihai yanıt metni üretti
                 if not resp.tool_calls:
-                    final_text = resp.content
+                    final_text = (resp.content or "").strip()
+
+                    # Boş veya yalnızca boşluklardan oluşan yanıtlar doğrudan fallback'e düşmelidir
+                    if not final_text:
+                        final_kind = "fallback"
+                        return AgentReply(
+                            kind="fallback",
+                            reply=self._fallback_message,
+                            steps=steps_taken,
+                            usage=TokenUsage(
+                                input_tokens=total_input_tokens,
+                                output_tokens=total_output_tokens,
+                            ),
+                        )
 
                     # Grounding kontrolü: Cevaptaki sayılar araç sonuçlarında var mı?
                     issues = check_reply_grounding(
