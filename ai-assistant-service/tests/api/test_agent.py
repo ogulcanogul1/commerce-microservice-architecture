@@ -531,3 +531,30 @@ def test_chat_rag_infrastructure_failure_returns_503(test_client: TestClient):
     )
     assert resp.status_code == 503
     assert "Cevap üretilirken bir hata oluştu." in resp.json()["detail"]
+
+
+def test_api_v1_chat_route_resolves_and_responds(test_client: TestClient):
+    """API Gateway üzerinden gelen /api/v1/chat rotası doğru çözümlenmeli ve yanıt dönmelidir."""
+    fake_llm = FakeLLMProvider(responses=["Merhaba, size nasıl yardımcı olabilirim?"])
+    registry = ToolRegistry()
+    service = AgentService(llm=fake_llm, registry=registry)
+    app.state.agent_service = service
+
+    # 1. POST /api/v1/chat
+    resp1 = test_client.post(
+        "/api/v1/chat",
+        headers={"X-User-Id": USER_A},
+        json={"message": "Merhaba"},
+    )
+    assert resp1.status_code == 200
+    assert resp1.json()["reply"] == "Merhaba, size nasıl yardımcı olabilirim?"
+
+    # 2. POST /api/v1/chat/chat
+    fake_llm.responses.append("Tekrar merhaba!")
+    resp2 = test_client.post(
+        "/api/v1/chat/chat",
+        headers={"X-User-Id": USER_A},
+        json={"message": "Merhaba 2"},
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["reply"] == "Tekrar merhaba!"

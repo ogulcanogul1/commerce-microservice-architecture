@@ -86,7 +86,7 @@ spring:
           - id: ai-assistant-service-route
             uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
             predicates:
-              - Path=/api/v1/chat/**
+              - Path=/api/v1/chat/**, /api/v1/chat, /agent/**, /rag/**
             filters:
               - CircuitBreaker=aiAssistantCircuitBreaker,forward:/fallback/ai-assistant
 

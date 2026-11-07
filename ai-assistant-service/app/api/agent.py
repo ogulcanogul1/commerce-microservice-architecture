@@ -70,6 +70,7 @@ class ActionResultResponse(BaseModel):
     message: str
 
 
+@router.post("", response_model=ChatResponse)
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
