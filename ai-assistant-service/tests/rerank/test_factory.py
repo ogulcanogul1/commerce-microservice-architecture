@@ -50,3 +50,19 @@ def test_build_reranker_from_settings_enabled():
     reranker = build_reranker_from_settings(settings)
     assert isinstance(reranker, FakeReranker)
     assert reranker.model_id == "fake/my-model"
+
+
+def test_settings_rerank_candidates_validation():
+    from pydantic import ValidationError
+    from app.core.config import Settings
+
+    # Geçerli aralık 1..50
+    s_valid = Settings(RAG_RERANK_CANDIDATES=50)
+    assert s_valid.RAG_RERANK_CANDIDATES == 50
+
+    with pytest.raises(ValidationError):
+        Settings(RAG_RERANK_CANDIDATES=0)
+
+    with pytest.raises(ValidationError):
+        Settings(RAG_RERANK_CANDIDATES=51)
+

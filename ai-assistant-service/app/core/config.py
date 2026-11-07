@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,7 +48,9 @@ class Settings(BaseSettings):
     RAG_RERANK_ENABLED: bool = False
     RAG_RERANK_PROVIDER: str = "cross_encoder"  # 'cross_encoder', 'cohere', 'fake'
     RAG_RERANK_MODEL: str = ""  # Boşsa sağlayıcının varsayılanı kullanılır
-    RAG_RERANK_CANDIDATES: int = 20  # Retrieval'dan reranker'a gidecek aday sayısı (1..50)
+    RAG_RERANK_CANDIDATES: int = Field(
+        default=20, ge=1, le=50, description="Retrieval'dan reranker'a gidecek aday sayısı (1..50)"
+    )
     RAG_RERANK_TIMEOUT_SEC: float = 10.0  # Reranker API çağrısı zaman aşımı (saniye)
     RAG_RERANK_FAIL_OPEN: bool = True  # Hata anında orijinal retrieval sırasıyla devam et
     COHERE_API_KEY: str = ""  # Cohere sağlayıcısı için API anahtarı
