@@ -1,69 +1,77 @@
 # DEVAM — AI Assistant Service Oturum Devir ve İlerleme Raporu
 
-## Tamamlanan Aşama: RAG Cevap Üretimi (Generation), Atıf Doğrulama ve Abstain Mekanizması (`generation.md`)
+## Tamamlanan Aşama: Müşteri Destek Ajanı (Agent), Onaylı Aksiyonlar ve Güvenlik Paketi (`agent.md`)
 
-`ai-assistant-service/python_plan/generation.md` planındaki Adım 0'dan Adım 9'a kadar tüm adımlar eksiksiz tamamlanmış, Docker veya harici ağ gerektirmeden ağsız modda 324 birim test ile doğrulanmış ve GitHub `main` dalına pushlanmıştır.
+`ai-assistant-service/python_plan/agent.md` planındaki Adım 0'dan Adım 10'a kadar tüm adımlar eksiksiz tamamlanmış, Docker veya harici ağ gerektirmeden ağsız modda 457 birim test ile doğrulanmış ve GitHub `main` dalına pushlanmıştır.
 
 ---
 
 ### Mimari Bileşenler ve Kapsam:
 
-1. **LLM Katmanı ve TokenUsage Eki (`app/llm/`):**
-   - `TokenUsage(input_tokens, output_tokens)` modeli ve `BaseLLMProvider.generate`'e `max_tokens` desteği.
-   - OpenAI, Claude, Gemini ve Local sağlayıcılarında tam token ve kullanım eşlemesi.
-   - `FakeLLMProvider`: Kelime bazlı deterministik token sayımı, çağrı kaydı (`calls`), sequential/responder desteği ve ağsız test ortamı.
+1. **LLM Tool Round-Trip Desteği (`app/llm/`):**
+   - OpenAI/Local: `role="assistant", tool_calls=[...]` ve `role="tool", tool_call_id="..."`.
+   - Anthropic Claude: `tool_use` blokları ve ardışık `tool_result` bloklarının tek user mesajında birleştirilmesi.
+   - Google Gemini: `Part.from_function_call` ve `Part.from_function_response` tek `role="user"` altında birleştirme.
+   - `FakeLLMProvider`: Scripted tool çağrıları ile ağsız ve deterministik test.
 
-2. **PII Maskeleme (`app/core/pii.py`):**
-   - TCKN (resmi 10./11. hane algoritması ile tam checksum kontrolü).
-   - Kredi Kartı (13–19 hane arası Luhn mod-10 algoritması).
-   - IBAN (`TR` + 24 hane), E-posta ve Mobil Telefon (`05xx`, `+905xx`).
-   - Non-overlapping span tespiti ve sağdan sola yer değiştirme; sipariş numaraları ve iş süreleri ("14 gün") korunur.
+2. **Güvenlik Bağlamı (`app/core/security.py`):**
+   - API Gateway'in ilettiği `X-User-Id` başlığından doğrulanmış `RequestContext` üretimi (UUIDv4 denetimi, `401 Unauthorized`).
+   - `require_gateway_secret` ile `hmac.compare_digest` doğrudan erişim koruması (`403 Forbidden`).
 
-3. **Modeller ve Context Builder (`app/rag/generation/`):**
-   - `ContextBlock`, `Citation`, `ValidationIssue`, `RagAnswer`, `GenerationConfig`.
-   - `build_context`: `[1]`, `[2]` şeklinde blok numaralama, sayfa/başlık bilgisi, indirect prompt injection koruması (`<kaynaklar>` etiket kaçırma) ve token bütçesi (`header + text`).
+3. **Downstream Mikroservis İstemcileri (`app/clients/`):**
+   - `OrderClient` ve `ShippingClient` sınıfları. GET isteklerinde 1 kez otomatik retry, POST (iptal) işlemlerinde 0 retry.
+   - `X-User-Roles` başlığı admin bypass açığını engellemek için downstream'e iletilmez.
+   - `OrderView` ve `ShipmentView` PII filtreleme (adres ve alıcı bilgileri dış LLM'e sızdırılmaz). Path injection regex kontrolü (`_validate_order_number`).
 
-4. **Sistem Promptu ve Retry Mekanizması (`prompt.py`):**
-   - Grounding kuralı: Yalnızca verilen kaynakları kullanma, harici bilgi katmama, bilgi yoksa tek başına `BULUNAMADI` yazma.
-   - `build_retry_messages`: Doğrulama hatalarında bulunan ilk 5 sorunu modele iletip düzeltme talep etme.
+4. **Tool Çatısı ve Okuma Araçları (`app/agent/tools/`):**
+   - `get_order`, `list_my_orders`, `get_shipment`, `search_policy`, `request_order_cancellation`, `request_support_ticket`.
+   - `extra="forbid"` ile modelden kimlik argümanı kabul edilmez (`ToolContext.user_id` kullanılır).
+   - `render_for_model`: Indirect prompt injection etiket kaçırma (`<arac_sonucu>` -> `‹arac_sonucu›`) ve 2000 karakter sınırı.
+   - 404 ve 403 hataları ID tarama saldırılarını önlemek için genel "Sipariş bulunamadı." metnine eşlenir.
+   - Kargo sorgulaması doğrudan takip numarası ile yapılamaz; önce sipariş sahipliği doğrulanır.
 
-5. **Atıf ve Sayı Doğrulama (`citations.py`):**
-   - `split_sentences`: Türkçe kısaltmalar (`vb.`, `örn.`), ondalık sayılar ve tarihler korunarak cümle bölme; noktadan sonra gelen `[n]` atıflarını önceki cümleye bağlama.
-   - 3 Deterministik Kontrol:
-     1. `uncited_sentence`: Her cümlede en az bir `[n]` olmalıdır.
-     2. `invalid_citation`: Atıf numarası blok aralığında (`1..len(blocks)`) olmalıdır.
-     3. `number_not_in_source`: Cümledeki her rakam grubu (`\d+`), atıf yapılan kaynağın metninde veya başlığında bulunmalıdır.
-   - `is_abstain`: Metin içinde `bulunamadı` geçiyorsa tutucu abstain kararı.
+5. **Onaylı Aksiyonlar ve Bilet Yayını (`app/agent/pending.py`, `executor.py`, `tickets.py`):**
+   - `InMemoryPendingActionStore`: Thread-safe, 300 sn TTL, tek kullanımlık atomik `consume` (pop) ile replay koruması.
+   - `ActionExecutor`: Onay anında sipariş durumunu yeniden sorgular, zaten iptal ise gereksiz POST yapmaz.
+   - Unified Event Envelope formatında `LoggingTicketPublisher` ve `KafkaTicketPublisher` (`support.ticket.created`).
 
-6. **RagAnswerService Orkestrasyonu (`service.py`):**
-   - Kullanıcı sorusu gelir gelmez PII maskelenir; loglarda soru metni gizlenir.
-   - Asenkron threadpool sınırı ile event loop bloklanmaz.
-   - `no_results` ve `low_retrieval_score` durumlarında LLM çağrılmadan hızlı abstain.
-   - En fazla 2 LLM denemesi; geçemezse `validation_failed` ile güvenli kurumsal abstain mesajı.
+6. **AgentService ReAct Orkestrasyonu ve Grounding (`app/agent/service.py`, `grounding.py`, `prompt.py`):**
+   - En fazla 4 adım, adım başına en fazla 3 araç.
+   - `search_policy` çağrıldığında döngü terminal sonlanır ve RAG cevabı atıflarıyla birlikte birebir döner.
+   - `check_reply_grounding`: Yanıttaki tüm rakam dizilerinin araç çıktılarında yer alması zorunludur. Uydurma sayılarda 1 düzeltme hakkı tanınır; tekrarlanırsa güvenli fallback döner.
+   - Yapılandırılmış audit logu (`user_id_hash` sha256 12 karakter; soru metni, tool argümanı ve tutar sızdırılmaz).
 
-7. **Answer HTTP API (`app/api/answer.py`):**
-   - `POST /rag/answer`: `question` (1..1000 karakter, boşluk korumalı), `k` (1..10), `source_file` filtresi.
-   - Halka açık API yanıtında dahili teşhis alanları (`validation_issues`, `usage`, `top_dense_score`) sızdırılmaz.
-   - RFC 7807 problem details ve 503 hata maskelemesi.
+7. **Agent HTTP API (`app/api/agent.py`) ve Lifespan Entegrasyonu (`app/main.py`):**
+   - `POST /agent/chat`, `POST /agent/actions/{action_id}/confirm`, `POST /agent/actions/{action_id}/reject`.
+   - `action_id` regex doğrulaması (`^[A-Za-z0-9_\-]{16,64}$`).
+   - Tekil ve temiz yaşam döngüsü yönetimi; kapanışta açık HTTP ve Kafka istemcileri güvenle kapatılır.
 
-8. **Generation Değerlendirme Paketi (`app/rag/evaluation/generation/`):**
-   - `eval/generation/answer_set.json`: 54 soru (42 cevaplanabilir golden set + 12 cevaplanamaz; 6 konu dışı + 6 tehlikeli yakın).
-   - `dataset.py`: Doğrulayıcı ve yükleyici CLI (`--validate`).
-   - `metrics.py`: Deterministik `fact_recall`, `forbidden_hit`, `correct`, `answer_accuracy`, `hallucination_rate`, `false_abstain_rate`, gecikme ve token metrikleri.
-   - `gate.py`: Dense kosinüs skor dağılımı ölçümü ve eşik analizi.
-   - `run.py`: Uçtan uca değerlendirme koşucusu; Markdown ve JSON raporlama.
+8. **Güvenlik Test Paketi (`tests/agent/test_security_suite.py`):**
+   - IDOR, prompt injection, replay, TTL, aksiyon çalma, durum yarışı, path traversal ve log hijyeni kapsayan 16 saldırgan senaryo (16/16 yeşil).
+
+9. **Agent Değerlendirme Çerçevesi (`app/agent/evaluation/`, `eval/agent/cases.json`):**
+   - 9 kategoride 39 vaka. CLI `--validate`, `ScenarioEnvironment` ve LLM-judge gerektirmeyen deterministik metrikler.
+   - Markdown ve JSON raporlama (`eval/agent/reports/`).
 
 ---
 
 ### Doğrulama ve Test Özeti:
-- **Toplam Birim Testi:** **324 test** (Tümü passed, 4 deselected, 0 failure).
-- **Test Süresi:** ~36 saniye (`uv run pytest -m "not integration"`).
+- **Toplam Birim Testi:** **457 test** (Tümü passed, 4 deselected, 0 failure).
+- **Test Süresi:** ~26 saniye (`uv run pytest -m "not integration"`).
 - **Ağ ve Docker Bağımsızlığı:** Tüm testler ağ bağlantısı veya Docker gerektirmeden bellek içi çalışır.
 
 ---
 
-### Sıradaki Aşama (Next Step):
-- **Aşama 5: Agent (tool calling, onaylı aksiyonlar, güvenlik paketi, agent eval)** — uygulanacak plan: `python_plan/agent.md` (Adım 0 → 10, sırayla).
-  - **Adım 0-9 TAMAMLANDI:** Hazırlık, LLM Tool Round-Trip, Güvenlik Bağlamı (`RequestContext`), Downstream HTTP İstemcileri (`OrderClient`, `ShippingClient`), Tool Çatısı ve Okuma Araçları (`search_policy`, `get_order`, `list_my_orders`, `get_shipment`), Onaylı Aksiyonlar (`PendingActionStore`, `Kafka/LoggingTicketPublisher`, `ActionExecutor`), Prompt, Grounding & `AgentService` ReAct döngüsü, Agent HTTP API (`/agent/chat`, `/confirm`, `/reject`), `lifespan` entegrasyonu, 16 senaryolu Güvenlik Test Paketi (`tests/agent/test_security_suite.py`) ve 39 vakalı Agent Değerlendirme Çerçevesi (`dataset.py`, `scenarios.py`, `metrics.py`, `run.py`, `eval/agent/cases.json`).
-  - **Sırada:** **Adım 10 — Karar, Devir ve Dokümantasyon (`python_plan/agent-decisions.md`, `README.md`, `DEVAM.md`, `AGENTS.md`)**.
-- Toplam test sayısı: **457 test** (Tümü passed, 0 failure).
+### Sıradaki Aşama ve Gelecek Oturumlar İçin Notlar:
+1. **Java Mikroservislerinde Tespit Edilen Açıkların Kapatılması (Ayrı Java İşi):**
+   - `shipping-service`: `ShipmentResponse`'a `customerId` eklenmeli ve `/track/{trackingNumber}` uç noktasına sahiplik doğrulaması getirilmelidir.
+   - `order-service`: `enforceOwnership` metodunda `X-User-Id` başlığı yoksa fail-fast (`401`/`403`) reddedilmelidir.
+2. **Kalıcı Aksiyon Deposu:** Çok örnekli (multi-instance) üretim ortamı için `RedisPendingActionStore` uygulaması.
+3. **Multi-Turn Sohbet Geçmişi:** Takip soruları için geçmiş taşıma ve query rewriting altyapısı.
+4. **Aşama 6: Reranker Değerlendirmesi:** Genişletilmiş korpus ile Cross-Encoder / FlashRank incelemesi.
+
+### Yeni Oturumda İlk Okunacak Dosyalar:
+1. `python_plan/agent-decisions.md` (Karar ve güvenlik ilkeleri)
+2. `DEVAM.md` (Bu dosya)
+3. `README.md` (Uç nokta curl örnekleri ve eval komutları)
+4. `app/agent/service.py` ve `app/api/agent.py` (Asistan ana mantığı ve API)

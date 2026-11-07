@@ -198,15 +198,120 @@ Otomatik raporlar `eval/generation/reports/` dizinine Markdown (`.md`) ve JSON f
 Tüm birim testleri Docker veya harici ağ gerektirmeden bellek içi (`:memory:`) modda koşturmak için:
 
 ```powershell
-# Ağsız / Docker'sız tüm testleri çalıştır (324 test)
+# Ağsız / Docker'sız tüm testleri çalıştır (457 test)
 uv run pytest -m "not integration"
 
-# Yalnızca Generation testlerini çalıştır
-uv run pytest tests/generation/ -v
+# Yalnızca Agent ve Güvenlik testlerini çalıştır
+uv run pytest tests/agent/ -v
 
 # Yalnızca API testlerini çalıştır
 uv run pytest tests/api/ -v
 
-# Yalnızca vektör deposu testlerini çalıştır
-uv run pytest tests/vectorstore/ -v
+# Yalnızca Generation testlerini çalıştır
+uv run pytest tests/generation/ -v
 ```
+
+---
+
+## 10. Müşteri Destek Asistanı HTTP Uç Noktaları
+
+Tüm asistan uç noktaları API Gateway üzerinden kimlik doğrulamalı istekleri kabul eder. İstemci `X-User-Id` (UUIDv4) ve `X-Gateway-Secret` başlıklarını sağlamakla yükümlüdür.
+
+### A. Asistanla Konuşma (`POST /agent/chat`)
+```bash
+curl -X POST "http://localhost:8089/agent/chat" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
+  -H "X-Gateway-Secret: dgl-internal-gateway-secret-token-2026" \
+  -d '{
+    "message": "ORD-1001 nolu siparişimi iptal etmek istiyorum."
+  }'
+```
+
+**Örnek Yanıt (Onay Bekleyen Aksiyon - 200 OK):**
+```json
+{
+  "kind": "pending_action",
+  "reply": "ORD-1001 numaralı siparişi iptal etmek istediğinizi onaylıyor musunuz? Sebep: Müşteri isteği",
+  "citations": [],
+  "pending_action": {
+    "action_id": "act_xK91aBcDeFgHiJkLmNoPqRsTuV",
+    "action_type": "cancel_order",
+    "summary": "ORD-1001 numaralı siparişi iptal etmek istediğinizi onaylıyor musunuz? Sebep: Müşteri isteği",
+    "expires_at": "2026-11-07T14:40:00Z"
+  }
+}
+```
+
+### B. Bekleyen İşlemi Onaylama (`POST /agent/actions/{action_id}/confirm`)
+```bash
+curl -X POST "http://localhost:8089/agent/actions/act_xK91aBcDeFgHiJkLmNoPqRsTuV/confirm" \
+  -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
+  -H "X-Gateway-Secret: dgl-internal-gateway-secret-token-2026"
+```
+
+**Örnek Yanıt (200 OK):**
+```json
+{
+  "status": "executed",
+  "message": "ORD-1001 numaralı sipariş başarıyla iptal edildi."
+}
+```
+
+### C. Bekleyen İşlemi Reddetme (`POST /agent/actions/{action_id}/reject`)
+```bash
+curl -X POST "http://localhost:8089/agent/actions/act_xK91aBcDeFgHiJkLmNoPqRsTuV/reject" \
+  -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
+  -H "X-Gateway-Secret: dgl-internal-gateway-secret-token-2026"
+```
+
+**Örnek Yanıt (200 OK):**
+```json
+{
+  "status": "rejected",
+  "message": "İşlem iptal edildi."
+}
+```
+
+---
+
+## 11. Agent Değerlendirme Çerçevesi (Agent Eval CLI)
+
+Asistanın araç seçim doğruluğunu, onay süreçlerini ve sızıntı/güvenlik sınırlarını deterministik olarak değerlendirmek için:
+
+```powershell
+# 1. Değerlendirme veri setini doğrula (39 vaka)
+uv run python -m app.agent.evaluation.dataset --validate
+
+# 2. Uçtan uca smoke değerlendirme çalıştır (Fake LLM, ağsız)
+uv run python -m app.agent.evaluation.run --llm fake
+
+# 3. Gerçek model ile değerlendirme çalıştır (API anahtarı gerekir)
+uv run python -m app.agent.evaluation.run --llm default
+```
+
+Otomatik raporlar `eval/agent/reports/` dizinine Markdown (`.md`) ve JSON formatında üretilir.
+
+---
+
+## 12. Agent Yapılandırma Parametreleri
+
+| Ortam Değişkeni | Varsayılan | Açıklama |
+| :--- | :--- | :--- |
+| `GATEWAY_INTERNAL_SECRET` | `"dgl-internal-gateway-secret-token-2026"` | Ağ geçidi doğrudan erişim koruma anahtarı |
+| `GATEWAY_SECURITY_ENABLED`| `true` | Ağ geçidi gizli anahtar doğrulamasının aktifliği |
+| `ORDER_SERVICE_URL` | `"http://localhost:8082"` | Downstream Sipariş Servisi kök adresi |
+| `SHIPPING_SERVICE_URL` | `"http://localhost:8085"` | Downstream Kargo Servisi kök adresi |
+| `DOWNSTREAM_TIMEOUT_SEC` | `5.0` | Mikroservis HTTP çağrıları zaman aşımı süresi |
+| `AGENT_LLM_PROVIDER` | `""` | Ajan LLM sağlayıcısı (boşsa `DEFAULT_LLM_PROVIDER`) |
+| `AGENT_LLM_MODEL` | `""` | Ajan model kimliği |
+| `AGENT_TEMPERATURE` | `0.0` | Deterministik ReAct adımları için model sıcaklığı |
+| `AGENT_MAX_OUTPUT_TOKENS` | `500` | Ajanın adım başına üretebileceği maksimum token |
+| `AGENT_LLM_TIMEOUT_SEC` | `30.0` | Ajan LLM çağrısı zaman aşımı süresi |
+| `AGENT_TOOL_TIMEOUT_SEC` | `8.0` | Tekil araç çalıştırma zaman aşımı süresi |
+| `AGENT_MAX_STEPS` | `4` | Maksimum ReAct döngü adım sayısı |
+| `AGENT_PENDING_TTL_SEC` | `300` | Bekleyen onaylı işlem süresi (5 dakika) |
+| `TICKET_PUBLISHER` | `"log"` | Destek bileti yayıncısı (`log` veya `kafka`) |
+| `KAFKA_BOOTSTRAP_SERVERS`| `"localhost:9092"` | Kafka broker adresi |
+| `SUPPORT_TICKET_TOPIC` | `"support.ticket.created"` | Destek biletleri Kafka konu başlığı |
+
