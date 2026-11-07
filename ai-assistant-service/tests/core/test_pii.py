@@ -73,6 +73,14 @@ def test_phone_masking() -> None:
     assert types2 == ["phone"]
 
 
+def test_phone_without_prefix_not_masked() -> None:
+    # Ön eksiz 10 haneli sayı (sipariş no veya barkod) maskelenmemeli
+    raw = "Siparişim 5321234567 nolu kayıttır."
+    masked, pii_types = mask_pii(raw)
+    assert masked == raw
+    assert pii_types == []
+
+
 def test_email_masking() -> None:
     text, pii_types = mask_pii("Bana musteri.destek@commerce.com adresinden yazın.")
     assert text == "Bana [EPOSTA] adresinden yazın."
