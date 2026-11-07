@@ -492,3 +492,42 @@ def test_chat_internal_error_does_not_leak_secrets(test_client: TestClient):
     body = resp.text
     assert "CRITICAL_API_SECRET_TOKEN_XYZ_12345" not in body
     assert "Cevap üretilirken bir hata oluştu." in body
+
+
+def test_chat_rag_infrastructure_failure_returns_503(test_client: TestClient):
+    """Qdrant veya RAG altyapı kesintisi model hatası olarak gizlenmemeli, 503 dönmelidir."""
+    mock_rag = type("MockRag", (), {})()
+
+    async def fail_rag(*args, **kwargs):
+        raise RuntimeError("Qdrant down")
+
+    mock_rag.answer = fail_rag
+
+    registry = ToolRegistry()
+    registry.register(SearchPolicyTool(rag_service=mock_rag))
+
+    fake_llm = FakeLLMProvider(
+        responses=[
+            [
+                ToolCallRequest(
+                    call_id="call-policy-1",
+                    tool_name="search_policy",
+                    arguments={},
+                )
+            ]
+        ]
+    )
+
+    agent_service = AgentService(
+        llm=fake_llm,
+        registry=registry,
+    )
+    app.state.agent_service = agent_service
+
+    resp = test_client.post(
+        "/agent/chat",
+        headers={"X-User-Id": USER_A},
+        json={"message": "İade sürem kaç gün?"},
+    )
+    assert resp.status_code == 503
+    assert "Cevap üretilirken bir hata oluştu." in resp.json()["detail"]

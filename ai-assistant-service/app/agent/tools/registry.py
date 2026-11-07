@@ -11,7 +11,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.agent.tools.base import Tool, ToolContext, ToolResult
-from app.clients.base import DownstreamForbidden, DownstreamNotFound
+from app.clients.base import (
+    DownstreamBadRequest,
+    DownstreamForbidden,
+    DownstreamNotFound,
+    DownstreamUnavailable,
+)
 from app.core.config import settings
 from app.llm.base import ToolDefinition
 
@@ -111,6 +116,11 @@ class ToolRegistry:
         except (DownstreamNotFound, DownstreamForbidden):
             # Varlık sızdırmama kuralı: 404 ve 403 aynı hata metnine çevrilir
             return ToolResult(ok=False, error="Sipariş bulunamadı.")
+        except DownstreamBadRequest as exc:
+            return ToolResult(ok=False, error=exc.detail or "Geçersiz işlem parametreleri.")
+        except (DownstreamUnavailable, RuntimeError):
+            # Altyapı kesintileri (Qdrant, LLM, Downstream) gizlenmez; HTTP 503 olarak yukarı taşınır
+            raise
         except ValueError as exc:
             return ToolResult(ok=False, error=str(exc))
         except Exception as exc:

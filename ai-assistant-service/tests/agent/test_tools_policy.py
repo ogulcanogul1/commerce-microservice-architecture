@@ -89,9 +89,14 @@ async def test_search_policy_tool_exception_bubbles_up() -> None:
     tool = SearchPolicyTool(rag_service=mock_rag)
     ctx = ToolContext(user_id="user-1", correlation_id=None, question="iade")
 
-    # Kesinti abstain değildir; yukarı fırlamalıdır
+    # Kesinti abstain değildir; hem doğrudan tool'da hem registry üzerinden yukarı fırlamalıdır
     with pytest.raises(RuntimeError, match="Qdrant connection dropped"):
         await tool.run(SearchPolicyArgs(), ctx)
+
+    registry = ToolRegistry()
+    registry.register(tool)
+    with pytest.raises(RuntimeError, match="Qdrant connection dropped"):
+        await registry.execute("search_policy", {}, ctx)
 
 
 @pytest.mark.anyio
