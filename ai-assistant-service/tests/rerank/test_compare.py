@@ -137,3 +137,9 @@ def test_run_comparison_e2e(tmp_path: Path):
     md_content = md_files[0].read_text(encoding="utf-8")
     assert "SMOKE TEST UYARISI" in md_content
     assert "DOYGUNLUK UYARISI" in md_content
+    assert "DÜŞÜK ÖRNEKLEM BOYUTU" in md_content
+    assert "Kategori Kırılımı" in md_content
+
+    # Mükerrer arama önlendiği için reranker soru başına yalnızca 1 kez çağrılmış olmalı
+    assert len(reranker.calls) == 1
+

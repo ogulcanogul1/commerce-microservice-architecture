@@ -33,6 +33,7 @@ from app.rag.embedding.fake import FakeEmbedder
 from app.rag.evaluation.chunking.dataset import GoldenQuestion, load_golden_set
 from app.rag.evaluation.chunking.retrieval import (
     RetrievalEvalSummary,
+    Retriever,
     chunk_contains_evidence,
     evaluate_retrieval,
 )
@@ -141,6 +142,28 @@ def compute_percentiles(latencies: list[float]) -> tuple[float, float]:
     return round(sorted_l[p50_idx], 2), round(sorted_l[p95_idx], 2)
 
 
+class CachedRetriever(Retriever):
+    """Retriever arama çağrılarını hafızada tutarak flip analizi için mükerrer aramayı ve çift gecikme ölçümünü önler."""
+
+    def __init__(self, inner: Retriever) -> None:
+        self.inner = inner
+        self.cache: dict[tuple[str, int], list[Chunk]] = {}
+
+    def index(self, chunks: Sequence[Chunk]) -> None:
+        self.inner.index(chunks)
+
+    def search(self, query: str, k: int = 5) -> list[Chunk]:
+        key = (query, k)
+        if key not in self.cache:
+            self.cache[key] = self.inner.search(query, k=k)
+        return self.cache[key]
+
+    def search_by_budget(
+        self, query: str, budget: int, tokenizer: Any
+    ) -> list[Chunk]:
+        return self.inner.search_by_budget(query, budget, tokenizer)
+
+
 def load_eval_chunks(docs_dir: Path) -> list[Chunk]:
     """PDF dokümanlarını yükleyip DefaultChunker ile parçalar."""
     pdf_files = sorted(docs_dir.glob("*.pdf"))
@@ -205,12 +228,13 @@ def run_comparison(
         for mode in modes:
             print(f"\n[*] Değerlendirme modu: {mode.upper()}")
             baseline_retriever = QdrantRetriever(store=store, embedder=embedder, mode=mode)  # type: ignore[arg-type]
+            cached_baseline = CachedRetriever(baseline_retriever)
             
             # Baseline evaluate_retrieval
-            base_summary, _ = evaluate_retrieval(baseline_retriever, questions, chunks)
+            base_summary, _ = evaluate_retrieval(cached_baseline, questions, chunks)
             
-            # Baseline ranked chunks by question (k=5)
-            base_chunks_by_q = {q.id: baseline_retriever.search(q.question, k=5) for q in questions}
+            # Baseline ranked chunks by question (k=5) - cache'ten döner, ekstra arama yapmaz
+            base_chunks_by_q = {q.id: cached_baseline.search(q.question, k=5) for q in questions}
 
             mode_results: dict[str, Any] = {
                 "baseline_summary": base_summary.model_dump(),
@@ -224,9 +248,10 @@ def run_comparison(
                     reranker=reranker,
                     candidates=candidates,
                 )
+                cached_rerank = CachedRetriever(reranking_retriever)
 
-                rerank_summary, _ = evaluate_retrieval(reranking_retriever, questions, chunks)
-                rerank_chunks_by_q = {q.id: reranking_retriever.search(q.question, k=5) for q in questions}
+                rerank_summary, _ = evaluate_retrieval(cached_rerank, questions, chunks)
+                rerank_chunks_by_q = {q.id: cached_rerank.search(q.question, k=5) for q in questions}
 
                 flips = classify_flips(questions, base_chunks_by_q, rerank_chunks_by_q)
                 p50, p95 = compute_percentiles(reranking_retriever.total_rerank_ms)
@@ -303,6 +328,15 @@ def generate_markdown_report(data: dict[str, Any]) -> str:
         lines.append("> **SMOKE TEST UYARISI:** Bu koşu FakeReranker ile gerçekleştirilmiştir; kalite göstergesi değildir.")
         lines.append("")
 
+    if data.get("total_questions", 0) < 10:
+        lines.append("> [!WARNING]")
+        lines.append(
+            f"> **DÜŞÜK ÖRNEKLEM BOYUTU (n={data.get('total_questions')} < 10):** "
+            "Soru sayısı istatistiksel genelleme için yetersizdir. "
+            "Bu sonuçları kesin kalite kararı olarak yorumlamayınız."
+        )
+        lines.append("")
+
     # Uyarılar
     total_chunks = data["total_chunks"]
     for mode, mode_data in data["results"].items():
@@ -363,6 +397,22 @@ def generate_markdown_report(data: dict[str, Any]) -> str:
             lines.append(f"- **Bozulan Soru Sayısı:** {len(flips['regressed'])}")
             lines.append(f"- **Değişmeyen Soru Sayısı:** {flips['unchanged_count']}")
             lines.append("")
+
+            # Kategori Kırılımı (Hit@3)
+            base_cats = mode_data["baseline_summary"].get("category_hit3", {})
+            cand_cats = cand_data["summary"].get("category_hit3", {})
+            all_cats = sorted(set(base_cats.keys()).union(cand_cats.keys()))
+            if all_cats:
+                lines.append("#### 📊 Kategori Kırılımı (Hit@3)\n")
+                lines.append("| Kategori | Baseline Hit@3 | Reranker Hit@3 | Fark (Δ) |")
+                lines.append("| :--- | :--- | :--- | :--- |")
+                for cat in all_cats:
+                    b_val = base_cats.get(cat, 0.0)
+                    r_val = cand_cats.get(cat, 0.0)
+                    diff = r_val - b_val
+                    sign = "+" if diff > 0 else ""
+                    lines.append(f"| {cat} | %{b_val * 100:.1f} | %{r_val * 100:.1f} | {sign}%{diff * 100:.1f} |")
+                lines.append("")
 
             if flips["improved"]:
                 lines.append("#### 🟢 İyileşen Sorular")
