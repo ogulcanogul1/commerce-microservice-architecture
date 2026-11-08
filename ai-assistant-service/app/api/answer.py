@@ -10,6 +10,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.budget.deps import get_budget_subject, get_token_budget
+from app.budget.estimator import estimate_chat_tokens
+from app.budget.service import TokenBudgetService
 from app.core.config import settings
 from app.core.limits import ConcurrencyLimiter, get_ai_limiter
 from app.rag.generation.models import AbstainReason, RagAnswer
@@ -108,19 +111,39 @@ async def answer_question(
     service: RagAnswerService = Depends(get_rag_answer_service),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
+    subject: str = Depends(get_budget_subject),
+    budget: TokenBudgetService | None = Depends(get_token_budget),
 ) -> AnswerResponse:
     """Execute end-to-end grounded RAG question answering."""
     try:
-        # Eşzamanlılık sınırı (ConcurrencyLimiter): Slot müsait değilse anında Overloaded (503) fırlatır
+        # 1. Eşzamanlılık sınırı (ConcurrencyLimiter): Slot doluysa fast-fail 503
         async with limiter.slot():
-            # RAG tur bütçesi (Turn Timeout): Retrieval + maks 2 LLM denemesini RAG_TURN_TIMEOUT_SEC ile sınırlar
+            # 2. RAG tur zaman aşımı: En fazla 45 sn
             async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
-                rag_answer: RagAnswer = await service.answer(
-                    payload.question,
-                    k=payload.k,
-                    source_file=payload.source_file,
-                    correlation_id=x_correlation_id,
-                )
+                # 3. Token Bütçesi (Reserve & Reconcile): Bütçe aktifse peşin rezerve et
+                if budget is not None:
+                    estimated_tokens = estimate_chat_tokens(
+                        payload.question,
+                        service.tokenizer,
+                        overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
+                        max_output=settings.RAG_MAX_OUTPUT_TOKENS,
+                        steps=1,
+                    )
+                    async with await budget.reserve(subject, estimated_tokens) as reservation:
+                        rag_answer: RagAnswer = await service.answer(
+                            payload.question,
+                            k=payload.k,
+                            source_file=payload.source_file,
+                            correlation_id=x_correlation_id,
+                        )
+                        reservation.record(rag_answer.usage)
+                else:
+                    rag_answer: RagAnswer = await service.answer(
+                        payload.question,
+                        k=payload.k,
+                        source_file=payload.source_file,
+                        correlation_id=x_correlation_id,
+                    )
     except (asyncio.TimeoutError, TimeoutError):
         # Kural: Loglara kullanıcı sorusu veya metin ASLA yazılmaz! Yalnızca timeout durumu loglanır.
         logger.warning(

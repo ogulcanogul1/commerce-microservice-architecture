@@ -353,3 +353,30 @@ def test_answer_overloaded_returns_503(client: TestClient):
         assert response.headers.get("Retry-After") == "5"
     finally:
         app.state.ai_limiter = old_limiter
+
+
+def test_answer_token_budget_exceeded_returns_429(client: TestClient):
+    """RAG cevabında bütçe aşıldığında 429 TokenBudgetExceeded dönmelidir."""
+    from app.budget.service import TokenBudgetService
+    from app.budget.store import InMemoryBudgetStore
+
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=5,
+        per_minute_limit=5,
+    )
+    app.state.token_budget = svc
+    try:
+        response = client.post(
+            "/rag/answer",
+            json={"question": "İade süresi kaç gündür?"},
+        )
+        assert response.status_code == 429
+        data = response.json()
+        assert data["type"] == "https://api.commerce.com/errors/token-budget-exceeded"
+        assert data["retryable"] is True
+        assert data["retry_after_seconds"] > 0
+        assert response.headers.get("Retry-After") is not None
+    finally:
+        app.state.token_budget = None

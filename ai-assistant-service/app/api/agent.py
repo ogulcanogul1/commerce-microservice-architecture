@@ -13,6 +13,9 @@ from app.agent.models import ActionType, ReplyKind
 from app.agent.pending import PendingActionStore
 from app.agent.service import AgentService
 from app.api.answer import CitationResponse
+from app.budget.deps import get_token_budget
+from app.budget.estimator import estimate_chat_tokens
+from app.budget.service import TokenBudgetService
 from app.core.config import settings
 from app.core.limits import ConcurrencyLimiter, get_ai_limiter
 from app.core.security import RequestContext, get_request_context
@@ -80,6 +83,7 @@ async def chat(
     req: Request,
     ctx: RequestContext = Depends(get_request_context),
     limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
+    budget: TokenBudgetService | None = Depends(get_token_budget),
 ) -> ChatResponse:
     """Execute conversational turn with customer support agent."""
     service: AgentService | None = getattr(req.app.state, "agent_service", None)
@@ -90,11 +94,25 @@ async def chat(
         )
 
     try:
-        # Eşzamanlılık sınırı (ConcurrencyLimiter): Slot müsait değilse anında Overloaded (503) fırlatır
+        # 1. Eşzamanlılık sınırı (ConcurrencyLimiter): Slot doluysa fast-fail 503
         async with limiter.slot():
-            # Tur bütçesi (Turn Timeout): 4 LLM adımı ve tool çağrılarının toplamını AGENT_TURN_TIMEOUT_SEC ile sınırlar
+            # 2. Tur zaman aşımı (Turn Timeout): En fazla 60 sn
             async with asyncio.timeout(settings.AGENT_TURN_TIMEOUT_SEC):
-                reply = await service.chat(request.message, ctx)
+                # 3. Token Bütçesi (Reserve & Reconcile): Bütçe aktifse peşin rezerve et
+                if budget is not None:
+                    tokenizer = getattr(getattr(req.app.state, "rag_answer_service", None), "tokenizer", None)
+                    estimated_tokens = estimate_chat_tokens(
+                        request.message,
+                        tokenizer,
+                        overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
+                        max_output=1000,
+                        steps=2,
+                    )
+                    async with await budget.reserve(ctx.user_id, estimated_tokens) as reservation:
+                        reply = await service.chat(request.message, ctx)
+                        reservation.record(reply.usage)
+                else:
+                    reply = await service.chat(request.message, ctx)
     except (asyncio.TimeoutError, TimeoutError):
         # Kural: Loglara soru, mesaj veya kişisel veri ASLA yazılmaz! Yalnızca timeout durumu loglanır.
         logger.warning(

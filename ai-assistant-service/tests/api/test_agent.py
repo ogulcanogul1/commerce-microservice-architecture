@@ -658,3 +658,35 @@ def test_agent_chat_overloaded_returns_503(test_client):
     assert data["retryable"] is True
     assert data["retry_after_seconds"] == 5
     assert resp.headers.get("Retry-After") == "5"
+
+
+def test_agent_chat_token_budget_exceeded_returns_429(test_client):
+    """Token bütçesi aşıldığında 429 Too Many Requests ve RFC 7807 detayları dönmelidir."""
+    from app.budget.service import TokenBudgetService
+    from app.budget.store import InMemoryBudgetStore
+
+    store = InMemoryBudgetStore()
+    # Limiti çok küçük yapıyoruz (10 token)
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=10,
+        per_minute_limit=10,
+    )
+    app.state.agent_service = object()
+    app.state.token_budget = svc
+
+    try:
+        resp = test_client.post(
+            "/agent/chat",
+            headers={"X-User-Id": USER_A},
+            json={"message": "Bu mesaj bütçeyi kesinlikle aşacak uzunluktadır."},
+        )
+        assert resp.status_code == 429
+        data = resp.json()
+        assert data["type"] == "https://api.commerce.com/errors/token-budget-exceeded"
+        assert data["retryable"] is True
+        assert data["retry_after_seconds"] > 0
+        assert resp.headers.get("Retry-After") is not None
+        assert "kotanıza ulaştınız" in data["detail"]
+    finally:
+        app.state.token_budget = None

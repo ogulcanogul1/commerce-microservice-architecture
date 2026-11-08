@@ -32,6 +32,8 @@ from app.clients.shipping import ShippingClient
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
 from app.core.limits import BodySizeLimitMiddleware, ConcurrencyLimiter
+from app.budget.service import TokenBudgetService
+from app.budget.store import BudgetStore, InMemoryBudgetStore
 from app.discovery.client import EurekaClient
 from app.discovery.drain import install_sigterm_drain
 from app.discovery.models import InstanceInfo
@@ -239,7 +241,57 @@ def _init_agent_service(
 
 
 # ============================================================================
-# 5. EUREKA SERVICE DISCOVERY VE GRACEFUL DRAIN KURULUMU
+# 5. TOKEN BÜTÇESİ SERVİSİ KURULUMU
+# ============================================================================
+
+def _init_token_budget() -> tuple[TokenBudgetService | None, Any | None]:
+    """Token bütçesi ve maliyet koruma servisini (RedisBudgetStore + Fallback) başlatır.
+    
+    Ne İşe Yarar?
+    - Kullanıcı ve sistem bazında token kullanımını günlük ve dakikalık limitlerle sınırlar.
+    - REDIS_ENABLED=True ise çoklu replikalar için RedisBudgetStore kurar; arıza durumunda InMemory depoya döner.
+    """
+    if not settings.TOKEN_BUDGET_ENABLED:
+        return None, None
+
+    fallback_store = InMemoryBudgetStore()
+    redis_client = None
+    store: BudgetStore = fallback_store
+
+    if settings.REDIS_ENABLED:
+        try:
+            from redis.asyncio import Redis
+            from app.budget.redis_store import RedisBudgetStore
+
+            redis_client = Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                password=settings.REDIS_PASSWORD or None,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
+            )
+            store = RedisBudgetStore(redis_client)
+            logger.info("TokenBudgetService Redis bağlantısıyla başlatıldı (%s:%d)", settings.REDIS_HOST, settings.REDIS_PORT)
+        except Exception as exc:
+            logger.warning("Redis bütçe deposu başlatılamadı, yerel InMemory depoya geçiliyor: %s", exc)
+            store = fallback_store
+    else:
+        logger.warning("REDIS_ENABLED=False olduğundan TokenBudgetService yalnızca InMemory çalışıyor.")
+
+    service = TokenBudgetService(
+        store=store,
+        fallback_store=fallback_store,
+        daily_limit=settings.TOKEN_BUDGET_DAILY_LIMIT,
+        per_minute_limit=settings.TOKEN_BUDGET_PER_MINUTE_LIMIT,
+        provider_tpm_limit=settings.PROVIDER_TPM_LIMIT,
+        provider_name="default",
+        fail_mode=settings.TOKEN_BUDGET_FAIL_MODE,
+    )
+    return service, redis_client
+
+
+# ============================================================================
+# 6. EUREKA SERVICE DISCOVERY VE GRACEFUL DRAIN KURULUMU
 # ============================================================================
 
 async def _init_eureka() -> tuple[EurekaRegistrar | None, Callable[[], None] | None]:
@@ -308,6 +360,7 @@ async def _cleanup_resources(
     shipping_client: ShippingClient | None,
     ticket_publisher: TicketPublisher | None,
     client: QdrantClient | None,
+    redis_client: Any | None = None,
 ) -> None:
     """Uygulama kapanırken açık ağ bağlantılarını ve thread'leri güvenle serbest bırakır."""
     if sigterm_restore is not None:
@@ -321,6 +374,12 @@ async def _cleanup_resources(
             await eureka_registrar.stop()
         except Exception as exc:
             logger.warning("Eureka registrar kapatılırken hata: %s", exc)
+
+    if redis_client is not None:
+        try:
+            await redis_client.aclose()
+        except Exception as exc:
+            logger.warning("Redis istemcisi kapatılırken hata: %s", exc)
 
     if order_client and hasattr(order_client, "close"):
         try:
@@ -384,6 +443,9 @@ async def lifespan(app: FastAPI):
     # 5. Adım: Eşzamanlılık Denetleyicisi (Süreç başına en fazla 20 aktif LLM işlemi)
     ai_limiter = ConcurrencyLimiter(max_concurrent=settings.AI_MAX_CONCURRENT_REQUESTS)
 
+    # 6. Adım: Token Bütçesi ve Maliyet Koruması (Kullanıcı ve Provider kotaları)
+    token_budget, redis_client = _init_token_budget()
+
     # Tüm servis referanslarını FastAPI endpoint'lerinin erişebilmesi için app.state'e kaydet
     app.state.embedder = embedder
     app.state.qdrant_client = client
@@ -396,8 +458,10 @@ async def lifespan(app: FastAPI):
     app.state.ticket_publisher = ticket_publisher
     app.state.agent_service = agent_service
     app.state.ai_limiter = ai_limiter
+    app.state.token_budget = token_budget
+    app.state.redis_client = redis_client
 
-    # 6. Adım: Servis Keşfi (Eureka) ve Graceful Drain mekanizmasını başlat
+    # 7. Adım: Servis Keşfi (Eureka) ve Graceful Drain mekanizmasını başlat
     eureka_registrar, sigterm_restore = await _init_eureka()
     app.state.eureka_registrar = eureka_registrar
 
@@ -412,6 +476,7 @@ async def lifespan(app: FastAPI):
         shipping_client=shipping_client,
         ticket_publisher=ticket_publisher,
         client=client,
+        redis_client=redis_client,
     )
 
 
