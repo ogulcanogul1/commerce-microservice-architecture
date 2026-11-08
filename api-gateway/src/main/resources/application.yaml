@@ -15,6 +15,10 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  http:
+    clients:
+      connect-timeout: 10s
+      read-timeout: 80s
   cloud:
     loadbalancer:
       cache:
@@ -22,9 +26,6 @@ spring:
     gateway:
       server:
         webmvc:
-          http-client:
-            connect-timeout: 10s
-            read-timeout: 80s
           routes:
           - id: product-service-route
             uri: ${SERVICES_PRODUCT_URL:lb://product-service}
@@ -255,10 +256,6 @@ resilience4j:
       aiRagSearchCircuitBreaker:
         timeoutDuration: 10s
 
-gateway:
-  http-client:
-    connect-timeout: 10s
-    read-timeout: 80s
 
 management:
   endpoints:
