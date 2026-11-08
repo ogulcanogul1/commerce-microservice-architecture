@@ -16,6 +16,9 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
   cloud:
+    loadbalancer:
+      cache:
+        ttl: 5s
     gateway:
       mvc:
         routes:
@@ -83,12 +86,35 @@ spring:
               - CircuitBreaker=notificationCircuitBreaker,forward:/fallback/notification
               - Retry=3
 
-          - id: ai-assistant-service-route
+          # AI Assistant Mikroservisi Rotaları (Latency ve Sorumluluk İzolasyonu)
+          - id: ai-actions-route
             uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
             predicates:
-              - Path=/api/v1/chat/**, /api/v1/chat, /agent/**, /rag/**
+              - Path=/agent/actions/**, /api/v1/chat/actions/**
             filters:
-              - CircuitBreaker=aiAssistantCircuitBreaker,forward:/fallback/ai-assistant
+              # AI rotalarında kesinlikle Retry filtresi eklenmez (yan etkili onay ve mükerrer fatura riski)
+              - CircuitBreaker=aiActionsCircuitBreaker,forward:/fallback/ai-actions
+
+          - id: ai-chat-route
+            uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
+            predicates:
+              - Path=/agent, /agent/chat, /api/v1/chat, /api/v1/chat/chat
+            filters:
+              - CircuitBreaker=aiChatCircuitBreaker,forward:/fallback/ai-chat
+
+          - id: ai-rag-answer-route
+            uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
+            predicates:
+              - Path=/rag/answer
+            filters:
+              - CircuitBreaker=aiRagAnswerCircuitBreaker,forward:/fallback/ai-rag
+
+          - id: ai-rag-search-route
+            uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
+            predicates:
+              - Path=/rag/search
+            filters:
+              - CircuitBreaker=aiRagSearchCircuitBreaker,forward:/fallback/ai-rag
 
           - id: product-service-docs
             uri: ${SERVICES_PRODUCT_URL:lb://product-service}
@@ -149,6 +175,7 @@ spring:
 eureka:
   client:
     enabled: ${EUREKA_CLIENT_ENABLED:true}
+    registry-fetch-interval-seconds: 5
     serviceUrl:
       defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
   instance:
@@ -162,6 +189,15 @@ resilience4j:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 5000
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+      ai-heavy:
+        slidingWindowType: COUNT
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        slowCallRateThreshold: 80
+        waitDurationInOpenState: 30s
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
     instances:
@@ -179,12 +215,29 @@ resilience4j:
         baseConfig: default
       notificationCircuitBreaker:
         baseConfig: default
-      aiAssistantCircuitBreaker:
+      aiChatCircuitBreaker:
+        baseConfig: ai-heavy
+        slowCallDurationThreshold: 45s
+      aiRagAnswerCircuitBreaker:
+        baseConfig: ai-heavy
+        slowCallDurationThreshold: 35s
+      aiActionsCircuitBreaker:
+        baseConfig: default
+      aiRagSearchCircuitBreaker:
         baseConfig: default
   timelimiter:
     configs:
       default:
         timeoutDuration: 3s
+    instances:
+      aiChatCircuitBreaker:
+        timeoutDuration: 70s
+      aiRagAnswerCircuitBreaker:
+        timeoutDuration: 55s
+      aiActionsCircuitBreaker:
+        timeoutDuration: 20s
+      aiRagSearchCircuitBreaker:
+        timeoutDuration: 10s
 
 management:
   endpoints:

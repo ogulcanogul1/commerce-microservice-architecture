@@ -84,6 +84,41 @@ class FallbackControllerTest {
     }
 
     @Test
+    @DisplayName("aiChatFallback should return 503 and retryable=true")
+    void aiChatFallback_ShouldReturn503_WithRetryableTrue() {
+        ResponseEntity<ProblemDetail> response = controller.aiChatFallback();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getType().toString()).isEqualTo("https://api.commerce.com/errors/ai-chat-unavailable");
+        assertThat(response.getBody().getProperties()).containsEntry("retryable", true);
+    }
+
+    @Test
+    @DisplayName("aiRagFallback should return 503 and retryable=true")
+    void aiRagFallback_ShouldReturn503_WithRetryableTrue() {
+        ResponseEntity<ProblemDetail> response = controller.aiRagFallback();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getType().toString()).isEqualTo("https://api.commerce.com/errors/ai-rag-unavailable");
+        assertThat(response.getBody().getProperties()).containsEntry("retryable", true);
+    }
+
+    @Test
+    @DisplayName("aiActionsFallback should return 503, retryable=false and outcomeUnknown=true")
+    void aiActionsFallback_ShouldReturn503_WithOutcomeUnknown() {
+        ResponseEntity<ProblemDetail> response = controller.aiActionsFallback();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getType().toString()).isEqualTo("https://api.commerce.com/errors/ai-actions-unavailable");
+        assertThat(response.getBody().getProperties()).containsEntry("retryable", false);
+        assertThat(response.getBody().getProperties()).containsEntry("outcomeUnknown", true);
+        assertThat(response.getBody().getDetail()).contains("İşlem durumu doğrulanamadı");
+    }
+
+    @Test
     @DisplayName("aiAssistantFallback should return 503 SERVICE_UNAVAILABLE with ProblemDetail")
     void aiAssistantFallback_ShouldReturn503() {
         ResponseEntity<ProblemDetail> response = controller.aiAssistantFallback();
