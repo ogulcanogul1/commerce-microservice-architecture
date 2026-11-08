@@ -1,5 +1,6 @@
 from functools import lru_cache
-from pydantic import Field
+from typing import Any, Literal
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -87,7 +88,16 @@ class Settings(BaseSettings):
     TOKEN_BUDGET_PER_MINUTE_LIMIT: int = Field(default=8000, ge=1, description="Kullanıcı başına dakikalık token kotası")
     PROVIDER_TPM_LIMIT: int = Field(default=0, ge=0, description="Tüm instance'ların ortak dakikalık token kotası (0=kapalı)")
     TOKEN_BUDGET_PROMPT_OVERHEAD: int = Field(default=1500, ge=0, description="Sistem prompt ve araçlar için tahmini token")
-    TOKEN_BUDGET_FAIL_MODE: str = Field(default="local", description="Redis arızasında tutum: 'local' veya 'closed'")
+    TOKEN_BUDGET_FAIL_MODE: Literal["local", "closed"] = Field(
+        default="local", description="Redis arızasında tutum: 'local' veya 'closed'"
+    )
+
+    @field_validator("TOKEN_BUDGET_FAIL_MODE", mode="before")
+    @classmethod
+    def normalize_fail_mode(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
 
     # Downstream Microservices URLs
     ORDER_SERVICE_URL: str = "http://localhost:8082"

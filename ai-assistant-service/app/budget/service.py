@@ -8,10 +8,11 @@ Mali Güvenlik Mantığı:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from app.budget.models import ReserveResult, Scope
 from app.budget.store import BudgetStore, BudgetStoreError
@@ -110,18 +111,29 @@ class Reservation:
     ) -> None:
         """İşlem bittiğinde bütçe uzlaştırmasını (Reconciliation) otomatik yapar."""
         try:
-            # 1. Durum: İstek sırasında bir hata fırlatıldıysa (Exception) -> Rezerve edilen miktarın TAMAMINI iade et!
+            # 1. Durum: Zaman aşımı (TimeoutError) durumu
+            # Sağlayıcı tokenları işlemiş veya faturalamış olabileceğinden ve kötüye kullanımı (sürekli timeout'a
+            # sokarak sınırsız istek deneme) engellemek için, zaman aşımında rezervasyon iade edilmez (kotadan harcanır).
+            # Eğer kısmi gerçek harcama bildirildiyse o uzlaştırılır, bildirilmediyse rezervasyon harcanmış sayılır.
+            if isinstance(exc_val, (TimeoutError, asyncio.TimeoutError)):
+                if self.actual is not None:
+                    delta = self.actual - self.reserved
+                    await self._store.adjust(self._scopes, delta)
+                return
+
+            # 2. Durum: İstek sırasında diğer bir hata fırlatıldıysa (Bağlantı hatası, doğrulama vb.)
+            # -> Rezerve edilen miktarın TAMAMINI iade et!
             if exc_val is not None:
                 await self._store.adjust(self._scopes, -self.reserved)
                 return
 
-            # 2. Durum: İşlem başarılı bitti ve gerçek harcama bildirildi -> Aradaki farkı uzlaştır
+            # 3. Durum: İşlem başarılı bitti ve gerçek harcama bildirildi -> Aradaki farkı uzlaştır
             if self.actual is not None:
                 delta = self.actual - self.reserved
                 # delta negatifse iade yapılır, pozitifse ek bütçe düşülür
                 await self._store.adjust(self._scopes, delta)
 
-            # 3. Durum: actual bildirilmediyse rezervasyon olduğu gibi kalır
+            # 4. Durum: actual bildirilmediyse rezervasyon olduğu gibi kalır
 
         except Exception as exc:
             # Kritik Kural: Bütçe uzlaştırma hatası (Redis timeout vb.) başarılı dönmüş isteği ASLA bozmamalıdır!
@@ -148,7 +160,7 @@ class TokenBudgetService:
         per_minute_limit: int = 8000,
         provider_tpm_limit: int = 0,
         provider_name: str = "gemini",
-        fail_mode: str = "local",
+        fail_mode: Literal["local", "closed"] = "local",
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store

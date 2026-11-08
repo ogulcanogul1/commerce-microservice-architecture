@@ -12,6 +12,9 @@ from app.discovery.registrar import EurekaRegistrar
 
 logger = logging.getLogger(__name__)
 
+# Güçlü referans saklayıcı (asyncio task'larının çöp toplayıcı tarafından silinmesini engeller)
+_drain_tasks: set[asyncio.Task[Any]] = set()
+
 
 def install_sigterm_drain(
     registrar: EurekaRegistrar,
@@ -78,7 +81,9 @@ def install_sigterm_drain(
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_drain_and_forward())
+            task = loop.create_task(_drain_and_forward())
+            _drain_tasks.add(task)
+            task.add_done_callback(_drain_tasks.discard)
         except RuntimeError:
             # Calisan bir event loop yoksa dogrudan senkron cagir
             logger.warning("Calisan event loop bulunamadi, sinyal dogrudan devrediliyor")

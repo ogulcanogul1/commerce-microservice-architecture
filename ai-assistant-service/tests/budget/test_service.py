@@ -102,6 +102,26 @@ async def test_reservation_lifecycle_refunds_on_error():
 
 
 @pytest.mark.anyio
+async def test_reservation_lifecycle_no_refund_on_timeout():
+    """Zaman aşımında (TimeoutError) rezervasyon iade edilmez, harcanmış sayılır."""
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=1000,
+        per_minute_limit=1000,
+        clock=lambda: FIXED_NOW,
+    )
+
+    with pytest.raises(TimeoutError):
+        async with await svc.reserve("user-timeout", amount=800):
+            raise TimeoutError("LLM çağrısı zaman aşımına uğradı")
+
+    # 800 token iade edilmediği için kalan bütçe 200'dür; 500 daha isterse 429 almalı
+    with pytest.raises(TokenBudgetExceeded):
+        await svc.reserve("user-timeout", amount=500)
+
+
+@pytest.mark.anyio
 async def test_reserve_exceeded_raises_429():
     """Bütçe dolduğunda TokenBudgetExceeded (429) fırlatılır."""
     store = InMemoryBudgetStore()
