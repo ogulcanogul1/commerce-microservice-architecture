@@ -168,7 +168,7 @@ async def confirm_action(
         )
 
     try:
-        action = store.consume(action_id, ctx.user_id)
+        action = await asyncio.to_thread(store.consume, action_id, ctx.user_id)
     except PendingActionStoreError as exc:
         logger.exception("Pending action store consume failed: %s", exc)
         raise HTTPException(
@@ -188,9 +188,9 @@ async def confirm_action(
         restored = False
         try:
             if hasattr(store, "restore"):
-                store.restore(action)
+                await asyncio.to_thread(store.restore, action)
             else:
-                store.create(action)
+                await asyncio.to_thread(store.create, action)
             restored = True
         except Exception as store_exc:
             logger.warning("Failed to restore action after execution failure: %s", store_exc)
@@ -226,7 +226,7 @@ async def reject_action(
         )
 
     try:
-        discarded = store.discard(action_id, ctx.user_id)
+        discarded = await asyncio.to_thread(store.discard, action_id, ctx.user_id)
     except PendingActionStoreError as exc:
         logger.exception("Pending action store discard failed: %s", exc)
         raise HTTPException(

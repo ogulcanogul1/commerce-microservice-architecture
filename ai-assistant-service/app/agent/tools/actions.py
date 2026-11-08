@@ -4,6 +4,7 @@ These tools NEVER execute modifications directly; they only formulate a PendingA
 and register it in the action store for explicit human-in-the-loop confirmation.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import secrets
 from pydantic import BaseModel, ConfigDict, Field
@@ -98,7 +99,7 @@ class RequestOrderCancellationTool(Tool):
             expires_at=expires_at,
         )
         try:
-            stored_action = self._action_store.create(action)
+            stored_action = await asyncio.to_thread(self._action_store.create, action)
         except Exception as exc:
             logger.exception("Failed to store pending cancellation action: %s", exc)
             return ToolResult(
@@ -198,7 +199,7 @@ class RequestSupportTicketTool(Tool):
             expires_at=expires_at,
         )
         try:
-            stored_action = self._action_store.create(action)
+            stored_action = await asyncio.to_thread(self._action_store.create, action)
         except Exception as exc:
             logger.exception("Failed to store pending support ticket action: %s", exc)
             return ToolResult(
