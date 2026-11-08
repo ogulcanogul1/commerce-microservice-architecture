@@ -23,6 +23,11 @@ from app.clients.order import OrderClient
 from app.clients.shipping import ShippingClient
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
+from app.discovery.client import EurekaClient
+from app.discovery.drain import install_sigterm_drain
+from app.discovery.models import InstanceInfo
+from app.discovery.network import resolve_instance_host
+from app.discovery.registrar import EurekaRegistrar
 from app.llm.factory import LLMFactory
 from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.factory import get_default_embedder
@@ -162,9 +167,68 @@ async def lifespan(app: FastAPI):
     app.state.ticket_publisher = ticket_publisher
     app.state.agent_service = agent_service
 
+    # Eureka Service Discovery Entegrasyonu (varsayılan: EUREKA_ENABLED=False)
+    eureka_registrar = None
+    sigterm_restore = None
+    if settings.EUREKA_ENABLED:
+        try:
+            host, ip = resolve_instance_host(
+                configured_host=settings.SERVICE_HOST,
+                prefer_ip=settings.EUREKA_PREFER_IP,
+            )
+            service_slug = settings.SERVICE_NAME.lower().replace("_", "-")
+            instance_id = f"{host}:{service_slug}:{settings.PORT}"
+            health_url = f"http://{host}:{settings.PORT}/health"
+
+            instance_info = InstanceInfo(
+                app_name=settings.SERVICE_NAME.upper(),
+                instance_id=instance_id,
+                host=host,
+                ip_addr=ip,
+                port=settings.PORT,
+                health_url=health_url,
+                renewal_sec=settings.EUREKA_RENEWAL_SEC,
+                lease_sec=settings.EUREKA_LEASE_SEC,
+            )
+
+            eureka_client = EurekaClient(
+                base_url=settings.EUREKA_SERVER_URL,
+                timeout_sec=settings.EUREKA_REQUEST_TIMEOUT_SEC,
+            )
+
+            eureka_registrar = EurekaRegistrar(
+                client=eureka_client,
+                info=instance_info,
+                renewal_sec=settings.EUREKA_RENEWAL_SEC,
+                drain_sec=settings.EUREKA_DRAIN_SEC,
+            )
+
+            await eureka_registrar.start()
+            sigterm_restore = install_sigterm_drain(
+                registrar=eureka_registrar,
+                drain_sec=settings.EUREKA_DRAIN_SEC,
+            )
+            logger.info("Eureka registrar basariyla baslatildi (instance_id: %s)", instance_id)
+        except Exception as exc:
+            logger.warning("Eureka registrar baslatilamadi (uygulama devam ediyor): %s", exc)
+
+    app.state.eureka_registrar = eureka_registrar
+
     yield
 
     # Shutdown
+    if sigterm_restore is not None:
+        try:
+            sigterm_restore()
+        except Exception:
+            pass
+
+    if eureka_registrar is not None:
+        try:
+            await eureka_registrar.stop()
+        except Exception as exc:
+            logger.warning("Eureka registrar kapatılırken hata: %s", exc)
+
     if hasattr(order_client, "close"):
         try:
             await order_client.close()
