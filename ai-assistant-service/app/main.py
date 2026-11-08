@@ -61,7 +61,7 @@ def _init_vector_store() -> tuple[Embedder | None, QdrantClient | None, QdrantSt
     - Embedder: Kullanıcının metinlerini veya PDF dokümanlarını çok boyutlu sayı dizilerine (vektör) çevirir.
     - QdrantStore: Bu vektörleri ve doküman parçalarını hafızada/disk üzerinde saklar ve anlamsal (semantik) arama yapar.
     """
-    embedder: BaseEmbedder | None = None
+    embedder: Embedder | None = None
     client: QdrantClient | None = None
     store: QdrantStore | None = None
 
