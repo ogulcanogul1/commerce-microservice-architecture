@@ -187,6 +187,46 @@ async def test_reserve_exceeded_raises_429():
 
 
 @pytest.mark.anyio
+async def test_daily_token_budget_retry_after_capped_to_midnight():
+    """Günlük kota dolduğunda Retry-After 48 saat değil, UTC gece yarısına kalan süre olmalıdır."""
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=500,
+        per_minute_limit=10000,
+        clock=lambda: FIXED_NOW,
+    )
+
+    await svc.reserve("user-daily", amount=400)
+    with pytest.raises(TokenBudgetExceeded) as exc_info:
+        await svc.reserve("user-daily", amount=200)
+
+    # FIXED_NOW = 15:30:00 UTC -> Gece yarısına (00:00:00 UTC) kalan süre: 8.5 saat = 30600 sn
+    assert exc_info.value.retry_after_seconds == 30600
+    assert exc_info.value.retry_after_seconds <= 86400
+    assert exc_info.value.headers.get("Retry-After") == "30600"
+
+
+@pytest.mark.anyio
+async def test_minute_token_budget_retry_after_capped_to_next_minute():
+    """Dakikalık burst kotası dolduğunda Retry-After bir sonraki dakikaya kalan süreyi aşamaz."""
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=50000,
+        per_minute_limit=500,
+        clock=lambda: FIXED_NOW,
+    )
+
+    await svc.reserve("user-min", amount=400)
+    with pytest.raises(TokenBudgetExceeded) as exc_info:
+        await svc.reserve("user-min", amount=200)
+
+    assert exc_info.value.retry_after_seconds <= 60
+    assert exc_info.value.headers.get("Retry-After") is not None
+
+
+@pytest.mark.anyio
 async def test_store_error_fallback_mode_local():
     """Birincil store patlarsa fail_mode='local' iken fallback store devreye girer."""
     class FailingStore:

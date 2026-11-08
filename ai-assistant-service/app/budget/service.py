@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 import logging
 from typing import Any, Literal
 
@@ -229,11 +229,32 @@ class TokenBudgetService:
 
         # Kota aşıldıysa anında 429 fırlat
         if not result.allowed:
+            retry_after = result.retry_after_sec
+            now = self._clock()
+            # Günlük kota aşıldığında Redis anahtarı denetim amacıyla 48 saat (172800s) saklansa bile,
+            # kullanıcı kotası bir sonraki UTC gününün başında (00:00:00 UTC) sıfırlanır.
+            # Dolayısıyla Retry-After süresi günün kalan saniyesinden fazla olmamalıdır.
+            next_midnight = datetime.combine(
+                now.date() + timedelta(days=1),
+                time.min,
+                tzinfo=timezone.utc,
+            )
+            seconds_until_midnight = max(1, int((next_midnight - now).total_seconds()))
+
+            if result.exceeded_key and ":day:" in result.exceeded_key:
+                retry_after = min(retry_after, seconds_until_midnight)
+            elif result.exceeded_key and ":min:" in result.exceeded_key:
+                # Dakikalık burst kotası için de sonraki dakikaya kalan süreyi aşamaz
+                seconds_until_next_minute = max(1, int(60 - (now.timestamp() % 60)))
+                retry_after = min(retry_after, seconds_until_next_minute)
+            else:
+                retry_after = min(retry_after, seconds_until_midnight)
+
             logger.info(
                 "Kullanıcı token bütçesi aşıldı (retry_after=%ds)",
-                result.retry_after_sec,
+                retry_after,
             )
-            raise TokenBudgetExceeded(retry_after_seconds=result.retry_after_sec)
+            raise TokenBudgetExceeded(retry_after_seconds=retry_after)
 
         # Rezervasyon başarılı, çağıranın 'async with' ile kullanabileceği nesneyi dön
         return Reservation(
