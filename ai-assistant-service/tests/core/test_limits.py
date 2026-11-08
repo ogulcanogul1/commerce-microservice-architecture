@@ -181,6 +181,83 @@ async def test_body_size_middleware_allows_normal_post_and_get():
     assert sent_messages[0]["status"] == 200
 
 
+@pytest.mark.anyio
+async def test_body_size_middleware_blocks_oversized_chunked_post():
+    """Content-Length başlığı olmayan (chunked) ve limiti aşan POST isteklerini 413 ile reddeder."""
+    async def dummy_app(scope, receive, send):
+        # Uygulama gövdeyi okurken receive çağırır
+        msg1 = await receive()
+        msg2 = await receive()
+        response = PlainTextResponse("OK")
+        await response(scope, receive, send)
+
+    middleware = BodySizeLimitMiddleware(dummy_app, max_bytes=100)
+
+    # Chunked POST: Content-Length başlığı yok
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/chat",
+        "headers": [(b"transfer-encoding", b"chunked")],
+    }
+
+    chunks = [
+        {"type": "http.request", "body": b"A" * 60, "more_body": True},
+        {"type": "http.request", "body": b"B" * 60, "more_body": False},  # 60 + 60 = 120 > 100
+    ]
+    chunk_idx = 0
+
+    async def fake_receive():
+        nonlocal chunk_idx
+        chunk = chunks[chunk_idx]
+        chunk_idx += 1
+        return chunk
+
+    sent_messages = []
+    async def fake_send(msg):
+        sent_messages.append(msg)
+
+    await middleware(scope, fake_receive, fake_send)
+
+    assert sent_messages[0]["type"] == "http.response.start"
+    assert sent_messages[0]["status"] == 413
+
+
+@pytest.mark.anyio
+async def test_body_size_middleware_allows_normal_chunked_post():
+    """Content-Length başlığı olmayan (chunked) ve limit dahilindeki POST istekleri filtreden geçer."""
+    received_bytes = b""
+
+    async def dummy_app(scope, receive, send):
+        nonlocal received_bytes
+        msg = await receive()
+        received_bytes += msg.get("body", b"")
+        response = PlainTextResponse("OK")
+        await response(scope, receive, send)
+
+    middleware = BodySizeLimitMiddleware(dummy_app, max_bytes=100)
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/chat",
+        "headers": [(b"transfer-encoding", b"chunked")],
+    }
+
+    async def fake_receive():
+        return {"type": "http.request", "body": b"small-chunk", "more_body": False}
+
+    sent_messages = []
+    async def fake_send(msg):
+        sent_messages.append(msg)
+
+    await middleware(scope, fake_receive, fake_send)
+
+    assert sent_messages[0]["type"] == "http.response.start"
+    assert sent_messages[0]["status"] == 200
+    assert received_bytes == b"small-chunk"
+
+
 # ---------------------------------------------------------------------------
 # RFC 7807 Hata Modeli ve Semantik Testleri
 # ---------------------------------------------------------------------------

@@ -12,10 +12,10 @@ from contextlib import asynccontextmanager
 import logging
 from typing import AsyncIterator
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.errors import ProblemDetails, ProblemType, RetryableException
 
@@ -121,6 +121,28 @@ class BodySizeLimitMiddleware:
         self.app = app
         self.max_bytes = max_bytes
 
+    async def _send_413(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        detail: str,
+    ) -> None:
+        problem = ProblemDetails(
+            type=ProblemType.BLANK.value,
+            title="Payload Too Large",
+            status=413,
+            detail=detail,
+            instance=scope.get("path"),
+            retryable=False,
+        )
+        response = JSONResponse(
+            status_code=413,
+            content=problem.model_dump(exclude_none=True),
+            media_type="application/problem+json",
+        )
+        await response(scope, receive, send)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         # Yalnızca HTTP isteklerini denetle (WebSocket veya Lifespan olayları filtreden geçsin)
         if scope["type"] == "http":
@@ -142,29 +164,46 @@ class BodySizeLimitMiddleware:
                                 content_length,
                                 self.max_bytes,
                             )
-
-                            # RFC 7807 uyumlu 413 Payload Too Large yanıtı oluştur
-                            problem = ProblemDetails(
-                                type=ProblemType.BLANK.value,
-                                title="Payload Too Large",
-                                status=413,
-                                detail=f"İstek gövdesi izin verilen maksimum boyuttan büyük ({content_length} > {self.max_bytes} bayt).",
-                                instance=scope.get("path"),
-                                retryable=False,  # İstek gövdesi küçültülmeden tekrar denenemez
+                            await self._send_413(
+                                scope,
+                                receive,
+                                send,
+                                f"İstek gövdesi izin verilen maksimum boyuttan büyük ({content_length} > {self.max_bytes} bayt).",
                             )
-
-                            response = JSONResponse(
-                                status_code=413,
-                                content=problem.model_dump(exclude_none=True),
-                                media_type="application/problem+json",
-                            )
-
-                            # Yanıtı doğrudan ASGI protokolü üzerinden istemciye gönder ve isteği sonlandır
-                            await response(scope, receive, send)
                             return
                     except ValueError:
                         # Sayıya çevrilemeyen geçersiz bir Content-Length başlığı varsa kontrolü FastAPI'ye bırak
                         pass
+                else:
+                    # Content-Length belirtilmemişse (ör. Transfer-Encoding: chunked), receive üzerinden gelen baytları sınırla
+                    total_bytes = 0
+
+                    async def bounded_receive() -> Message:
+                        nonlocal total_bytes
+                        message = await receive()
+                        if message["type"] == "http.request":
+                            body = message.get("body", b"")
+                            total_bytes += len(body)
+                            if total_bytes > self.max_bytes:
+                                logger.warning(
+                                    "Chunked istek gövdesi boyut sınırı aşıldı: %d bayt > %d bayt",
+                                    total_bytes,
+                                    self.max_bytes,
+                                )
+                                raise HTTPException(
+                                    status_code=413,
+                                    detail=f"İstek gövdesi izin verilen maksimum boyuttan büyük (> {self.max_bytes} bayt).",
+                                )
+                        return message
+
+                    try:
+                        await self.app(scope, bounded_receive, send)
+                        return
+                    except HTTPException as exc:
+                        if exc.status_code == 413:
+                            await self._send_413(scope, receive, send, str(exc.detail))
+                            return
+                        raise
 
         # Limit aşımı yoksa veya güvenliyse isteğin sıradaki middleware'e veya endpoint'e geçmesine izin ver
         await self.app(scope, receive, send)
