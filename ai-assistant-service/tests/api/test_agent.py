@@ -655,7 +655,7 @@ def test_confirm_action_restore_error_still_returns_503(test_client: TestClient)
         headers={"X-User-Id": USER_A},
     )
     assert resp.status_code == 503
-    assert "lütfen kısa süre sonra tekrar deneyin" in resp.json()["detail"]
+    assert "oturum kurtarılamadı" in resp.json()["detail"]
 
 
 def test_agent_chat_turn_timeout_returns_503(test_client, monkeypatch):

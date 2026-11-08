@@ -185,16 +185,24 @@ async def confirm_action(
         exec_res = await executor.execute(action, ctx)
     except Exception as exc:
         logger.exception("Action execution failed: %s", exc)
+        restored = False
         try:
             if hasattr(store, "restore"):
                 store.restore(action)
             else:
                 store.create(action)
+            restored = True
         except Exception as store_exc:
             logger.warning("Failed to restore action after execution failure: %s", store_exc)
+
+        detail_msg = (
+            "İşlem yürütülürken bir hata oluştu, lütfen kısa süre sonra tekrar deneyin."
+            if restored
+            else "İşlem yürütülemedi ve oturum kurtarılamadı. Lütfen talebinizi yeniden başlatın veya destek ile iletişime geçin."
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="İşlem yürütülürken bir hata oluştu, lütfen kısa süre sonra tekrar deneyin.",
+            detail=detail_msg,
         ) from exc
 
     return ActionResultResponse(
