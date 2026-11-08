@@ -200,7 +200,7 @@ class RequestSupportTicketTool(Tool):
         try:
             stored_action = self._action_store.create(action)
         except Exception as exc:
-            logger.exception("Failed to store pending cancellation action: %s", exc)
+            logger.exception("Failed to store pending support ticket action: %s", exc)
             return ToolResult(
                 ok=False,
                 error="İşlem onay kaydı oluşturulamadı, lütfen daha sonra tekrar deneyin.",
