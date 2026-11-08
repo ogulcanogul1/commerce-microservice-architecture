@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.pyc
+eval
+python_plan
+tests
+scratch
+.env
+.git

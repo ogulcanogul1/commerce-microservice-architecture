@@ -16,6 +16,7 @@ dependencies = [
     "pymupdf>=2.0",
     "pymupdf4llm>=2.0",
     "qdrant-client>=1.20.0",
+    "redis>=5.0",
     "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -30,6 +31,7 @@ kafka = [
 
 [dependency-groups]
 dev = [
+    "fakeredis[lua]>=2.26",
     "pytest>=9.2.0",
     "rank-bm25>=0.2.2",
 ]

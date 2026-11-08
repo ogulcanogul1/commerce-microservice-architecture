@@ -59,6 +59,36 @@ class Settings(BaseSettings):
     GATEWAY_INTERNAL_SECRET: str = "dgl-internal-gateway-secret-token-2026"
     GATEWAY_SECURITY_ENABLED: bool = True
 
+    # Eureka Discovery Configuration
+    EUREKA_ENABLED: bool = False
+    EUREKA_SERVER_URL: str = "http://localhost:8761/eureka/"
+    EUREKA_PREFER_IP: bool = True
+    SERVICE_HOST: str = ""
+    EUREKA_RENEWAL_SEC: int = Field(default=10, ge=1, description="Heartbeat yenileme sıklığı (sn)")
+    EUREKA_LEASE_SEC: int = Field(default=30, ge=1, description="Heartbeat kesilirse silinme süresi (sn)")
+    EUREKA_DRAIN_SEC: int = Field(default=20, ge=0, description="SIGTERM sonrası deregister bekleme süresi (sn)")
+    EUREKA_REQUEST_TIMEOUT_SEC: float = Field(default=3.0, gt=0, description="Eureka REST çağrısı timeout (sn)")
+
+    # Redis Configuration
+    REDIS_ENABLED: bool = False
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: str = ""
+
+    # Concurrency, Turn Timeout & Limits
+    AGENT_TURN_TIMEOUT_SEC: float = Field(default=60.0, gt=0, description="Tüm agent sohbet turu zaman aşımı (sn)")
+    RAG_TURN_TIMEOUT_SEC: float = Field(default=45.0, gt=0, description="Tüm RAG cevaplama turu zaman aşımı (sn)")
+    AI_MAX_CONCURRENT_REQUESTS: int = Field(default=20, ge=1, description="Instance başına eşzamanlı LLM istek limiti")
+    AI_MAX_BODY_BYTES: int = Field(default=65536, ge=1024, description="Maksimum istek gövdesi boyutu (byte, varsayılan 64KB)")
+
+    # Token Budget Configuration
+    TOKEN_BUDGET_ENABLED: bool = False
+    TOKEN_BUDGET_DAILY_LIMIT: int = Field(default=50000, ge=1, description="Kullanıcı başına günlük token kotası")
+    TOKEN_BUDGET_PER_MINUTE_LIMIT: int = Field(default=8000, ge=1, description="Kullanıcı başına dakikalık token kotası")
+    PROVIDER_TPM_LIMIT: int = Field(default=0, ge=0, description="Tüm instance'ların ortak dakikalık token kotası (0=kapalı)")
+    TOKEN_BUDGET_PROMPT_OVERHEAD: int = Field(default=1500, ge=0, description="Sistem prompt ve araçlar için tahmini token")
+    TOKEN_BUDGET_FAIL_MODE: str = Field(default="local", description="Redis arızasında tutum: 'local' veya 'closed'")
+
     # Downstream Microservices URLs
     ORDER_SERVICE_URL: str = "http://localhost:8082"
     SHIPPING_SERVICE_URL: str = "http://localhost:8085"
