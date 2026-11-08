@@ -92,3 +92,50 @@ async def test_in_memory_budget_store_ttl_expiration():
     # Artık süresi doldu, yeni istek başarılı olmalı
     res_after_expire = await store.reserve([scope], amount=100)
     assert res_after_expire.allowed is True
+
+
+# ============================================================================
+# RedisBudgetStore Testleri (FakeRedis & Lua)
+# ============================================================================
+
+@pytest.mark.anyio
+async def test_redis_budget_store_reserve_and_adjust():
+    """RedisBudgetStore Lua scriptleri ile atomik rezervasyon ve uzlaştırma yapar."""
+    import fakeredis.aioredis
+    from app.budget.redis_store import RedisBudgetStore
+
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    store = RedisBudgetStore(fake_redis)
+
+    scope_day = Scope(key="tok:test:day", limit=1000, ttl_sec=60)
+    scope_min = Scope(key="tok:test:min", limit=200, ttl_sec=60)
+
+    # 1. Başarılı rezervasyon
+    res1 = await store.reserve([scope_day, scope_min], amount=150)
+    assert res1.allowed is True
+    assert res1.retry_after_sec == 0
+
+    # 2. İkinci rezervasyon dakikalık limiti (200) aşar (150 + 100 = 250 > 200)
+    res2 = await store.reserve([scope_day, scope_min], amount=100)
+    assert res2.allowed is False
+    assert res2.exceeded_key == "tok:test:min"
+    assert res2.retry_after_sec > 0
+
+    # 3. All-or-Nothing kontrolü: Günlük sayaç 150 olarak kalmış olmalı (artmamış olmalı)
+    # 50 token rezerve edersek (150 + 50 = 200 tam limit) geçmeli:
+    res3 = await store.reserve([scope_day, scope_min], amount=50)
+    assert res3.allowed is True
+
+    # 4. Adjust ile iade (negatif delta)
+    await store.adjust([scope_day, scope_min], delta=-100)
+
+    # Dakikalık sayaç 200'den 100'e düştü, artık 100 daha rezerve edilebilmeli
+    res4 = await store.reserve([scope_day, scope_min], amount=100)
+    assert res4.allowed is True
+
+    # 5. Aşırı negatif iade sayaçları sıfırın altına düşürmez
+    await store.adjust([scope_day, scope_min], delta=-10000)
+    val = await fake_redis.get(scope_min.key)
+    assert int(val) == 0
+
+    await fake_redis.aclose()
