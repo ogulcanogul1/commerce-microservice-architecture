@@ -1,5 +1,20 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
+
+
+class InstanceStatus(StrEnum):
+    """Netflix Eureka InstanceStatus resmi durumları.
+
+    Eureka Service Registry üzerindeki her bir mikroservis replikasının
+    yaşam döngüsü durumunu temsil eder.
+    """
+
+    UP = "UP"  # Servis sağlıklı, tamamen ayakta ve yeni kullanıcı/ağ isteklerini kabul etmeye hazır
+    DOWN = "DOWN"  # Servis arızalandı, sağlık kontrolü (healthcheck) başarısız oldu veya çöktü
+    STARTING = "STARTING"  # Servis henüz ayağa kalkıyor (warm-up, model yükleme aşamasında); trafik almaya henüz hazır değil
+    OUT_OF_SERVICE = "OUT_OF_SERVICE"  # Servis ayakta ama kasıtlı olarak trafik alımı durduruldu (graceful shutdown / bakım modu)
+    UNKNOWN = "UNKNOWN"  # Servisin sağlık durumu henüz belirlenemedi veya durum sorgusu yanıtsız kaldı
 
 
 @dataclass(frozen=True)
@@ -37,6 +52,9 @@ class InstanceInfo:
     # Eureka'nın nabız kesildiğinde servisi 'ölü' sayıp kayıttan düşüreceği süre (saniye, varsayılan 30)
     lease_sec: int = 30
 
+    # Servisin başlangıçtaki kayıt durumu (varsayılan: InstanceStatus.UP)
+    status: InstanceStatus = InstanceStatus.UP
+
     def to_payload(self) -> dict[str, Any]:
         """Eureka REST API'sinin (POST /eureka/apps/{APP}) beklediği standart JSON zarfını üretir.
 
@@ -57,7 +75,7 @@ class InstanceInfo:
                 # Spring Cloud Gateway loadbalancer bu vipAddress ile servis örneklerini bulur:
                 "vipAddress": self.app_name.lower(),
                 "secureVipAddress": self.app_name.lower(),
-                "status": "UP",
+                "status": str(self.status),
                 "port": {"$": self.port, "@enabled": "true"},
                 "securePort": {"$": 443, "@enabled": "false"},
                 "healthCheckUrl": self.health_url,

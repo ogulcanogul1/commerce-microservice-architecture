@@ -1,6 +1,6 @@
 import httpx
 
-from app.discovery.models import InstanceInfo
+from app.discovery.models import InstanceInfo, InstanceStatus
 
 
 class EurekaError(Exception):
@@ -100,8 +100,8 @@ class EurekaClient:
         except httpx.HTTPError as exc:
             raise EurekaError(f"Eureka heartbeat ağ hatası: {type(exc).__name__}") from exc
 
-    async def set_status(self, info: InstanceInfo, status: str) -> None:
-        """Servisin Eureka'daki durumunu günceller (Örn: 'OUT_OF_SERVICE').
+    async def set_status(self, info: InstanceInfo, status: InstanceStatus | str) -> None:
+        """Servisin Eureka'daki durumunu günceller (Örn: InstanceStatus.OUT_OF_SERVICE).
 
         Neden kullanılır? (Graceful Shutdown):
             Uygulama kapatılmadan önce (SIGTERM sinyalinde) durum 'OUT_OF_SERVICE' yapılır.
@@ -111,9 +111,10 @@ class EurekaClient:
             PUT /eureka/apps/{APP_NAME}/{instance_id}/status?value={status}
             Başarılı Yanıt: 200 OK
         """
+        status_value = str(status.value if isinstance(status, InstanceStatus) else status)
         url = f"apps/{info.app_name}/{info.instance_id}/status"
         try:
-            response = await self._client.put(url, params={"value": status})
+            response = await self._client.put(url, params={"value": status_value})
             if response.status_code != 200:
                 raise EurekaError(
                     f"Eureka durum güncellemesi başarısız oldu, HTTP durum kodu: {response.status_code}"

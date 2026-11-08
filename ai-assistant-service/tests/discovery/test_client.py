@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from app.discovery.client import EurekaClient, EurekaError
-from app.discovery.models import InstanceInfo
+from app.discovery.models import InstanceInfo, InstanceStatus
 
 
 @pytest.fixture
@@ -155,7 +155,7 @@ async def test_set_status_success(sample_info: InstanceInfo) -> None:
         base_url="http://localhost:8761/eureka/",
         transport=httpx.MockTransport(handler),
     )
-    await client.set_status(sample_info, "OUT_OF_SERVICE")
+    await client.set_status(sample_info, InstanceStatus.OUT_OF_SERVICE)
     await client.aclose()
 
 

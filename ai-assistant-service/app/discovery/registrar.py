@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from app.discovery.client import EurekaClient, EurekaError
-from app.discovery.models import InstanceInfo
+from app.discovery.models import InstanceInfo, InstanceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class EurekaRegistrar:
                 alive = await self.client.heartbeat(self.info)
 
                 if not alive:
-                    # alive == False demek Eureka bize '404 Not Found' döndü demektir!
+                    
                     # Bu ne anlama gelir? Eureka sunucusu belleğini sıfırlamış veya kiralama süremiz dolmuş.
                     # Bu bir kriz değildir; hemen 'register' çağırarak kendimizi sıfırdan kaydettiriyoruz.
                     logger.warning(
@@ -154,7 +154,7 @@ class EurekaRegistrar:
         # Neden? Gateway servisin öldüğünü henüz bilmese bile bu statüyü gördüğü an
         # yeni kullanıcı isteklerini bu instance'a yönlendirmeyi anında keser.
         try:
-            await self.client.set_status(self.info, "OUT_OF_SERVICE")
+            await self.client.set_status(self.info, InstanceStatus.OUT_OF_SERVICE)
             logger.info("Eureka instance durumu OUT_OF_SERVICE olarak guncellendi")
         except EurekaError as exc:
             # Durum güncellenemese bile bir sonraki 'deregister' adımını engellemiyoruz
