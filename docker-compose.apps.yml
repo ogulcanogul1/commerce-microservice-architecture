@@ -256,15 +256,22 @@ services:
       context: ./ai-assistant-service
       dockerfile: Dockerfile
     image: commerce/ai-assistant-service:latest
-    container_name: commerce-ai-assistant-service
-    ports:
-      - "8089:8089"
+    expose:
+      - "8089"
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8089/health', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       - SERVICE_NAME=ai-assistant-service
-      - SERVICE_HOST=ai-assistant-service
-      - SERVICE_PORT=8089
+      - PORT=8089
       - EUREKA_ENABLED=true
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - EUREKA_PREFER_IP=true
+      - TOKEN_BUDGET_ENABLED=true
       - GATEWAY_SECRET_ENABLED=true
       - GATEWAY_INTERNAL_SECRET=dgl-internal-gateway-secret-token-2026
       - ORDER_SERVICE_URL=http://order-service:8082
