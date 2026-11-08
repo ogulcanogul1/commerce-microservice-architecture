@@ -1,8 +1,11 @@
 package com.dgl.gateway.filter;
 
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -16,7 +19,10 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -59,25 +65,98 @@ public class AiRequestSizeFilter extends OncePerRequestFilter {
             if (contentLength > MAX_BODY_BYTES) {
                 log.warn("AI payload size limit exceeded: {} bytes > {} bytes for URI: {}",
                         contentLength, MAX_BODY_BYTES, request.getRequestURI());
+                sendPayloadTooLarge(response, "İstek gövdesi izin verilen maksimum boyuttan büyük (" + contentLength + " > " + MAX_BODY_BYTES + " bayt).");
+                return;
+            }
 
-                ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                        HttpStatus.PAYLOAD_TOO_LARGE,
-                        "İstek gövdesi izin verilen maksimum boyuttan büyük (" + contentLength + " > " + MAX_BODY_BYTES + " bayt)."
-                );
-                problem.setTitle("Payload Too Large");
-                problem.setType(URI.create("https://api.commerce.com/errors/payload-too-large"));
-                problem.setProperty("timestamp", Instant.now());
-                problem.setProperty("retryable", false);
+            // Chunked transfer-encoding veya Content-Length başlığı bulunmayan akışlar (contentLength < 0)
+            if (contentLength < 0) {
+                byte[] body = request.getInputStream().readNBytes((int) MAX_BODY_BYTES + 1);
+                if (body.length > MAX_BODY_BYTES) {
+                    log.warn("AI chunked payload size limit exceeded (> {} bytes) for URI: {}",
+                            MAX_BODY_BYTES, request.getRequestURI());
+                    sendPayloadTooLarge(response, "İstek gövdesi izin verilen maksimum boyuttan büyük (> " + MAX_BODY_BYTES + " bayt).");
+                    return;
+                }
 
-                response.setStatus(HttpStatus.PAYLOAD_TOO_LARGE.value());
-                response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                response.getWriter().write(objectMapper.writeValueAsString(problem));
+                // Limit aşılmadıysa, okunan gövdeyi downstream'in tekrar okuyabilmesi için sarmala
+                CachedBodyHttpServletRequest wrappedRequest = new CachedBodyHttpServletRequest(request, body);
+                filterChain.doFilter(wrappedRequest, response);
                 return;
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void sendPayloadTooLarge(HttpServletResponse response, String detail) throws IOException {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                detail
+        );
+        problem.setTitle("Payload Too Large");
+        problem.setType(URI.create("https://api.commerce.com/errors/payload-too-large"));
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("retryable", false);
+
+        response.setStatus(HttpStatus.PAYLOAD_TOO_LARGE.value());
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write(objectMapper.writeValueAsString(problem));
+    }
+
+    private static class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
+        private final byte[] cachedBody;
+
+        public CachedBodyHttpServletRequest(HttpServletRequest request, byte[] cachedBody) {
+            super(request);
+            this.cachedBody = cachedBody;
+        }
+
+        @Override
+        public ServletInputStream getInputStream() {
+            ByteArrayInputStream bais = new ByteArrayInputStream(cachedBody);
+            return new ServletInputStream() {
+                @Override
+                public boolean isFinished() {
+                    return bais.available() == 0;
+                }
+
+                @Override
+                public boolean isReady() {
+                    return true;
+                }
+
+                @Override
+                public void setReadListener(ReadListener readListener) {
+                }
+
+                @Override
+                public int read() {
+                    return bais.read();
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) {
+                    return bais.read(b, off, len);
+                }
+            };
+        }
+
+        @Override
+        public BufferedReader getReader() {
+            return new BufferedReader(new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public int getContentLength() {
+            return cachedBody.length;
+        }
+
+        @Override
+        public long getContentLengthLong() {
+            return cachedBody.length;
+        }
     }
 
     private boolean isAiPath(String requestUri) {
