@@ -3,7 +3,11 @@
 from app.agent.executor import ActionExecutor
 from app.agent.grounding import check_reply_grounding
 from app.agent.models import ActionType, AgentReply, ExecutionResult, PendingAction, ReplyKind
-from app.agent.pending import InMemoryPendingActionStore, PendingActionStore
+from app.agent.pending import (
+    InMemoryPendingActionStore,
+    PendingActionStore,
+    PendingActionStoreError,
+)
 from app.agent.prompt import AGENT_SYSTEM_PROMPT, build_agent_messages, build_retry_instruction
 from app.agent.service import AgentService
 from app.agent.tickets import (
@@ -25,6 +29,7 @@ __all__ = [
     "LoggingTicketPublisher",
     "PendingAction",
     "PendingActionStore",
+    "PendingActionStoreError",
     "ReplyKind",
     "TicketPublisher",
     "build_agent_messages",

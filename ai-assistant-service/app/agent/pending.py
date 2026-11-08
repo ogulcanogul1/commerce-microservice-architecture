@@ -13,6 +13,10 @@ from typing import Protocol
 from app.agent.models import PendingAction
 
 
+class PendingActionStoreError(Exception):
+    """Raised when the pending action store encounters an infrastructure failure."""
+
+
 class PendingActionStore(Protocol):
     """Protocol contract for pending action storage."""
 

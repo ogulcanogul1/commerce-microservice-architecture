@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.agent.executor import ActionExecutor
 from app.agent.models import ActionType, ReplyKind
-from app.agent.pending import PendingActionStore
+from app.agent.pending import PendingActionStore, PendingActionStoreError
 from app.agent.service import AgentService
 from app.api.answer import CitationResponse
 from app.budget.deps import get_token_budget
@@ -166,7 +166,14 @@ async def confirm_action(
             detail="İşlem servisi yapılandırılmamış veya erişilemiyor.",
         )
 
-    action = store.consume(action_id, ctx.user_id)
+    try:
+        action = store.consume(action_id, ctx.user_id)
+    except PendingActionStoreError as exc:
+        logger.exception("Pending action store consume failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="İşlem servisi geçici olarak kullanılamıyor, lütfen tekrar deneyin.",
+        ) from exc
     if action is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -206,7 +213,14 @@ async def reject_action(
             detail="İşlem servisi yapılandırılmamış veya erişilemiyor.",
         )
 
-    discarded = store.discard(action_id, ctx.user_id)
+    try:
+        discarded = store.discard(action_id, ctx.user_id)
+    except PendingActionStoreError as exc:
+        logger.exception("Pending action store discard failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="İşlem servisi geçici olarak kullanılamıyor, lütfen tekrar deneyin.",
+        ) from exc
     if not discarded:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
