@@ -272,7 +272,7 @@ services:
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - EUREKA_PREFER_IP=true
       - TOKEN_BUDGET_ENABLED=true
-      - GATEWAY_SECRET_ENABLED=true
+      - GATEWAY_SECURITY_ENABLED=true
       - GATEWAY_INTERNAL_SECRET=dgl-internal-gateway-secret-token-2026
       - ORDER_SERVICE_URL=http://order-service:8082
       - PRODUCT_SERVICE_URL=http://product-service:8081
