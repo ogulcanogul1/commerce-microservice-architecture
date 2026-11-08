@@ -47,11 +47,11 @@ class AiRouteTimeoutIntegrationTest {
         mockAiBackend = HttpServer.create(new InetSocketAddress(0), 0);
         mockPort = mockAiBackend.getAddress().getPort();
 
-        // /agent/chat: 1200 ms gecikme ile 200 OK döner
+        // /agent/chat: 3500 ms gecikme ile döner (Varsayılan 3s limitini aşar ama 5s rota limiti sayesinde 200 OK döner)
         mockAiBackend.createContext("/agent/chat", exchange -> {
             System.out.println("MOCK BACKEND RECEIVED: " + exchange.getRequestURI());
             try {
-                Thread.sleep(1200);
+                Thread.sleep(3500);
             } catch (InterruptedException ignored) {}
             byte[] response = "{\"reply\":\"success\"}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
