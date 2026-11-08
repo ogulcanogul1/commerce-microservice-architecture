@@ -146,11 +146,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static class UserClaimsRequestWrapper extends HttpServletRequestWrapper {
 
         private final Map<String, String> customHeaders = new HashMap<>();
-        private static final Set<String> STRIPPED_HEADERS = Set.of(
-                USER_ID_HEADER.toLowerCase(),
-                USER_EMAIL_HEADER.toLowerCase(),
-                USER_ROLES_HEADER.toLowerCase()
-        );
+        private static final Set<String> STRIPPED_HEADERS = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        static {
+            STRIPPED_HEADERS.add(USER_ID_HEADER);
+            STRIPPED_HEADERS.add(USER_EMAIL_HEADER);
+            STRIPPED_HEADERS.add(USER_ROLES_HEADER);
+        }
 
         public UserClaimsRequestWrapper(HttpServletRequest request, String userId, String email, String role) {
             super(request);
@@ -167,7 +169,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return entry.getValue();
                 }
             }
-            if (STRIPPED_HEADERS.contains(name.toLowerCase())) {
+            if (STRIPPED_HEADERS.contains(name)) {
                 return null;
             }
             return super.getHeader(name);
@@ -181,7 +183,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return Collections.enumeration(List.of(entry.getValue()));
                 }
             }
-            if (STRIPPED_HEADERS.contains(name.toLowerCase())) {
+            if (STRIPPED_HEADERS.contains(name)) {
                 return Collections.emptyEnumeration();
             }
             return super.getHeaders(name);
@@ -193,7 +195,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Enumeration<String> baseNames = super.getHeaderNames();
             while (baseNames.hasMoreElements()) {
                 String headerName = baseNames.nextElement();
-                if (!STRIPPED_HEADERS.contains(headerName.toLowerCase())) {
+                if (!STRIPPED_HEADERS.contains(headerName)) {
                     names.add(headerName);
                 }
             }

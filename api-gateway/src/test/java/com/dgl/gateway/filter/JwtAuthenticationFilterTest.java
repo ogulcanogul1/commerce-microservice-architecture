@@ -57,12 +57,13 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Public path with spoofed X-User-* headers should strip headers before forwarding")
+    @DisplayName("Public path with spoofed X-User-* headers should strip headers case-insensitively before forwarding")
     void publicPath_WhenSpoofedXUserIdPresent_ShouldStripHeader() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
-        request.addHeader("X-User-Id", "spoofed-user-id");
-        request.addHeader("X-User-Email", "spoofed@domain.com");
+        request.addHeader("x-user-id", "spoofed-user-id");
+        request.addHeader("X-USER-EMAIL", "spoofed@domain.com");
         request.addHeader("X-User-Roles", "ROLE_ADMIN");
+        request.addHeader("Custom-Allowed-Header", "value123");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         ArgumentCaptor<HttpServletRequest> requestCaptor = ArgumentCaptor.forClass(HttpServletRequest.class);
@@ -72,8 +73,16 @@ class JwtAuthenticationFilterTest {
         verify(filterChain).doFilter(requestCaptor.capture(), eq(response));
         HttpServletRequest captured = requestCaptor.getValue();
         assertThat(captured.getHeader("X-User-Id")).isNull();
+        assertThat(captured.getHeader("x-user-id")).isNull();
+        assertThat(captured.getHeader("X-USER-ID")).isNull();
         assertThat(captured.getHeader("X-User-Email")).isNull();
         assertThat(captured.getHeader("X-User-Roles")).isNull();
+
+        java.util.List<String> headerNames = java.util.Collections.list(captured.getHeaderNames());
+        assertThat(headerNames).contains("Custom-Allowed-Header");
+        assertThat(headerNames).noneMatch(h -> h.equalsIgnoreCase("X-User-Id")
+                || h.equalsIgnoreCase("X-User-Email")
+                || h.equalsIgnoreCase("X-User-Roles"));
     }
 
     @Test
