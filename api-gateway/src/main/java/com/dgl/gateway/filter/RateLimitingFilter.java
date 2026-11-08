@@ -36,7 +36,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 3)
+@Order(Ordered.HIGHEST_PRECEDENCE + 4)
 public class RateLimitingFilter extends OncePerRequestFilter {
 
     private final RateLimiterService rateLimiterService;
@@ -46,9 +46,6 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     @Value("${rate-limiter.enabled:true}")
     private boolean enabled;
-
-    @Value("${rate-limiter.trust-forwarded-for:false}")
-    private boolean trustForwardedFor;
 
     @Value("${rate-limiter.anonymous.limit:10}")
     private long anonymousLimit;
@@ -167,12 +164,6 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     }
 
     private String getClientIp(HttpServletRequest request) {
-        if (trustForwardedFor) {
-            String xForwardedFor = request.getHeader("X-Forwarded-For");
-            if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-                return xForwardedFor.split(",")[0].trim();
-            }
-        }
         return request.getRemoteAddr();
     }
 

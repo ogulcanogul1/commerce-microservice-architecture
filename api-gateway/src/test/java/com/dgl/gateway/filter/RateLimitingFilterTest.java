@@ -42,7 +42,6 @@ class RateLimitingFilterTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(rateLimitingFilter, "enabled", true);
-        ReflectionTestUtils.setField(rateLimitingFilter, "trustForwardedFor", false);
         ReflectionTestUtils.setField(rateLimitingFilter, "anonymousLimit", 10L);
         ReflectionTestUtils.setField(rateLimitingFilter, "anonymousWindowSeconds", 60L);
         ReflectionTestUtils.setField(rateLimitingFilter, "authenticatedLimit", 60L);
