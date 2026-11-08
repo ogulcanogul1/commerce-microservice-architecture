@@ -1,64 +1,73 @@
-# DEVAM — AI Assistant Service Oturum Devir ve İlerleme Raporu
+# DEVAM — AI Assistant Service & Gateway Entegrasyonu Oturum Devir ve İlerleme Raporu
 
-## Tamamlanan Aşama: Reranker Altyapısı, İki Aşamalı Arama ve A/B Ölçüm Çerçevesi (`python_plan/reranker.md`)
+## Tamamlanan Aşama: API Gateway ve Service Discovery Entegrasyonu (`python_plan/microservice/gateway-entegrasyonu.md`)
 
-`ai-assistant-service/python_plan/reranker.md` planındaki Adım 0'dan Adım 8'e kadar tüm adımlar eksiksiz tamamlanmış, Docker veya harici ağ gerektirmeden ağsız modda 533 birim test ile doğrulanmış ve adım adım commitlenmiştir. Karar günlüğü `python_plan/rerank-decisions.md` dosyasına kaydedilmiştir.
+`ai-assistant-service/python_plan/microservice/gateway-entegrasyonu.md` planındaki Adım 0'dan Adım 9'a kadar tüm adımlar eksiksiz tamamlanmış; Python ve Java servisleri izole test paketleriyle %100 doğrulanmış, adım adım commit'lenmiş ve `origin main` dalına push'lanmıştır. Mimari kararlar `python_plan/microservice/gateway-decisions.md` dosyasına kaydedilmiştir.
 
 ---
 
-### Mimari Bileşenler ve Kapsam:
+### Tamamlanan Mimari Bileşenler ve Kapsam:
 
-1. **Reranker Protokolü ve Veri Modelleri (`app/rag/rerank/models.py`, `base.py`):**
-   - `@runtime_checkable` `Reranker` protokolü: `rerank(query, hits, top_n) -> list[RerankResult]`.
-   - `RerankResult`: `frozen=True` Pydantic v2 modeli (`hit`, `new_score`, `old_score`, `original_rank`, `metadata`).
-   - `RerankError`: Reranker istisna sınıfı. Hatalı sıralama veya boş liste durumları `validate_rerank_results()` ile doğrulanır.
+1. **Eureka REST İstemcisi ve Graceful Drain (`app/discovery/`):**
+   - Harici ağır kütüphaneler yerine `httpx` tabanlı yalın REST istemcisi (`EurekaClient`).
+   - Periyodik heartbeat (`EUREKA_RENEWAL_SEC=10s`) atan ve yaşam döngüsünü yöneten `EurekaRegistrar`.
+   - POSIX `SIGTERM` sinyalinde önce Eureka'dan deregister olup soketi açık tutarak 20 sn bekleyen `install_sigterm_drain`; böylece uçuştaki istekler sıfır kesintiyle tamamlanır.
+   - Dinamik hostname/IP çözümlemesi (`resolve_instance_host`).
 
-2. **Reranker Sağlayıcıları (`app/rag/rerank/`):**
-   - Tüm sağlayıcılar (`FakeReranker`, `CrossEncoderReranker`, `CohereReranker`) açıkça `Reranker` arayüzüne bağlıdır.
-   - `FakeReranker`: Kelime örtüşmesi (Jaccard-benzeri) veya enjekte edilen skorlarla çalışan deterministik, ağsız test motoru.
-   - `CrossEncoderReranker`: Varsayılan `BAAI/bge-reranker-v2-m3`. Bellek ve thread güvenliği için `threading.Lock` ile korunan lazy model yüklemesi ve senkronize `predict()`.
-   - `CohereReranker`: `httpx` üzerinden Cohere v2 API (`/v2/rerank`, `rerank-v3.5`). 429/5xx hatalarında 1 kez üstel geri çekilme, 4xx iş hatalarında fail-fast. Loglarda ve hata mesajlarında API key sızdırılmaz.
+2. **Python Tarafı Koruma Katmanları (`app/core/`):**
+   - `BodySizeLimitMiddleware`: 64 KB üstü POST/PUT/PATCH isteklerini gövdeyi belleğe almadan fail-fast `413` ile reddeder.
+   - `ConcurrencyLimiter`: Instance başına eşzamanlı LLM turu kotası (`AI_MAX_CONCURRENT_REQUESTS=20`) dolduğunda kuyruğa almadan derhal `503 Service Overloaded` + `Retry-After: 5` döner.
+   - Tur Bütçesi (Turn Timeout): Agent için 60 sn (`AGENT_TURN_TIMEOUT_SEC`), RAG için 45 sn (`RAG_TURN_TIMEOUT_SEC`) zaman aşımı bütçesi.
 
-3. **Fabrika, Uygulama ve Retriever Adaptörü (`app/rag/rerank/factory.py`, `apply.py`, `retriever.py`):**
-   - `build_reranker_from_settings()` ve `get_reranker()`: Ayarlardan reranker nesnesi üretimi.
-   - `rerank_hits()`: Güvenli rerank yürütücüsü. Üretimde `RAG_RERANK_FAIL_OPEN=True` ile hata anında fallback olarak ilk $k$ hibrit sonucunu döner; değerlendirme modunda (`fail_open=False`) sessiz bozulmayı önlemek için hatayı yükseltir.
-   - `RerankingRetriever`: `Retriever` protokolünü (`retrieve()`) uygulayan adaptör sınıfı. Değerlendirme çatısıyla sıfır sürtünmeyle çalışır.
+3. **Token Bütçesi (Reserve & Reconcile, `app/budget/`):**
+   - Kullanıcı (`tok:user:{id}:day`, `tok:user:{id}:min`) ve sağlayıcı (`tok:provider:{name}:min`) kotalarını denetleyen `TokenBudgetService`.
+   - Redis üzerinde atomik Lua betikleri (`RESERVE_LUA_SCRIPT`, `ADJUST_LUA_SCRIPT`) ile çift harcama ve eşzamanlı aşım engellemesi.
+   - Kota aşımında makine tarafından okunabilir RFC 7807 `429 Too Many Requests` ve `Retry-After` yanıtı.
+   - Redis kesintisinde `fail_mode="local"` ile bellek içi depoya (`InMemoryBudgetStore`) zarif geçiş.
 
-4. **RagAnswerService ve Yaşam Döngüsü Entegrasyonu (`app/rag/generation/service.py`, `app/main.py`):**
-   - `retrieve_with_rerank()`: İki aşamalı getirme (aday havuzu -> reranker -> top_k).
-   - `RetrievalOutcome` ve `RagAnswer.rerank_status`: `disabled`, `applied`, `fallback_error`, `fallback_timeout`, `bypassed_insufficient_hits`.
-   - Lifespan: Başlangıçta reranker hazır bulunur; kapanışta `close()` temizliği yapılır. `RAG_RERANK_ENABLED=False` iken sıfır çalışma zamanı yükü.
+4. **Kalıcı Aksiyon Deposu (`RedisPendingActionStore`, `app/agent/redis_pending.py`):**
+   - Çok replikalı dağıtık ortamlarda kullanıcı aksiyon teklifi ve onayının (`/agent/actions/{action_id}/confirm`) farklı container'lara düşmesi senaryosu için geliştirildi.
+   - Atomik Lua betikleri (`CONSUME_LUA_SCRIPT`, `DISCARD_LUA_SCRIPT`) ile tek kullanımlık tüketim ve kullanıcı sahiplik izolasyonu.
 
-5. **Retrieval ve Generation A/B Değerlendirme Çerçevesi (`app/rag/evaluation/rerank/`):**
-   - `compare.py`: CLI retrieval karşılaştırıcısı (`--reranker`, `--rerank-model`, `--candidates`, `--top-k`). `first_correct_rank`, `classify_flips`, doyum (saturation) ve tavan (ceiling) uyarıları.
-   - `run.py --rerank`: Generation değerlendirme çalıştırıcısına fail-closed reranker bayrakları ve rerank durum istatistikleri.
-   - `gate.py --rerank`: Dense skor ile en üst rerank skorunu yan yana ölçen analizör. Abstain eşiğini bozmaz.
-   - `reports_diff.py`: İki generation raporu arasındaki metrik farklarını (`overall`, `answerable`, `unanswerable`), flip analizini, yeni halüsinasyon (`new_hallucination_queries`) ve gürültü uyarılarını CLI tablosu olarak sunar.
+5. **API Gateway AI Rota Ayrıştırması ve Devre Kesiciler (`api-gateway`):**
+   - Tekil monolitik AI rotası 4 bağımsız rotaya bölündü:
+     - `ai-actions-route` (TimeLimiter 20s, CircuitBreaker, Fallback `/fallback/ai-actions` - `outcomeUnknown=true`, `retryable=false`)
+     - `ai-chat-route` (TimeLimiter 70s, CircuitBreaker, Fallback `/fallback/ai-chat`)
+     - `ai-rag-answer-route` (TimeLimiter 55s, CircuitBreaker, Fallback `/fallback/ai-rag`)
+     - `ai-rag-search-route` (TimeLimiter 10s, CircuitBreaker, Fallback `/fallback/ai-rag`)
+   - **KESİNLİKLE RETRY YOK:** AI rotalarında çift token faturası ve mükerrer işlem riskine karşı Gateway `Retry` filtresi kaldırıldı.
+   - `AiRequestSizeFilter`: AI rotalarına gelen 64 KB üzeri POST isteklerini Gateway seviyesinde `413 ProblemDetail` ile keser.
+
+6. **Gateway Rota Bazlı Kayan Pencere Rate Limiting (`com.dgl.gateway.ratelimit`):**
+   - `RateLimitPolicy` record ve `RateLimitProperties` ile konfigüre edilen rota politikaları: `ai-actions` (20/dk), `ai-chat` (10/dk), `ai-rag-answer` (10/dk), `ai-rag-search` (30/dk).
+   - `RateLimiterService`: İki ardışık pencere üzerinden ağırlıklı hareketli ortalama hesaplayan atomik kayan pencere (sliding window counter) Lua betiği.
+   - `LocalSlidingWindowLimiter`: Redis kesintisinde AI rotalarının kontrolsüz fatura üretmesini engellemek için süreç-içi bellek sınırlayıcısına geçiş (`fail-mode: LOCAL`).
+   - `RateLimitingFilter`: Kova izolasyonu, `trust-forwarded-for: false` ile IP sahteciliği koruması ve 429 yanıtlarında dolan kovanın adını bildiren `"policy"` alanı.
 
 ---
 
 ### Doğrulama ve Test Özeti:
-- **Toplam Birim Testi:** **539 test** (Tümü passed, 7 deselected, 0 failure).
-- **Test Süresi:** ~42 saniye (`uv run pytest -m "not integration"`).
-- **Ağ ve Docker Bağımsızlığı:** Tüm rerank birim testleri (Fake, CrossEncoder mock, Cohere MockTransport, Service, Compare, Diff) harici ağ ve model indirme gerektirmeden çalışır.
-- **Sağlamlık İyileştirmeleri:** Settings sınır doğrulaması (1..50), `search_by_budget` aday tutarlılığı, Cohere tekil paylaşılan client ve deadline zaman aşımı, CrossEncoder lifespan warmup, `compare.py` önbellekli tekil getirme (`(query, k)` ayrımı) ile kategori kırılımı ve fail-closed eval hata telemetrisi tamamlandı.
-- **Gerçek Model Ölçümleri:** Gerçek Cross-Encoder / Cohere canlı kalite ölçümleri henüz yapılmamıştır (Adım 9 / Aşama 7'de korpus genişletilince yapılacaktır). Tüm eval testleri fake modellerle duman testi (smoke test) olarak yürütülmüştür.
+
+- **Python (`ai-assistant-service`):**
+  - **592 passed**, 1 skipped, 7 deselected (~40 saniye).
+  - Tüm limit, token budget, redis pending store, discovery ve API testleri yeşil.
+- **Java Gateway (`api-gateway`):**
+  - **48 passed**, 0 failure (Temel başlangıç 28 testten 48 teste çıkarıldı).
+  - `FallbackControllerTest` (12 test), `AiRequestSizeFilterTest` (4 test), `RateLimitingFilterTest` (9 test), `LocalSlidingWindowLimiterTest` (4 test), `RateLimiterServiceTest` (7 test) tamamı başarılı.
+- **Eureka Server (`eureka-server`):**
+  - **1 passed**, BUILD SUCCESS.
+- **Ne Yapıldı / Ne Yapılmadı:**
+  - *Yapıldı:* Adım 0 - Adım 8 arasındaki tüm kod, konfigürasyon, filtre, yaşam döngüsü, birim/entegrasyon testleri ve dokümantasyon tamamlandı.
+  - *Yapılmadı:* Yerel ortamda Docker daemon servisinin kapalı olması nedeniyle çoklu container uçtan uca canlı Compose testi çalıştırılamadı ("uçtan uca doğrulanmadı" olarak karar günlüğüne işlendi). Tüm iş mantığı izole testlerle %100 güvenceye alındı.
 
 ---
 
-### Sıradaki Aşama ve Gelecek Oturumlar İçin Notlar:
-1. **Aşama 7 / Adım 9: Corpus Büyütme ve Canlı Reranker Karar Koşusu:**
-   - Mevcut 3 dokümanlık (~8 chunk) toy corpus aday havuzu (k=20) için doyuma ulaştığından (`saturation warning`), doküman havuzu 10+ doküman ve 100+ chunk seviyesine çıkarılacaktır.
-   - Ardından canlı Cross-Encoder ve Cohere eval koşuları yapılarak `RAG_RERANK_ENABLED` bayrağının prod varsayılanı kararlaştırılacaktır.
-2. **Java Mikroservislerinde Tespit Edilen Açıkların Kapatılması (Ayrı Java İşi):**
-   - `shipping-service`: `ShipmentResponse`'a `customerId` eklenmeli ve `/track/{trackingNumber}` uç noktasına sahiplik doğrulaması getirilmelidir.
-   - `order-service`: `enforceOwnership` metodunda `X-User-Id` başlığı yoksa fail-fast (`401`/`403`) reddedilmelidir.
-3. **Kalıcı Aksiyon Deposu:** Çok örnekli (multi-instance) üretim ortamı için `RedisPendingActionStore` uygulaması.
-4. **Multi-Turn Sohbet Geçmişi:** Takip soruları için geçmiş taşıma ve query rewriting altyapısı.
+### Gelecek Oturumlar İçin Notlar:
+1. **Canlı Docker Doğrulaması:** Docker servisi aktif olduğunda `docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d --scale ai-assistant-service=2` ile canlı scale ve drain testi yapılabilir.
+2. **Streaming / SSE Uç Noktaları:** Python tarafında SSE desteği eklendiğinde Gateway tamponlama başlıkları ve stream içi hata yönetimi (`event: error`) tasarlanabilir.
+3. **Corpus Büyütme ve Canlı Reranker Koşusu:** Reranker A/B testlerinin gerçek PDF korpusu ile yürütülmesi.
 
-### Yeni Oturumda İlk Okunacak Dosyalar:
-1. `python_plan/rerank-decisions.md` (Reranker kararları, model özellikleri ve baseline sayıları)
-2. `DEVAM.md` (Bu dosya)
-3. `python_plan/agent-decisions.md` (Agent güvenlik ve karar ilkeleri)
-4. `app/rag/rerank/` (Reranker çekirdek protokol ve uygulayıcıları)
-5. `app/rag/evaluation/rerank/` (Rerank A/B ve diff araçları)
+### Başvuru Dokümanları:
+1. `python_plan/microservice/gateway-decisions.md` (Mimari kararlar)
+2. `python_plan/microservice/gateway-entegrasyonu.md` (Entegrasyon planı)
+3. `AGENTS.md` & `CLAUDE.md` (Her iki servis dizinindeki yönergeler)

@@ -10,4 +10,7 @@ Tüm mimari kurallar, araç tanımları, güvenlik politikaları ve port dağıl
 - **Terminal Politika**: Şirket politikası sorularında `search_policy` çıktısı modele yeniden yazdırılmaz; doğrulanmış atıflarıyla birlikte doğrudan kullanıcıya iletilir.
 - **PII Hijyeni**: Adresler ve serbest kullanıcı metinleri dış LLM bağlamına veya loglara ham haliyle aktarılmaz.
 - **Reranker Bayrağı**: `RAG_RERANK_ENABLED` varsayılan `False`'tur. Üretimde fail-open (`RAG_RERANK_FAIL_OPEN=True`), eval koşularında kesinlikle fail-closed çalışır.
+- **Eureka REST ve Graceful Drain**: Eureka kaydı harici kütüphane yerine `httpx` tabanlı `app/discovery/` ile yönetilir; SIGTERM anında önce Eureka'dan deregister olur ve uçuştaki istekleri tamamlamak için 20 sn drain süresi bekler.
+- **Zaman Aşımı Sıralaması ve Gateway Retry Yasağı**: Gateway seviyesinde AI rotalarında `Retry` filtresi KESİNLİKLE bulunmaz (çift token harcamasını ve aksiyon tekrarlarını önlemek için). Zaman aşımı hiyerarşisi: İstemci (~90s) > Gateway Read Timeout (80s) > Gateway TimeLimiter (70s/55s/20s/10s) > Python Tur Timeout (60s/45s) > Tekil LLM çağrısı (30s).
+- **Ölçekleme ve Worker Kuralı**: Container başına kesinlikle tek bir Uvicorn worker'ı (`--workers 1`) çalışır. Ölçekleme container replikasyonu ile (`docker compose up --scale ai-assistant-service=N`) sağlanır.
 - **Birim Testleri**: Ağ veya Docker gerektirmeden `uv run pytest -m "not integration"` ile çalışır.
