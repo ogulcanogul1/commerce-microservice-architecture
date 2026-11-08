@@ -307,3 +307,49 @@ def test_answer_unexpected_error_returns_503_without_leak(
     data = response.json()
     assert "DATABASE_PASSWORD_LEAK_SECRET_123" not in str(data)
     assert data["detail"] == "Cevap üretilirken bir hata oluştu."
+
+
+def test_answer_turn_timeout_returns_503(client: TestClient, monkeypatch):
+    """RAG_TURN_TIMEOUT_SEC aşıldığında 503 ve zaman aşımı mesajı dönmelidir."""
+    import asyncio
+    from app.core.config import settings
+    from app.api.answer import get_rag_answer_service
+
+    class SlowRagService:
+        async def answer(self, *args, **kwargs):
+            await asyncio.sleep(0.5)
+            raise RuntimeError("Should not be reached")
+
+    app.dependency_overrides[get_rag_answer_service] = lambda: SlowRagService()
+    monkeypatch.setattr(settings, "RAG_TURN_TIMEOUT_SEC", 0.05)
+    try:
+        response = client.post(
+            "/rag/answer",
+            json={"question": "İade süresi?"},
+        )
+        assert response.status_code == 503
+        assert "zaman aşımına" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_rag_answer_service, None)
+
+
+def test_answer_overloaded_returns_503(client: TestClient):
+    """ConcurrencyLimiter slotu doluyken /rag/answer 503 Overloaded dönmelidir."""
+    from app.core.limits import ConcurrencyLimiter
+
+    old_limiter = getattr(app.state, "ai_limiter", None)
+    app.state.ai_limiter = ConcurrencyLimiter(max_concurrent=1)
+    app.state.ai_limiter._current_count = 1
+    try:
+        response = client.post(
+            "/rag/answer",
+            json={"question": "İade süresi?"},
+        )
+        assert response.status_code == 503
+        data = response.json()
+        assert data["type"] == "https://api.commerce.com/errors/ai-overloaded"
+        assert data["retryable"] is True
+        assert data["retry_after_seconds"] == 5
+        assert response.headers.get("Retry-After") == "5"
+    finally:
+        app.state.ai_limiter = old_limiter

@@ -618,3 +618,43 @@ def test_confirm_action_restores_store_on_downstream_failure(test_client: TestCl
         headers={"X-User-Id": USER_A},
     )
     assert resp3.status_code == 404
+
+
+def test_agent_chat_turn_timeout_returns_503(test_client, monkeypatch):
+    """AGENT_TURN_TIMEOUT_SEC aşıldığında 503 ve zaman aşımı mesajı dönmelidir."""
+    class SlowAgentService:
+        async def chat(self, msg, ctx):
+            await asyncio.sleep(0.5)
+            raise RuntimeError("Should not be reached")
+
+    app.state.agent_service = SlowAgentService()
+    monkeypatch.setattr(settings, "AGENT_TURN_TIMEOUT_SEC", 0.05)
+
+    resp = test_client.post(
+        "/agent/chat",
+        headers={"X-User-Id": USER_A},
+        json={"message": "Merhaba"},
+    )
+    assert resp.status_code == 503
+    data = resp.json()
+    assert "zaman aşımına" in data["detail"]
+
+
+def test_agent_chat_overloaded_returns_503(test_client):
+    """Kapasite doluyken ConcurrencyLimiter Overloaded (503, retryable) fırlatmalıdır."""
+    from app.core.limits import ConcurrencyLimiter
+    app.state.agent_service = object()  # Service yapılandırılmış kabul edilsin
+    app.state.ai_limiter = ConcurrencyLimiter(max_concurrent=1)
+    app.state.ai_limiter._current_count = 1
+
+    resp = test_client.post(
+        "/agent/chat",
+        headers={"X-User-Id": USER_A},
+        json={"message": "Merhaba"},
+    )
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["type"] == "https://api.commerce.com/errors/ai-overloaded"
+    assert data["retryable"] is True
+    assert data["retry_after_seconds"] == 5
+    assert resp.headers.get("Retry-After") == "5"

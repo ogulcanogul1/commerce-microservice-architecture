@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.config import settings
+from app.core.limits import ConcurrencyLimiter, get_ai_limiter
 from app.rag.generation.models import AbstainReason, RagAnswer
 from app.rag.generation.service import RagAnswerService
 
@@ -103,17 +107,26 @@ async def answer_question(
     payload: AnswerRequest,
     service: RagAnswerService = Depends(get_rag_answer_service),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
 ) -> AnswerResponse:
     """Execute end-to-end grounded RAG question answering."""
     try:
-        rag_answer: RagAnswer = await service.answer(
-            payload.question,
-            k=payload.k,
-            source_file=payload.source_file,
-            correlation_id=x_correlation_id,
+        # Eşzamanlılık sınırı (ConcurrencyLimiter): Slot müsait değilse anında Overloaded (503) fırlatır
+        async with limiter.slot():
+            # RAG tur bütçesi (Turn Timeout): Retrieval + maks 2 LLM denemesini RAG_TURN_TIMEOUT_SEC ile sınırlar
+            async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
+                rag_answer: RagAnswer = await service.answer(
+                    payload.question,
+                    k=payload.k,
+                    source_file=payload.source_file,
+                    correlation_id=x_correlation_id,
+                )
+    except (asyncio.TimeoutError, TimeoutError):
+        # Kural: Loglara kullanıcı sorusu veya metin ASLA yazılmaz! Yalnızca timeout durumu loglanır.
+        logger.warning(
+            "RAG Answer üretimi zaman aşımına uğradı (limit: %.1fs)",
+            settings.RAG_TURN_TIMEOUT_SEC,
         )
-    except TimeoutError:
-        logger.error("RAG Answer üretimi zaman aşımına uğradı.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cevap üretimi zaman aşımına uğradı.",
@@ -130,6 +143,9 @@ async def answer_question(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cevap üretilirken bir hata oluştu.",
         ) from None
+    except (HTTPException, StarletteHTTPException):
+        # Overloaded (503) gibi HTTP istisnalarını değiştirmeden yukarı fırlat
+        raise
     except Exception as exc:
         logger.error("RAG Answer üretiminde beklenmeyen hata: %s", exc)
         raise HTTPException(

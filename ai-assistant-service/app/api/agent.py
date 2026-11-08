@@ -6,12 +6,15 @@ import logging
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.agent.executor import ActionExecutor
 from app.agent.models import ActionType, ReplyKind
 from app.agent.pending import PendingActionStore
 from app.agent.service import AgentService
 from app.api.answer import CitationResponse
+from app.core.config import settings
+from app.core.limits import ConcurrencyLimiter, get_ai_limiter
 from app.core.security import RequestContext, get_request_context
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,7 @@ async def chat(
     request: ChatRequest,
     req: Request,
     ctx: RequestContext = Depends(get_request_context),
+    limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
 ) -> ChatResponse:
     """Execute conversational turn with customer support agent."""
     service: AgentService | None = getattr(req.app.state, "agent_service", None)
@@ -86,12 +90,24 @@ async def chat(
         )
 
     try:
-        reply = await service.chat(request.message, ctx)
-    except asyncio.TimeoutError:
+        # Eşzamanlılık sınırı (ConcurrencyLimiter): Slot müsait değilse anında Overloaded (503) fırlatır
+        async with limiter.slot():
+            # Tur bütçesi (Turn Timeout): 4 LLM adımı ve tool çağrılarının toplamını AGENT_TURN_TIMEOUT_SEC ile sınırlar
+            async with asyncio.timeout(settings.AGENT_TURN_TIMEOUT_SEC):
+                reply = await service.chat(request.message, ctx)
+    except (asyncio.TimeoutError, TimeoutError):
+        # Kural: Loglara soru, mesaj veya kişisel veri ASLA yazılmaz! Yalnızca timeout durumu loglanır.
+        logger.warning(
+            "Agent chat turn zaman aşımına uğradı (limit: %.1fs)",
+            settings.AGENT_TURN_TIMEOUT_SEC,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cevap üretimi zaman aşımına uğradı.",
         )
+    except (HTTPException, StarletteHTTPException):
+        # Overloaded (503) gibi HTTP istisnalarını değiştirmeden yukarı fırlat
+        raise
     except Exception as exc:
         logger.exception("Agent chat turn failed: %s", exc)
         raise HTTPException(

@@ -23,6 +23,7 @@ from app.clients.order import OrderClient
 from app.clients.shipping import ShippingClient
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
+from app.core.limits import BodySizeLimitMiddleware, ConcurrencyLimiter
 from app.discovery.client import EurekaClient
 from app.discovery.drain import install_sigterm_drain
 from app.discovery.models import InstanceInfo
@@ -167,6 +168,10 @@ async def lifespan(app: FastAPI):
     app.state.ticket_publisher = ticket_publisher
     app.state.agent_service = agent_service
 
+    # Eşzamanlılık Denetleyicisi: Süreç başına en fazla AI_MAX_CONCURRENT_REQUESTS (varsayılan: 20) aktif LLM işlemine izin ver
+    ai_limiter = ConcurrencyLimiter(max_concurrent=settings.AI_MAX_CONCURRENT_REQUESTS)
+    app.state.ai_limiter = ai_limiter
+
     # Eureka Service Discovery Entegrasyonu (varsayılan: EUREKA_ENABLED=False)
     eureka_registrar = None
     sigterm_restore = None
@@ -260,6 +265,9 @@ app = FastAPI(
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
+
+# Gövde boyutu koruması: AI_MAX_BODY_BYTES (64 KB) üzerindeki POST isteklerini belleğe almadan 413 ile reddet
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.AI_MAX_BODY_BYTES)
 
 register_problem_details_handlers(app)
 app.include_router(api_router)
