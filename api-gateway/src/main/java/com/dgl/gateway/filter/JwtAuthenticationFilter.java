@@ -65,9 +65,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 2. Public paths check
+        // 2. Public paths check - İstemcinin sahte X-User-* başlıkları göndererek rate limit atlatmasını
+        // veya downstream servislere sahte kimlik iletmesini önlemek için başlıklar soyulur (sanitize).
         if (isPublicPath(path, method)) {
-            filterChain.doFilter(request, response);
+            UserClaimsRequestWrapper sanitizedRequest = new UserClaimsRequestWrapper(request, null, null, null);
+            filterChain.doFilter(sanitizedRequest, response);
             return;
         }
 
@@ -99,7 +101,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             );
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
-            // 5. Wrap request with user context headers for downstream propagation
+            // 5. Wrap request with verified user context headers for downstream propagation
             UserClaimsRequestWrapper wrappedRequest = new UserClaimsRequestWrapper(request, userId, email, role);
             filterChain.doFilter(wrappedRequest, response);
 
@@ -144,6 +146,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static class UserClaimsRequestWrapper extends HttpServletRequestWrapper {
 
         private final Map<String, String> customHeaders = new HashMap<>();
+        private static final Set<String> STRIPPED_HEADERS = Set.of(
+                USER_ID_HEADER.toLowerCase(),
+                USER_EMAIL_HEADER.toLowerCase(),
+                USER_ROLES_HEADER.toLowerCase()
+        );
 
         public UserClaimsRequestWrapper(HttpServletRequest request, String userId, String email, String role) {
             super(request);
@@ -154,20 +161,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         @Override
         public String getHeader(String name) {
+            if (name == null) return null;
             for (Map.Entry<String, String> entry : customHeaders.entrySet()) {
                 if (entry.getKey().equalsIgnoreCase(name)) {
                     return entry.getValue();
                 }
+            }
+            if (STRIPPED_HEADERS.contains(name.toLowerCase())) {
+                return null;
             }
             return super.getHeader(name);
         }
 
         @Override
         public Enumeration<String> getHeaders(String name) {
+            if (name == null) return Collections.emptyEnumeration();
             for (Map.Entry<String, String> entry : customHeaders.entrySet()) {
                 if (entry.getKey().equalsIgnoreCase(name)) {
                     return Collections.enumeration(List.of(entry.getValue()));
                 }
+            }
+            if (STRIPPED_HEADERS.contains(name.toLowerCase())) {
+                return Collections.emptyEnumeration();
             }
             return super.getHeaders(name);
         }
@@ -177,7 +192,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Set<String> names = new LinkedHashSet<>();
             Enumeration<String> baseNames = super.getHeaderNames();
             while (baseNames.hasMoreElements()) {
-                names.add(baseNames.nextElement());
+                String headerName = baseNames.nextElement();
+                if (!STRIPPED_HEADERS.contains(headerName.toLowerCase())) {
+                    names.add(headerName);
+                }
             }
             names.addAll(customHeaders.keySet());
             return Collections.enumeration(names);

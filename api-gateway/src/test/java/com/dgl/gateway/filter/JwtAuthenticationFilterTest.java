@@ -21,6 +21,7 @@ import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,8 +52,28 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request, response, filterChain);
 
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(HttpServletRequest.class), eq(response));
         verifyNoInteractions(jwtValidator);
+    }
+
+    @Test
+    @DisplayName("Public path with spoofed X-User-* headers should strip headers before forwarding")
+    void publicPath_WhenSpoofedXUserIdPresent_ShouldStripHeader() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
+        request.addHeader("X-User-Id", "spoofed-user-id");
+        request.addHeader("X-User-Email", "spoofed@domain.com");
+        request.addHeader("X-User-Roles", "ROLE_ADMIN");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        ArgumentCaptor<HttpServletRequest> requestCaptor = ArgumentCaptor.forClass(HttpServletRequest.class);
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(filterChain).doFilter(requestCaptor.capture(), eq(response));
+        HttpServletRequest captured = requestCaptor.getValue();
+        assertThat(captured.getHeader("X-User-Id")).isNull();
+        assertThat(captured.getHeader("X-User-Email")).isNull();
+        assertThat(captured.getHeader("X-User-Roles")).isNull();
     }
 
     @Test
@@ -63,7 +84,7 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request, response, filterChain);
 
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(HttpServletRequest.class), eq(response));
         verifyNoInteractions(jwtValidator);
     }
 
@@ -110,26 +131,25 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Protected path with valid token should set headers and authenticate")
-    void protectedPath_WhenValidToken_ShouldInjectUserHeadersAndProceed() throws ServletException, IOException {
+    @DisplayName("Protected path with valid token should set security context and forward headers")
+    void protectedPath_WhenValidToken_ShouldSetContextAndForwardHeaders() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/orders");
         request.addHeader("Authorization", "Bearer valid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(jwtValidator.validateAndExtractClaims("valid-token")).thenReturn(claims);
-        when(claims.getSubject()).thenReturn("user-uuid-123");
-        when(claims.get("email", String.class)).thenReturn("user@example.com");
+        when(claims.getSubject()).thenReturn("usr-12345");
+        when(claims.get("email", String.class)).thenReturn("test@commerce.com");
         when(claims.get("role", String.class)).thenReturn("ROLE_CUSTOMER");
+        when(jwtValidator.validateAndExtractClaims("valid-token")).thenReturn(claims);
 
         ArgumentCaptor<HttpServletRequest> requestCaptor = ArgumentCaptor.forClass(HttpServletRequest.class);
 
         filter.doFilter(request, response, filterChain);
 
         verify(filterChain).doFilter(requestCaptor.capture(), eq(response));
-
-        HttpServletRequest forwardedRequest = requestCaptor.getValue();
-        assertThat(forwardedRequest.getHeader("X-User-Id")).isEqualTo("user-uuid-123");
-        assertThat(forwardedRequest.getHeader("X-User-Email")).isEqualTo("user@example.com");
-        assertThat(forwardedRequest.getHeader("X-User-Roles")).isEqualTo("ROLE_CUSTOMER");
+        HttpServletRequest captured = requestCaptor.getValue();
+        assertThat(captured.getHeader(JwtAuthenticationFilter.USER_ID_HEADER)).isEqualTo("usr-12345");
+        assertThat(captured.getHeader(JwtAuthenticationFilter.USER_EMAIL_HEADER)).isEqualTo("test@commerce.com");
+        assertThat(captured.getHeader(JwtAuthenticationFilter.USER_ROLES_HEADER)).isEqualTo("ROLE_CUSTOMER");
     }
 }
