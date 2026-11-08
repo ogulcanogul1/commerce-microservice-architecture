@@ -267,12 +267,50 @@ security:
 
 rate-limiter:
   enabled: true
+  trust-forwarded-for: false
   anonymous:
     limit: 10
     window-seconds: 60
   authenticated:
     limit: 60
     window-seconds: 60
+  policies:
+    # 1. AI Actions (Onay/Red vb.) - En spesifik rota, ilk sırada olmalı
+    - name: ai-actions
+      path-patterns:
+        - "/agent/actions/**"
+        - "/api/v1/chat/actions/**"
+      limit: 20
+      window-seconds: 60
+      algorithm: SLIDING_WINDOW
+      fail-mode: LOCAL
+    # 2. AI Sohbet (Agent döngüsü, yüksek token ve işlem yükü)
+    - name: ai-chat
+      path-patterns:
+        - "/agent"
+        - "/agent/chat"
+        - "/api/v1/chat"
+        - "/api/v1/chat/chat"
+      limit: 10
+      window-seconds: 60
+      algorithm: SLIDING_WINDOW
+      fail-mode: LOCAL
+    # 3. AI RAG Soru-Cevap (Üretim içeren arama)
+    - name: ai-rag-answer
+      path-patterns:
+        - "/rag/answer"
+      limit: 10
+      window-seconds: 60
+      algorithm: SLIDING_WINDOW
+      fail-mode: LOCAL
+    # 4. AI RAG Arama (Yalnızca vektör retrieval)
+    - name: ai-rag-search
+      path-patterns:
+        - "/rag/search"
+      limit: 30
+      window-seconds: 60
+      algorithm: SLIDING_WINDOW
+      fail-mode: LOCAL
 
 springdoc:
   api-docs:
