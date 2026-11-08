@@ -307,6 +307,18 @@ def _init_token_budget() -> tuple[TokenBudgetService | None, Any | None]:
         provider_name="default",
         fail_mode=settings.TOKEN_BUDGET_FAIL_MODE,
     )
+
+    base_chat_estimate = (
+        settings.TOKEN_BUDGET_PROMPT_OVERHEAD + settings.AGENT_MAX_OUTPUT_TOKENS
+    ) * min(2, max(1, settings.AGENT_MAX_STEPS))
+    if base_chat_estimate > settings.TOKEN_BUDGET_PER_MINUTE_LIMIT:
+        logger.warning(
+            "YAPILANDIRMA UYARISI: Tahmini tekil sohbet bütçesi (%d token), "
+            "dakikalık kullanıcı kotasından (%d token) büyük! Sohbet istekleri 429 alabilir.",
+            base_chat_estimate,
+            settings.TOKEN_BUDGET_PER_MINUTE_LIMIT,
+        )
+
     return service, redis_client
 
 

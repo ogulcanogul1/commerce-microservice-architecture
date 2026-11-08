@@ -690,3 +690,31 @@ def test_agent_chat_token_budget_exceeded_returns_429(test_client):
         assert "kotanıza ulaştınız" in data["detail"]
     finally:
         app.state.token_budget = None
+
+
+def test_chat_with_budget_does_not_exceed_per_minute_limit(test_client):
+    """Bütçe açıkken 8000 limitli dakikalık kotada standart sohbet isteği 429 almaz."""
+    from app.budget.service import TokenBudgetService
+    from app.budget.store import InMemoryBudgetStore
+
+    store = InMemoryBudgetStore()
+    budget_svc = TokenBudgetService(
+        store=store,
+        daily_limit=50000,
+        per_minute_limit=8000,
+    )
+    fake_llm = FakeLLMProvider(responses=["Merhaba, nasıl yardımcı olabilirim?"])
+    service = AgentService(llm=fake_llm, registry=ToolRegistry())
+    app.state.agent_service = service
+    app.state.token_budget = budget_svc
+
+    try:
+        resp = test_client.post(
+            "/agent/chat",
+            json={"message": "merhaba"},
+            headers={"X-User-Id": USER_A},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["reply"] == "Merhaba, nasıl yardımcı olabilirim?"
+    finally:
+        app.state.token_budget = None

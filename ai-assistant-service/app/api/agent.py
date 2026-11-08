@@ -106,7 +106,7 @@ async def chat(
                         tokenizer,
                         overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
                         max_output=settings.AGENT_MAX_OUTPUT_TOKENS,
-                        steps=settings.AGENT_MAX_STEPS,
+                        steps=min(2, max(1, settings.AGENT_MAX_STEPS)),
                     )
                     async with await budget.reserve(ctx.user_id, estimated_tokens) as reservation:
                         reply = await service.chat(request.message, ctx)
