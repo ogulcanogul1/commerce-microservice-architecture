@@ -90,8 +90,11 @@ async def test_registrar_start_calls_register_and_starts_heartbeat(
     await registrar.start()
     assert client.register_calls == 1
 
-    # Heartbeat görevinin çalıştığını gözlemlemek için kısa süre bekle
-    await asyncio.sleep(0.12)
+    # Heartbeat görevinin çalıştığını gözlemlemek için en az 2 çağrı gelene kadar bekle (max 1.5 sn)
+    for _ in range(30):
+        if client.heartbeat_calls >= 2:
+            break
+        await asyncio.sleep(0.05)
     assert client.heartbeat_calls >= 2
 
     await registrar.stop()
