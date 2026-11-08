@@ -20,8 +20,12 @@ spring:
       cache:
         ttl: 5s
     gateway:
-      mvc:
-        routes:
+      server:
+        webmvc:
+          http-client:
+            connect-timeout: 10s
+            read-timeout: 80s
+          routes:
           - id: product-service-route
             uri: ${SERVICES_PRODUCT_URL:lb://product-service}
             predicates:
@@ -93,28 +97,40 @@ spring:
               - Path=/agent/actions/**, /api/v1/chat/actions/**
             filters:
               # AI rotalarında kesinlikle Retry filtresi eklenmez (yan etkili onay ve mükerrer fatura riski)
-              - CircuitBreaker=aiActionsCircuitBreaker,forward:/fallback/ai-actions
+              - name: CircuitBreaker
+                args:
+                  id: aiActionsCircuitBreaker
+                  fallbackPath: /fallback/ai-actions
 
           - id: ai-chat-route
             uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
             predicates:
               - Path=/agent, /agent/chat, /api/v1/chat, /api/v1/chat/chat
             filters:
-              - CircuitBreaker=aiChatCircuitBreaker,forward:/fallback/ai-chat
+              - name: CircuitBreaker
+                args:
+                  id: aiChatCircuitBreaker
+                  fallbackPath: /fallback/ai-chat
 
           - id: ai-rag-answer-route
             uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
             predicates:
               - Path=/rag/answer
             filters:
-              - CircuitBreaker=aiRagAnswerCircuitBreaker,forward:/fallback/ai-rag
+              - name: CircuitBreaker
+                args:
+                  id: aiRagAnswerCircuitBreaker
+                  fallbackPath: /fallback/ai-rag
 
           - id: ai-rag-search-route
             uri: ${SERVICES_AI_ASSISTANT_URL:lb://ai-assistant-service}
             predicates:
               - Path=/rag/search
             filters:
-              - CircuitBreaker=aiRagSearchCircuitBreaker,forward:/fallback/ai-rag
+              - name: CircuitBreaker
+                args:
+                  id: aiRagSearchCircuitBreaker
+                  fallbackPath: /fallback/ai-rag
 
           - id: product-service-docs
             uri: ${SERVICES_PRODUCT_URL:lb://product-service}
@@ -192,7 +208,7 @@ resilience4j:
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
       ai-heavy:
-        slidingWindowType: COUNT
+        slidingWindowType: COUNT_BASED
         slidingWindowSize: 20
         minimumNumberOfCalls: 10
         failureRateThreshold: 50
@@ -238,6 +254,11 @@ resilience4j:
         timeoutDuration: 20s
       aiRagSearchCircuitBreaker:
         timeoutDuration: 10s
+
+gateway:
+  http-client:
+    connect-timeout: 10s
+    read-timeout: 80s
 
 management:
   endpoints:
