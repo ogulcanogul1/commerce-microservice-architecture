@@ -164,7 +164,27 @@ def _init_downstream_and_actions() -> tuple[OrderClient, ShippingClient, Pending
         base_url=settings.SHIPPING_SERVICE_URL,
         timeout_sec=settings.DOWNSTREAM_TIMEOUT_SEC,
     )
-    action_store = InMemoryPendingActionStore()
+
+    action_store: PendingActionStore
+    if settings.REDIS_ENABLED:
+        try:
+            import redis
+            from app.agent.redis_pending import RedisPendingActionStore
+            sync_redis = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                password=settings.REDIS_PASSWORD or None,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
+            )
+            action_store = RedisPendingActionStore(sync_redis)
+            logger.info("RedisPendingActionStore başlatıldı (%s:%d)", settings.REDIS_HOST, settings.REDIS_PORT)
+        except Exception as exc:
+            logger.warning("RedisPendingActionStore başlatılamadı, InMemory depoya geçiliyor: %s", exc)
+            action_store = InMemoryPendingActionStore()
+    else:
+        logger.warning("REDIS_ENABLED=False olduğundan InMemoryPendingActionStore kullanılıyor (birden fazla replikada confirm çalışmaz).")
+        action_store = InMemoryPendingActionStore()
 
     # Destek biletleri ortam ayarına göre Kafka'ya veya doğrudan log konsoluna yazılır
     if settings.TICKET_PUBLISHER == "kafka":
