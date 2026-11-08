@@ -620,6 +620,44 @@ def test_confirm_action_restores_store_on_downstream_failure(test_client: TestCl
     assert resp3.status_code == 404
 
 
+def test_confirm_action_restore_error_still_returns_503(test_client: TestClient):
+    """Downstream hatası sonrası restore çağrısı da patlasa bile 500 değil 503 dönmelidir."""
+    from datetime import timedelta
+    from app.agent.pending import PendingActionStoreError
+
+    now = datetime.now(timezone.utc)
+    action = PendingAction(
+        action_id="act-restore-fail-12345",
+        user_id=USER_A,
+        action_type="cancel_order",
+        params={"order_number": "ORD-RESTORE-FAIL"},
+        summary="Sipariş iptali",
+        created_at=now,
+        expires_at=now + timedelta(minutes=5),
+    )
+
+    class FailingStore:
+        def consume(self, action_id, user_id):
+            return action
+
+        def restore(self, action):
+            raise PendingActionStoreError("Redis connection down during restore")
+
+    class FailingExecutor:
+        async def execute(self, act, context):
+            raise RuntimeError("Order service failed")
+
+    app.state.action_store = FailingStore()
+    app.state.action_executor = FailingExecutor()
+
+    resp = test_client.post(
+        f"/agent/actions/{action.action_id}/confirm",
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp.status_code == 503
+    assert "lütfen kısa süre sonra tekrar deneyin" in resp.json()["detail"]
+
+
 def test_agent_chat_turn_timeout_returns_503(test_client, monkeypatch):
     """AGENT_TURN_TIMEOUT_SEC aşıldığında 503 ve zaman aşımı mesajı dönmelidir."""
     class SlowAgentService:

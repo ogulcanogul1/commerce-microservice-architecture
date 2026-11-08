@@ -118,18 +118,18 @@ async def answer_question(
     try:
         # 1. Eşzamanlılık sınırı (ConcurrencyLimiter): Slot doluysa fast-fail 503
         async with limiter.slot():
-            # 2. RAG tur zaman aşımı: En fazla 45 sn
-            async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
-                # 3. Token Bütçesi (Reserve & Reconcile): Bütçe aktifse peşin rezerve et
-                if budget is not None:
-                    estimated_tokens = estimate_chat_tokens(
-                        payload.question,
-                        service.tokenizer,
-                        overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
-                        max_output=settings.RAG_MAX_OUTPUT_TOKENS,
-                        steps=1,
-                    )
-                    async with await budget.reserve(subject, estimated_tokens) as reservation:
+            # 2. Token Bütçesi (Reserve & Reconcile): Bütçe aktifse peşin rezerve et
+            if budget is not None:
+                estimated_tokens = estimate_chat_tokens(
+                    payload.question,
+                    service.tokenizer,
+                    overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
+                    max_output=settings.RAG_MAX_OUTPUT_TOKENS,
+                    steps=1,
+                )
+                async with await budget.reserve(subject, estimated_tokens) as reservation:
+                    # 3. RAG tur zaman aşımı: En fazla 45 sn
+                    async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
                         rag_answer: RagAnswer = await service.answer(
                             payload.question,
                             k=payload.k,
@@ -137,7 +137,8 @@ async def answer_question(
                             correlation_id=x_correlation_id,
                         )
                         reservation.record(rag_answer.usage)
-                else:
+            else:
+                async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
                     rag_answer: RagAnswer = await service.answer(
                         payload.question,
                         k=payload.k,

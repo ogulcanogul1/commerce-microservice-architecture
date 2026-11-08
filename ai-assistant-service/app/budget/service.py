@@ -111,11 +111,11 @@ class Reservation:
     ) -> None:
         """İşlem bittiğinde bütçe uzlaştırmasını (Reconciliation) otomatik yapar."""
         try:
-            # 1. Durum: Zaman aşımı (TimeoutError) durumu
+            # 1. Durum: Zaman aşımı (TimeoutError veya CancelledError) durumu
             # Sağlayıcı tokenları işlemiş veya faturalamış olabileceğinden ve kötüye kullanımı (sürekli timeout'a
             # sokarak sınırsız istek deneme) engellemek için, zaman aşımında rezervasyon iade edilmez (kotadan harcanır).
             # Eğer kısmi gerçek harcama bildirildiyse o uzlaştırılır, bildirilmediyse rezervasyon harcanmış sayılır.
-            if isinstance(exc_val, (TimeoutError, asyncio.TimeoutError)):
+            if isinstance(exc_val, (TimeoutError, asyncio.TimeoutError, asyncio.CancelledError)):
                 if self.actual is not None:
                     delta = self.actual - self.reserved
                     await self._store.adjust(self._scopes, delta)

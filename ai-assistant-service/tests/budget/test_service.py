@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import pytest
 
@@ -119,6 +120,46 @@ async def test_reservation_lifecycle_no_refund_on_timeout():
     # 800 token iade edilmediği için kalan bütçe 200'dür; 500 daha isterse 429 almalı
     with pytest.raises(TokenBudgetExceeded):
         await svc.reserve("user-timeout", amount=500)
+
+
+@pytest.mark.anyio
+async def test_reservation_lifecycle_no_refund_on_asyncio_timeout():
+    """Gerçek asyncio.timeout içinde zaman aşımına uğrayan rezervasyon iade edilmez."""
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=1000,
+        per_minute_limit=1000,
+        clock=lambda: FIXED_NOW,
+    )
+
+    with pytest.raises(TimeoutError):
+        async with await svc.reserve("user-async-to", amount=800):
+            async with asyncio.timeout(0.01):
+                await asyncio.sleep(0.1)
+
+    # 800 token iade edilmedi, kalan bütçe 200; 500 daha isterse 429 almalı
+    with pytest.raises(TokenBudgetExceeded):
+        await svc.reserve("user-async-to", amount=500)
+
+
+@pytest.mark.anyio
+async def test_reservation_lifecycle_no_refund_on_cancelled_error():
+    """CancelledError durumunda da (timeout sırasında iç görev iptali) rezervasyon iade edilmez."""
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=1000,
+        per_minute_limit=1000,
+        clock=lambda: FIXED_NOW,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        async with await svc.reserve("user-cancel", amount=800):
+            raise asyncio.CancelledError()
+
+    with pytest.raises(TokenBudgetExceeded):
+        await svc.reserve("user-cancel", amount=500)
 
 
 @pytest.mark.anyio

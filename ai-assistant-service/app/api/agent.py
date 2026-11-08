@@ -96,22 +96,23 @@ async def chat(
     try:
         # 1. Eşzamanlılık sınırı (ConcurrencyLimiter): Slot doluysa fast-fail 503
         async with limiter.slot():
-            # 2. Tur zaman aşımı (Turn Timeout): En fazla 60 sn
-            async with asyncio.timeout(settings.AGENT_TURN_TIMEOUT_SEC):
-                # 3. Token Bütçesi (Reserve & Reconcile): Bütçe aktifse peşin rezerve et
-                if budget is not None:
-                    tokenizer = getattr(getattr(req.app.state, "rag_answer_service", None), "tokenizer", None)
-                    estimated_tokens = estimate_chat_tokens(
-                        request.message,
-                        tokenizer,
-                        overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
-                        max_output=settings.AGENT_MAX_OUTPUT_TOKENS,
-                        steps=min(2, max(1, settings.AGENT_MAX_STEPS)),
-                    )
-                    async with await budget.reserve(ctx.user_id, estimated_tokens) as reservation:
+            # 2. Token Bütçesi (Reserve & Reconcile): Bütçe aktifse peşin rezerve et
+            if budget is not None:
+                tokenizer = getattr(getattr(req.app.state, "rag_answer_service", None), "tokenizer", None)
+                estimated_tokens = estimate_chat_tokens(
+                    request.message,
+                    tokenizer,
+                    overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
+                    max_output=settings.AGENT_MAX_OUTPUT_TOKENS,
+                    steps=min(2, max(1, settings.AGENT_MAX_STEPS)),
+                )
+                async with await budget.reserve(ctx.user_id, estimated_tokens) as reservation:
+                    # 3. Tur zaman aşımı (Turn Timeout): En fazla 60 sn
+                    async with asyncio.timeout(settings.AGENT_TURN_TIMEOUT_SEC):
                         reply = await service.chat(request.message, ctx)
                         reservation.record(reply.usage)
-                else:
+            else:
+                async with asyncio.timeout(settings.AGENT_TURN_TIMEOUT_SEC):
                     reply = await service.chat(request.message, ctx)
     except (asyncio.TimeoutError, TimeoutError):
         # Kural: Loglara soru, mesaj veya kişisel veri ASLA yazılmaz! Yalnızca timeout durumu loglanır.
@@ -184,10 +185,13 @@ async def confirm_action(
         exec_res = await executor.execute(action, ctx)
     except Exception as exc:
         logger.exception("Action execution failed: %s", exc)
-        if hasattr(store, "restore"):
-            store.restore(action)
-        else:
-            store.create(action)
+        try:
+            if hasattr(store, "restore"):
+                store.restore(action)
+            else:
+                store.create(action)
+        except Exception as store_exc:
+            logger.warning("Failed to restore action after execution failure: %s", store_exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="İşlem yürütülürken bir hata oluştu, lütfen kısa süre sonra tekrar deneyin.",
