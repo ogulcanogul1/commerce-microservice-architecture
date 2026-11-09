@@ -633,7 +633,7 @@ Değerler şu hiyerarşiye göre çözümlenir (en üstteki kazanır):
 ### Canlı Yenileme (`POST /actuator/refresh`)
 Config Server üzerinde yapılan değişiklikler, Java servislerindeki Actuator standardına uygun olarak:
 ```powershell
-curl -X POST http://localhost:8089/actuator/refresh
+curl -X POST -H "X-Gateway-Secret: dgl-internal-gateway-secret-token-2026" http://localhost:8089/actuator/refresh
 ```
 çağrısıyla servise bildirilir. Yanıt olarak değişen alanların listesi (ör. `["agent.max_steps"]`) döner ve anında uygulanır.
 

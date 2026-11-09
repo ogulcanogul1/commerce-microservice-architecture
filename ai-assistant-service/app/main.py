@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Any, Callable
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from qdrant_client import QdrantClient
 
 from app.agent.executor import ActionExecutor
@@ -34,6 +34,7 @@ from app.clients.shipping import ShippingClient
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
 from app.core.limits import BodySizeLimitMiddleware, ConcurrencyLimiter
+from app.core.security import require_gateway_secret
 from app.core.startup_checks import enforce_security_startup
 from app.budget.service import TokenBudgetService
 from app.budget.store import BudgetStore, InMemoryBudgetStore
@@ -615,8 +616,8 @@ register_problem_details_handlers(app)
 
 # Ana API yönlendiricisini (Router) dahil et (/agent, /api/v1/chat, /rag)
 app.include_router(api_router)
-# Actuator canlı yenileme yönlendiricisini dahil et (/actuator/refresh)
-app.include_router(actuator_router)
+# Actuator canlı yenileme yönlendiricisini dahil et (/actuator/refresh); gateway secret zorunlu
+app.include_router(actuator_router, dependencies=[Depends(require_gateway_secret)])
 
 
 @app.get("/health")

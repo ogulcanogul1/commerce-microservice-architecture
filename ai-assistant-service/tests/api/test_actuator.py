@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.main import app
 from app.runtimeconfig.client import ConfigServerClient
 from app.runtimeconfig.holder import RuntimeConfigHolder
@@ -128,3 +128,35 @@ def test_health_endpoint_exposes_config_metadata(test_client: TestClient) -> Non
         assert cfg["pinned"] == ["agent.max_steps"]
     finally:
         app.state.runtime_config = old_holder
+
+
+
+def test_refresh_without_secret_is_forbidden(test_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Güvenlik devredeyken secret header'ı olmadan POST /actuator/refresh 403 dönmelidir."""
+    monkeypatch.setattr(settings, "GATEWAY_SECURITY_ENABLED", True)
+    resp = test_client.post("/actuator/refresh")
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Doğrudan erişim engellendi."
+
+
+def test_refresh_with_valid_secret_passes_security(
+    test_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Doğru X-Gateway-Secret ile istek güvenlik bariyerini geçer (403 dönmez)."""
+    monkeypatch.setattr(settings, "GATEWAY_SECURITY_ENABLED", True)
+    resp = test_client.post(
+        "/actuator/refresh",
+        headers={"X-Gateway-Secret": settings.GATEWAY_INTERNAL_SECRET},
+    )
+    # Config server istemcisi bağlı olmadığından 503 beklenir, ancak 403 olmamalıdır
+    assert resp.status_code != 403
+
+
+def test_health_does_not_require_secret(
+    test_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Güvenlik devredeyken bile GET /health kimliksiz 200 dönmelidir."""
+    monkeypatch.setattr(settings, "GATEWAY_SECURITY_ENABLED", True)
+    resp = test_client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "UP"
