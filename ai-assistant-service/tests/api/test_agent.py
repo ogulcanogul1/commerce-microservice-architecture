@@ -13,7 +13,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import uuid
 import httpx
@@ -825,3 +825,92 @@ def test_chat_mid_turn_runtime_change_does_not_affect_ongoing_turn(test_client, 
     assert resp2.status_code == 200
     assert captured_second[0].max_steps == 6
 
+
+
+
+def test_action_confirm_and_reject_emit_audit_records(
+    test_client: TestClient, audit_records: list[dict[str, Any]]
+) -> None:
+    """Action confirm ve reject çağrılarının audit izi bıraktığını ve action_id sızdırmadığını doğrular."""
+    store = InMemoryPendingActionStore()
+    mock_order = httpx.MockTransport(
+        lambda r: httpx.Response(
+            200,
+            json={
+                "id": "1001",
+                "orderNumber": "ORD-AUDIT-1",
+                "customerId": USER_A,
+                "status": "CONFIRMED",
+                "totalAmount": 100.0,
+                "items": [],
+                "createdAt": "2026-11-01T10:00:00Z",
+                "updatedAt": "2026-11-01T10:00:00Z",
+            },
+        )
+    )
+    order_client = OrderClient(base_url="http://order-test", transport=mock_order)
+    executor = ActionExecutor(order_client=order_client, ticket_publisher=LoggingTicketPublisher())
+
+    app.state.action_store = store
+    app.state.action_executor = executor
+
+    secret_action_id = "test-secret-action-id-12345678"
+    action = PendingAction(
+        action_id=secret_action_id,
+        user_id=USER_A,
+        action_type="cancel_order",
+        params={"order_id": "1001", "order_number": "ORD-AUDIT-1", "reason": "İptal"},
+        summary="İptal onayı?",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    store.create(action)
+
+    # 1. Başarılı confirm
+    resp = test_client.post(
+        f"/agent/actions/{secret_action_id}/confirm",
+        headers={"X-User-Id": USER_A, "X-Correlation-Id": "c-confirm-1"},
+    )
+    assert resp.status_code == 200
+
+    confirm_audits = [r for r in audit_records if r.get("event") == "action_confirm"]
+    assert len(confirm_audits) == 1
+    assert confirm_audits[0]["outcome"] == "executed"
+    assert confirm_audits[0]["action_type"] == "cancel_order"
+    assert confirm_audits[0]["user_id"] == USER_A
+
+    # secret_action_id audit çıktısında ASLA geçmemeli
+    serialized = json.dumps(audit_records)
+    assert secret_action_id not in serialized
+
+    # 2. Olmayan / tüketilmiş action confirm -> 404
+    resp_404 = test_client.post(
+        f"/agent/actions/{secret_action_id}/confirm",
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp_404.status_code == 404
+    assert audit_records[-1]["event"] == "action_confirm"
+    assert audit_records[-1]["outcome"] == "not_found"
+
+    # 3. Reject işlemi
+    action_reject_id = "test-reject-action-id-87654321"
+    store.create(
+        PendingAction(
+            action_id=action_reject_id,
+            user_id=USER_A,
+            action_type="cancel_order",
+            params={"order_id": "1001", "order_number": "ORD-AUDIT-1"},
+            summary="İptal onayı?",
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        )
+    )
+
+    resp_reject = test_client.post(
+        f"/agent/actions/{action_reject_id}/reject",
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp_reject.status_code == 200
+    reject_audits = [r for r in audit_records if r.get("event") == "action_reject"]
+    assert len(reject_audits) == 1
+    assert reject_audits[0]["outcome"] == "rejected"

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock
 import pytest
 from datetime import datetime, timezone
@@ -84,7 +85,7 @@ async def test_executor_cancel_order_already_cancelled_skips_post() -> None:
 
 
 @pytest.mark.anyio
-async def test_executor_cancel_order_ownership_mismatch() -> None:
+async def test_executor_cancel_order_ownership_mismatch(audit_records: list[dict[str, Any]]) -> None:
     mock_order = AsyncMock()
     # Farklı müşterinin siparişi
     mock_order.get_order_by_number.return_value = _make_order(customer_id="other-user")
@@ -108,6 +109,12 @@ async def test_executor_cancel_order_ownership_mismatch() -> None:
     assert result.ok is False
     assert "yetkiniz yok" in result.message
     mock_order.cancel_order.assert_not_called()
+
+    ownership_audits = [r for r in audit_records if r.get("event") == "ownership_check"]
+    assert len(ownership_audits) == 1
+    assert ownership_audits[0]["outcome"] == "ownership_mismatch"
+    assert ownership_audits[0]["action_type"] == "cancel_order"
+    assert ownership_audits[0]["user_id"] == "user-1"
 
 
 @pytest.mark.anyio

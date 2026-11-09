@@ -16,6 +16,7 @@ from app.api.answer import CitationResponse
 from app.budget.deps import get_token_budget
 from app.budget.estimator import estimate_chat_tokens
 from app.budget.service import TokenBudgetService
+from app.core.audit import write_audit
 from app.core.limits import ConcurrencyLimiter, get_ai_limiter
 from app.core.security import RequestContext, get_request_context
 from app.runtimeconfig.deps import get_runtime_settings
@@ -180,11 +181,13 @@ async def confirm_action(
         action = await asyncio.to_thread(store.consume, action_id, ctx.user_id)
     except PendingActionStoreError as exc:
         logger.exception("Pending action store consume failed: %s", exc)
+        write_audit("action_confirm", user_id=ctx.user_id, correlation_id=ctx.correlation_id, outcome="unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="İşlem servisi geçici olarak kullanılamıyor, lütfen tekrar deneyin.",
         ) from exc
     if action is None:
+        write_audit("action_confirm", user_id=ctx.user_id, correlation_id=ctx.correlation_id, outcome="not_found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bekleyen işlem bulunamadı ya da süresi doldu.",
@@ -194,6 +197,13 @@ async def confirm_action(
         exec_res = await executor.execute(action, ctx)
     except Exception as exc:
         logger.exception("Action execution failed: %s", exc)
+        write_audit(
+            "action_confirm",
+            user_id=ctx.user_id,
+            correlation_id=ctx.correlation_id,
+            outcome="error",
+            action_type=action.action_type,
+        )
         restored = False
         try:
             if hasattr(store, "restore"):
@@ -214,6 +224,14 @@ async def confirm_action(
             detail=detail_msg,
         ) from exc
 
+    outcome = "executed" if exec_res.ok else "failed"
+    write_audit(
+        "action_confirm",
+        user_id=ctx.user_id,
+        correlation_id=ctx.correlation_id,
+        outcome=outcome,
+        action_type=action.action_type,
+    )
     return ActionResultResponse(
         status="executed" if exec_res.ok else "failed",
         message=exec_res.message,
@@ -238,16 +256,19 @@ async def reject_action(
         discarded = await asyncio.to_thread(store.discard, action_id, ctx.user_id)
     except PendingActionStoreError as exc:
         logger.exception("Pending action store discard failed: %s", exc)
+        write_audit("action_reject", user_id=ctx.user_id, correlation_id=ctx.correlation_id, outcome="unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="İşlem servisi geçici olarak kullanılamıyor, lütfen tekrar deneyin.",
         ) from exc
     if not discarded:
+        write_audit("action_reject", user_id=ctx.user_id, correlation_id=ctx.correlation_id, outcome="not_found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bekleyen işlem bulunamadı ya da süresi doldu.",
         )
 
+    write_audit("action_reject", user_id=ctx.user_id, correlation_id=ctx.correlation_id, outcome="rejected")
     return ActionResultResponse(
         status="rejected",
         message="İşlem iptal edildi.",

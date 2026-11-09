@@ -11,6 +11,7 @@ from app.agent.models import ExecutionResult, PendingAction
 from app.agent.tickets import TicketPublisher, build_ticket_event
 from app.clients.base import DownstreamBadRequest
 from app.clients.order import OrderClient
+from app.core.audit import OUTCOME_OWNERSHIP_MISMATCH, record_denied_access, write_audit
 from app.core.security import RequestContext
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,14 @@ class ActionExecutor:
 
             # Sahiplik kontrolü
             if current_order.customer_id.lower() != ctx.user_id.lower():
+                write_audit(
+                    "ownership_check",
+                    user_id=ctx.user_id,
+                    correlation_id=ctx.correlation_id,
+                    outcome=OUTCOME_OWNERSHIP_MISMATCH,
+                    action_type="cancel_order",
+                )
+                record_denied_access(ctx.user_id, ctx.correlation_id)
                 return ExecutionResult(
                     ok=False,
                     message="Bu sipariş için işlem yapma yetkiniz yok.",
