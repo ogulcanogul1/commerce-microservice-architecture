@@ -1,0 +1,28 @@
+# ==============================================================================
+# AI Assistant Service - Runtime Configuration (canlı değişebilen ayarlar)
+# Python servisi bu dosyadan YALNIZCA "ai." önekli anahtarları okur.
+# Buraya bağlantı/başlangıç ayarı (Redis, Kafka, port, API key) YAZMA: servis tüm yayını reddeder.
+# Buraya prompt metni YAZMA: prompt kodla sürümlenir ve eval kapısından geçer.
+# Tur timeout tavanları gateway TimeLimiter'a bağlı (chat 70s -> en fazla 65, rag 55s -> en fazla 50).
+# ==============================================================================
+
+ai:
+  agent:
+    max-steps: 4
+    llm-timeout-sec: 30.0
+    turn-timeout-sec: 60.0
+    max-output-tokens: 500
+    temperature: 0.0
+  rag:
+    turn-timeout-sec: 45.0
+    top-k: 5
+    max-attempts: 2
+    max-output-tokens: 400
+    llm-timeout-sec: 30.0
+    temperature: 0.0
+    context-token-budget: 1500
+  budget:
+    daily-limit: 50000
+    per-minute-limit: 8000
+    provider-tpm-limit: 0
+    prompt-overhead: 1500

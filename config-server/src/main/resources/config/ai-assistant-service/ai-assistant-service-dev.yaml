@@ -1,0 +1,8 @@
+# ==============================================================================
+# AI Assistant Service - Development Overrides
+# Compose'ta etkin profil 'dev' olduğu için bu dosya temel dosyayı ezer.
+# Örnek (bilerek kapalı; DEBUG logları kullanıcı içeriği sızdırabilir mi önce kontrol et):
+# ai:
+#   logging:
+#     level: DEBUG
+# ==============================================================================
