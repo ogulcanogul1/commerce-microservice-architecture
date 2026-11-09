@@ -1,0 +1,9 @@
+# Yalnızca geliştirme: config-server yaml'larını jar yerine diskten okur.
+# Dosyayı düzenle -> Config Server sonraki istekte yeni değeri döner -> Python actuator refresh veya yeniden başlatmada alır.
+# Kullanım: docker compose -f docker-compose.yml -f docker-compose.apps.yml -f docker-compose.config-dev.yml up -d
+services:
+  config-server:
+    volumes:
+      - ./config-server/src/main/resources/config:/config-repo:ro
+    environment:
+      - SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCHLOCATIONS=file:/config-repo/{application},file:/config-repo/common,file:/config-repo
