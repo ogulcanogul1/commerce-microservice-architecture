@@ -34,6 +34,7 @@ from app.clients.shipping import ShippingClient
 from app.core.config import settings
 from app.core.errors import register_problem_details_handlers
 from app.core.limits import BodySizeLimitMiddleware, ConcurrencyLimiter
+from app.core.startup_checks import enforce_security_startup
 from app.budget.service import TokenBudgetService
 from app.budget.store import BudgetStore, InMemoryBudgetStore
 from app.discovery.client import EurekaClient
@@ -518,6 +519,14 @@ async def lifespan(app: FastAPI):
     Tüm alt bileşenleri sıralı ve kontrollü bir şekilde başlatıp `app.state`'e ekler.
     Uygulama kapatıldığında (Ctrl+C veya SIGTERM) açık soketleri ve bağlantıları temizler.
     """
+    # -1. Adım: Güvensiz yapılandırma varsa (prod'da) servis hiç açılmasın
+    enforce_security_startup(
+        environment=settings.ENVIRONMENT,
+        gateway_security_enabled=settings.GATEWAY_SECURITY_ENABLED,
+        gateway_secret=settings.GATEWAY_INTERNAL_SECRET,
+        ticket_publisher=settings.TICKET_PUBLISHER,
+    )
+
     # 0. Adım: Runtime Konfigürasyon (Config Server) Başlatma
     runtime_config, config_client = await _init_runtime_config()
 
