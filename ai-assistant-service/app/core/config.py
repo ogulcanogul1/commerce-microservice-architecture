@@ -70,6 +70,32 @@ class Settings(BaseSettings):
     EUREKA_DRAIN_SEC: int = Field(default=20, ge=0, description="SIGTERM sonrası deregister bekleme süresi (sn)")
     EUREKA_REQUEST_TIMEOUT_SEC: float = Field(default=3.0, gt=0, description="Eureka REST çağrısı timeout (sn)")
 
+    # Config Server Configuration
+    CONFIG_SERVER_ENABLED: bool = Field(
+        default=False, description="Config Server entegrasyonunun aktif olup olmaması (False: ağ çağrısı yok)"
+    )
+    CONFIG_SERVER_URL: str = Field(
+        default="http://localhost:8888/", description="Spring Cloud Config Server temel adresi (sonunda / ile)"
+    )
+    CONFIG_PROFILE: Literal["dev", "qa", "prod", "default", "test"] = Field(
+        default="dev", description="Config Server profili (dev/qa/prod; Java servisleriyle uyumlu varsayılan dev)"
+    )
+    CONFIG_POLL_INTERVAL_SEC: float = Field(
+        default=30.0, ge=5.0, description="Config Server'ı sorgulama (poll) periyodu (sn)"
+    )
+    CONFIG_POLL_JITTER_RATIO: float = Field(
+        default=0.2, ge=0.0, le=0.5, description="Poll periyoduna eklenecek rastgele sapma oranı (+-%20)"
+    )
+    CONFIG_REQUEST_TIMEOUT_SEC: float = Field(
+        default=3.0, gt=0.0, description="Config Server tekil HTTP GET zaman aşımı (sn)"
+    )
+    CONFIG_INITIAL_ATTEMPTS: int = Field(
+        default=3, ge=1, le=10, description="Açılışta Config Server'a ilk bağlanma deneme sayısı"
+    )
+    CONFIG_FAIL_FAST: bool = Field(
+        default=False, description="True ise açılışta Config Server'a ulaşılamazsa servis ayağa kalkmaz"
+    )
+
     # Redis Configuration
     REDIS_ENABLED: bool = False
     REDIS_HOST: str = "localhost"

@@ -1,0 +1,52 @@
+import pytest
+from pydantic import ValidationError
+
+from app.core.config import Settings, settings
+
+
+def test_config_server_default_settings() -> None:
+    """Config Server için tanımlanan başlangıç ayarlarının varsayılan değerlerini doğrular."""
+    assert settings.CONFIG_SERVER_ENABLED is False
+    assert settings.CONFIG_SERVER_URL == "http://localhost:8888/"
+    assert settings.CONFIG_PROFILE == "dev"
+    assert settings.CONFIG_POLL_INTERVAL_SEC == 30.0
+    assert settings.CONFIG_POLL_JITTER_RATIO == 0.2
+    assert settings.CONFIG_REQUEST_TIMEOUT_SEC == 3.0
+    assert settings.CONFIG_INITIAL_ATTEMPTS == 3
+    assert settings.CONFIG_FAIL_FAST is False
+
+
+def test_config_server_jitter_ratio_validation() -> None:
+    """CONFIG_POLL_JITTER_RATIO 0.0 ile 0.5 aralığı dışında ValidationError fırlatmalıdır."""
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, CONFIG_POLL_JITTER_RATIO=0.9)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, CONFIG_POLL_JITTER_RATIO=-0.1)
+
+
+def test_config_server_poll_interval_validation() -> None:
+    """CONFIG_POLL_INTERVAL_SEC 5.0 saniyenin altında ise ValidationError fırlatmalıdır."""
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, CONFIG_POLL_INTERVAL_SEC=2.0)
+
+
+def test_config_server_profile_validation() -> None:
+    """CONFIG_PROFILE yalnızca dev, qa, prod, default, test değerlerini alabilir."""
+    # Geçerli profiller
+    for profile in ["dev", "qa", "prod", "default", "test"]:
+        s = Settings(_env_file=None, CONFIG_PROFILE=profile)
+        assert s.CONFIG_PROFILE == profile
+
+    # Geçersiz profil adı
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, CONFIG_PROFILE="invalid_profile")
+
+
+def test_config_server_initial_attempts_validation() -> None:
+    """CONFIG_INITIAL_ATTEMPTS 1 ile 10 arasında olmalıdır."""
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, CONFIG_INITIAL_ATTEMPTS=0)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, CONFIG_INITIAL_ATTEMPTS=11)
