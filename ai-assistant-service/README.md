@@ -578,3 +578,67 @@ uv run python -m app.rag.evaluation.generation.gate --rerank
 | `RAG_RERANK_FAIL_OPEN` | `true` | Üretimde hata durumunda hibrit ilk k adayı dön. Eval için `false` (fail-closed). |
 | `COHERE_API_KEY` | `""` | Cohere sağlayıcısı için API anahtarı (cross_encoder veya fake için gerekmez) |
 
+
+
+---
+
+## 15. Spring Cloud Config Server Entegrasyonu ve Canlı Runtime Ayarları
+
+Servis, Spring Cloud Config Server (`http://config-server:8888/`) ile entegredir. Konfigürasyon iki katmanlı olarak yönetilir:
+1. **`Settings` (Env / Açılış):** Bağlantı havuzları, portlar ve API anahtarları gibi yalnızca başlangıçta okunan statik ayarlar.
+2. **`RuntimeSettings` (Config Server / Canlı):** Açılışta Config Server'dan yüklenen ve çalışma zamanında `POST /actuator/refresh` ile kesintisiz güncellenebilen dinamik ayarlar.
+
+### Config Server Yapılandırma Parametreleri
+
+| Ortam Değişkeni | Tip | Varsayılan | Açıklama |
+| :--- | :--- | :--- | :--- |
+| `CONFIG_SERVER_ENABLED` | bool | `false` | Config Server istemcisini aktif/pasif eder (yerelde env fallback) |
+| `CONFIG_SERVER_URL` | str | `http://config-server:8888/` | Config Server kök adresi |
+| `CONFIG_PROFILE` | str | `dev` | Aktif profil (`dev`, `qa`, `prod`, `default`, `test`) |
+| `CONFIG_FAIL_FAST` | bool | `false` | `true` iken açılışta Config Server'a ulaşılamazsa servis başlamaz |
+| `CONFIG_INITIAL_ATTEMPTS` | int | `3` | Açılışta üstel geri çekilme ile deneme sayısı |
+| `CONFIG_REQUEST_TIMEOUT_SEC` | float | `3.0` | Config Server HTTP istek zaman aşımı |
+
+### Canlı Değiştirilebilir Alanlar (`RuntimeSettings`)
+
+Tüm runtime anahtarları Config Server YAML dosyalarında `ai.` önekiyle tanımlanır:
+
+| Config Server Anahtarı | Tip | Varsayılan | Açıklama / Kısıt |
+| :--- | :--- | :--- | :--- |
+| `ai.agent.max-steps` | int | `4` | Agent maksimum ReAct tur adımı (1..10) |
+| `ai.agent.turn-timeout-sec` | float | `60.0` | Agent tur zaman aşımı bütçesi (Gateway tavanı: `<= 65.0s`) |
+| `ai.agent.llm-timeout-sec` | float | `30.0` | Tekil LLM çağrısı zaman aşımı (`<= turn_timeout_sec`) |
+| `ai.agent.temperature` | float | `0.7` | Agent LLM yaratıcılık katsayısı (0.0..1.0) |
+| `ai.agent.max-output-tokens` | int | `1000` | Agent yanıt maksimum token sınırı (50..4096) |
+| `ai.rag.top-k` | int | `5` | RAG getirilecek doküman sayısı (1..20) |
+| `ai.rag.turn-timeout-sec` | float | `45.0` | RAG soru-cevap zaman aşımı bütçesi (Gateway tavanı: `<= 50.0s`) |
+| `ai.rag.llm-timeout-sec` | float | `30.0` | RAG tekil LLM çağrısı zaman aşımı (`<= turn_timeout_sec`) |
+| `ai.rag.temperature` | float | `0.0` | RAG LLM sıcaklık değeri (0.0..1.0) |
+| `ai.rag.max-output-tokens` | int | `400` | RAG maksimum token sınırı (50..2000) |
+| `ai.rag.context-token-budget`| int | `1500` | Doküman bağlam token bütçesi (ge=100) |
+| `ai.budget.daily-limit` | int | `50000` | Kullanıcı günlük token kotası (ge=1) |
+| `ai.budget.per-minute-limit` | int | `8000` | Kullanıcı dakikalık token kotası (ge=1) |
+| `ai.budget.provider-tpm-limit`| int | `100000`| Sağlayıcı dakikalık token kotası (ge=1) |
+| `ai.budget.prompt-overhead` | int | `800` | Bütçe tahmini sabit prompt payı (ge=0) |
+| `ai.logging.level` | str | `null` | Dinamik log seviyesi (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+
+### Öncelik Sırası (Config Precedence)
+Değerler şu hiyerarşiye göre çözümlenir (en üstteki kazanır):
+1. **Yerel Ortam Değişkenleri (Pinned / Sabitlenmiş):** `.env` veya docker-compose ile verilmiş olan alanlar sabitlenir; Config Server bu alanları ezemez.
+2. **Profile Özgü Config Server YAML:** `ai-assistant-service-{profile}.yaml` (ör. `-dev.yaml`).
+3. **Servis Varsayılan Config Server YAML:** `ai-assistant-service.yaml`.
+4. **Ortak Config Server YAML:** `application.yaml`.
+5. **Uygulama İçi Varsayılanlar:** `app/core/config.py` başlangıç değerleri.
+
+### Canlı Yenileme (`POST /actuator/refresh`)
+Config Server üzerinde yapılan değişiklikler, Java servislerindeki Actuator standardına uygun olarak:
+```powershell
+curl -X POST http://localhost:8089/actuator/refresh
+```
+çağrısıyla servise bildirilir. Yanıt olarak değişen alanların listesi (ör. `["agent.max_steps"]`) döner ve anında uygulanır.
+
+### Geliştirme Ortamında Canlı YAML Düzenleme
+Docker ile çalışırken Config Server'ın JAR'ını yeniden derlemeden diskteki YAML dosyalarını canlı okuması için:
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.apps.yml -f docker-compose.config-dev.yml up -d
+```
