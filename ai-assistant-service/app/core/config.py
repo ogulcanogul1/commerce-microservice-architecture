@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     GATEWAY_INTERNAL_SECRET: str = "dgl-internal-gateway-secret-token-2026"
     GATEWAY_SECURITY_ENABLED: bool = True
 
+    # Audit & Enumeration Alarm Configuration
+    AUDIT_DENY_THRESHOLD: int = 5  # Pencere içinde bu sayıda reddedilen erişim → enumeration alarmı
+    AUDIT_DENY_WINDOW_SEC: float = 60.0  # Reddedilen erişimlerin sayıldığı pencere (saniye)
+
     # Eureka Discovery Configuration
     EUREKA_ENABLED: bool = False
     EUREKA_SERVER_URL: str = "http://localhost:8761/eureka/"

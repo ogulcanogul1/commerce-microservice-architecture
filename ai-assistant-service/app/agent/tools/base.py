@@ -32,6 +32,7 @@ class ToolResult(BaseModel):
     error: str | None = None
     terminal_reply: AgentReply | None = None
     pending_action: PendingAction | None = None
+    reason: str | None = None  # İç sonuç kodu (audit için). ASLA modele/müşteriye gösterilmez
 
 
 class Tool(ABC):

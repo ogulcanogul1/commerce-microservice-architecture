@@ -53,3 +53,27 @@ def runtime_override():
 
     yield _apply
     app.state.runtime_config = old
+
+
+
+@pytest.fixture
+def audit_records():
+    """Audit logger'a geçici handler takıp yazılan JSON kayıtlarını sözlük listesi olarak toplar."""
+    import json
+    import logging
+
+    from app.core.audit import get_audit_logger
+
+    records: list[dict[str, Any]] = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(json.loads(record.getMessage()))
+
+    audit_logger = get_audit_logger()
+    handler = _Collector()
+    audit_logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        audit_logger.removeHandler(handler)
