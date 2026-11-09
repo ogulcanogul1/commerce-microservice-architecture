@@ -110,3 +110,7 @@
   - **3 passed**, 0 failure (Profil öncelik sözleşme testi dahil).
 - **Docker Doğrulaması:**
   - Yerel Docker daemon çalışmadığından canlı konteyner testi "doğrulanmadı" olarak işaretlendi; tüm birim/entegrasyon testleri in-memory test altyapısıyla eksiksiz doğrulandı.
+- **Bilinen Sınırlamalar & Mimari Notlar:**
+  - Yenileme modeli açılışta yükleme + `POST /actuator/refresh` şeklinde tasarlandığından, açılış anında Config Server kapalıysa servis env ayarlarıyla başlar; Config Server sonradan açılsa bile elle refresh tetiklenene kadar bu durum sürer (Java servisleriyle aynı davranış).
+  - `/actuator/refresh` endpoint'i Docker dahili ağıyla sınırlıdır ve `asyncio.Lock` ile eşzamanlı isteklerden korunur; hata anında 503 fırlatarak başarısızlığı şeffafça bildirir.
+
