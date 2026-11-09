@@ -13,4 +13,8 @@ Tüm mimari kurallar, araç tanımları, güvenlik politikaları ve port dağıl
 - **Eureka REST ve Graceful Drain**: Eureka kaydı harici kütüphane yerine `httpx` tabanlı `app/discovery/` ile yönetilir; SIGTERM anında önce Eureka'dan deregister olur ve uçuştaki istekleri tamamlamak için 20 sn drain süresi bekler.
 - **Zaman Aşımı Sıralaması ve Gateway Retry Yasağı**: Gateway seviyesinde AI rotalarında `Retry` filtresi KESİNLİKLE bulunmaz (çift token harcamasını ve aksiyon tekrarlarını önlemek için). Zaman aşımı hiyerarşisi: İstemci (~90s) > Gateway Read Timeout (80s) > Gateway TimeLimiter (70s/55s/20s/10s) > Python Tur Timeout (60s/45s) > Tekil LLM çağrısı (30s).
 - **Ölçekleme ve Worker Kuralı**: Container başına kesinlikle tek bir Uvicorn worker'ı (`--workers 1`) çalışır. Ölçekleme container replikasyonu ile (`docker compose up --scale ai-assistant-service=N`) sağlanır.
+- **Konfigürasyon İki Katman**: `Settings` (açılış/env) ve `RuntimeSettings` (Config Server/canlı).
+- **Tur Başı Snapshot**: Endpoint'lerde `get_runtime_settings` ile tek snapshot alınır, servislere parametreyle (`limits`, `config`) geçirilir; tur ortasında config değişse bile devam eden istek etkilenmez.
+- **Secret ve Prompt Yasağı**: Config Server'a secret veya prompt girmez; tavan değerler Gateway TimeLimiter'a (`agent <= 65s`, `rag <= 50s`) bağlıdır.
+- **Önce Kod, Sonra Config**: Yeni bir runtime anahtarı eklerken `extra="forbid"` nedeniyle önce kod deploy edilir, sonra YAML güncellenir.
 - **Birim Testleri**: Ağ veya Docker gerektirmeden `uv run pytest -m "not integration"` ile çalışır.
