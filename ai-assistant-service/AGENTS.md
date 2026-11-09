@@ -33,3 +33,14 @@
 - **Fail-Open vs Fail-Closed:** Üretim ortamında reranker arızası veya zaman aşımı kullanıcı deneyimini bozamaz (`RAG_RERANK_FAIL_OPEN=True` ile ilk $k$ hibrit sonuca dönülür). Değerlendirme (eval) ve test modlarında ise sessiz kalite bozulmalarını gizlememek için kesinlikle fail-closed çalışır (`fail_open=False`).
 - **Abstain Gate İzolasyonu:** `RAG_MIN_DENSE_SCORE` doğrudan dense arama benzerlik skoruna bakar. Reranker skorları modeller arasında farklı ölçeklerde (logit, olasılık vb.) olduğu için çekinme (abstain) karar mekanizmasına karıştırılamaz.
 - **Güvenlik ve Gizlilik:** Cohere veya dış reranker sağlayıcılarının API anahtarları asla loglanamaz veya hata mesajlarında sızdırılamaz.
+
+
+## 6. Konfigürasyon Mimarisi (Spring Cloud Config & Runtime Ayarları)
+- **İki Katmanlı Yapı:**
+  1. `Settings` (`app/core/config.py`): Yalnızca açılışta ortam değişkenlerinden (`.env`) okunan, container restart gerektiren sabit ayarlar (bağlantı havuzları, secret'lar, portlar, API anahtarları).
+  2. `RuntimeSettings` (`app/runtimeconfig/`): Spring Cloud Config Server üzerinden açılışta yüklenen ve çalışma zamanında kesintisiz (`POST /actuator/refresh`) güncellenebilen dinamik ayarlar (agent adımları, timeout bütçeleri, log seviyesi, bütçe kotaları).
+- **Canlı Konfigürasyon Kuralları:**
+  1. **Gizli Bilgi ve Prompt Yasağı:** Secret, şifre, API anahtarı veya sistem promptları asla Config Server'a veya `RuntimeSettings`'e konulamaz.
+  2. **İstek Başına Snapshot:** Tüm servis ve endpoint'ler konfigürasyonu doğrudan `RuntimeConfigHolder.current` üzerinden serbestçe okuyamaz. `get_runtime_settings(request)` dependency'si üzerinden her turun başında değiştirilemez (frozen) bir snapshot alınır ve fonksiyonlara parametre olarak (`limits=runtime.agent`, `config=gen_config`) aktarılır. Tur ortasında refresh çağrılsa bile devam eden turun kuralları bozulmaz.
+  3. **Gateway Invariant Tavanları:** Python tur zaman aşımı bütçeleri API Gateway TimeLimiter tavanlarını aşamaz (`agent.turn_timeout_sec <= 65.0`, `rag.turn_timeout_sec <= 50.0`). Bu tavanları aşan Config Server değerleri Pydantic doğrulamasıyla reddedilir ve eski geçerli konfigürasyon korunur.
+  4. **Şema Genişletme Sırası:** Config Server'a yeni bir anahtar ekleneceği zaman, `extra="forbid"` kuralı nedeniyle **önce Python kodu deploy edilir, ardından Config Server YAML dosyası güncellenir**. Aksi takdirde eski kod bilinmeyen anahtarı reddeder.
