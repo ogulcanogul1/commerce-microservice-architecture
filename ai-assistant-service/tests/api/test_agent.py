@@ -658,15 +658,15 @@ def test_confirm_action_restore_error_still_returns_503(test_client: TestClient)
     assert "oturum kurtarılamadı" in resp.json()["detail"]
 
 
-def test_agent_chat_turn_timeout_returns_503(test_client, monkeypatch):
+def test_agent_chat_turn_timeout_returns_503(test_client, runtime_override):
     """AGENT_TURN_TIMEOUT_SEC aşıldığında 503 ve zaman aşımı mesajı dönmelidir."""
     class SlowAgentService:
-        async def chat(self, msg, ctx):
+        async def chat(self, msg, ctx, **kwargs):
             await asyncio.sleep(0.5)
             raise RuntimeError("Should not be reached")
 
     app.state.agent_service = SlowAgentService()
-    monkeypatch.setattr(settings, "AGENT_TURN_TIMEOUT_SEC", 0.05)
+    runtime_override(agent={"turn_timeout_sec": 0.05, "llm_timeout_sec": 0.05})
 
     resp = test_client.post(
         "/agent/chat",
@@ -756,3 +756,71 @@ def test_chat_with_budget_does_not_exceed_per_minute_limit(test_client):
         assert resp.json()["reply"] == "Merhaba, nasıl yardımcı olabilirim?"
     finally:
         app.state.token_budget = None
+
+
+def test_chat_passes_runtime_limits_to_agent_service(test_client, runtime_override):
+    """Runtime snapshot içindeki agent ayarları servis chat metoduna limits olarak aktarılır."""
+    captured_limits = []
+
+    class SpyAgentService:
+        async def chat(self, message, ctx, *, limits=None):
+            captured_limits.append(limits)
+            return AgentReply(kind="answer", reply="Tamamdır")
+
+    runtime_override(agent={"max_steps": 3, "turn_timeout_sec": 30.0})
+    app.state.agent_service = SpyAgentService()
+
+    resp = test_client.post(
+        "/agent/chat",
+        json={"message": "test mesajı"},
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp.status_code == 200
+    assert len(captured_limits) == 1
+    limits = captured_limits[0]
+    assert limits is not None
+    assert limits.max_steps == 3
+    assert limits is app.state.runtime_config.current.agent
+
+
+def test_chat_mid_turn_runtime_change_does_not_affect_ongoing_turn(test_client, runtime_override):
+    """Tur ortasında Config Server / holder güncellense dahi devam eden tur kendi snapshot'ını korur."""
+    ongoing_turn_limits = []
+
+    class MidTurnChangingService:
+        async def chat(self, message, ctx, *, limits=None):
+            # Tur devam ederken runtime config değişsin (ör. poller / refresh çalıştı)
+            runtime_override(agent={"max_steps": 6, "turn_timeout_sec": 45.0})
+            await asyncio.sleep(0.01)
+            # Devam eden tur hâlâ ilk aldığı snapshot'ı tutmalı
+            ongoing_turn_limits.append(limits)
+            return AgentReply(kind="answer", reply="Bitti")
+
+    runtime_override(agent={"max_steps": 2, "turn_timeout_sec": 30.0})
+    app.state.agent_service = MidTurnChangingService()
+
+    resp1 = test_client.post(
+        "/agent/chat",
+        json={"message": "tur 1"},
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp1.status_code == 200
+    assert ongoing_turn_limits[0].max_steps == 2
+
+    # Bir sonraki istek ise yeni güncellenen snapshot'ı alır
+    captured_second = []
+
+    class SecondTurnService:
+        async def chat(self, message, ctx, *, limits=None):
+            captured_second.append(limits)
+            return AgentReply(kind="answer", reply="Tur 2")
+
+    app.state.agent_service = SecondTurnService()
+    resp2 = test_client.post(
+        "/agent/chat",
+        json={"message": "tur 2"},
+        headers={"X-User-Id": USER_A},
+    )
+    assert resp2.status_code == 200
+    assert captured_second[0].max_steps == 6
+

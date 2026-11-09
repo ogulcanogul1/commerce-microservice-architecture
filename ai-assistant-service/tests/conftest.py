@@ -1,6 +1,7 @@
 """Pytest root configuration and global fixtures for ai-assistant-service."""
 
 from collections.abc import Generator
+from typing import Any
 import pytest
 
 from app.core.config import settings
@@ -34,3 +35,21 @@ def disable_config_server_for_tests() -> Generator[None, None, None]:
         yield
     finally:
         settings.CONFIG_SERVER_ENABLED = original_state
+
+
+@pytest.fixture
+def runtime_override():
+    """app.state.runtime_config'i verilen bölüm değerleriyle geçici olarak değiştirir."""
+    from app.main import app
+    from app.runtimeconfig.holder import RuntimeConfigHolder
+    from app.runtimeconfig.models import RuntimeSettings
+    old = getattr(app.state, "runtime_config", None)
+
+    def _apply(**sections: dict[str, Any]) -> None:
+        tree = RuntimeSettings.from_startup(settings).model_dump()
+        for name, values in sections.items():
+            tree[name].update(values)
+        app.state.runtime_config = RuntimeConfigHolder(RuntimeSettings.model_validate(tree), frozenset())
+
+    yield _apply
+    app.state.runtime_config = old

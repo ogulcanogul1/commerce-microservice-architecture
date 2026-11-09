@@ -309,19 +309,21 @@ def test_answer_unexpected_error_returns_503_without_leak(
     assert data["detail"] == "Cevap üretilirken bir hata oluştu."
 
 
-def test_answer_turn_timeout_returns_503(client: TestClient, monkeypatch):
+def test_answer_turn_timeout_returns_503(client: TestClient, runtime_override):
     """RAG_TURN_TIMEOUT_SEC aşıldığında 503 ve zaman aşımı mesajı dönmelidir."""
     import asyncio
-    from app.core.config import settings
     from app.api.answer import get_rag_answer_service
+    from app.rag.generation.models import GenerationConfig
 
     class SlowRagService:
+        config = GenerationConfig()
+
         async def answer(self, *args, **kwargs):
             await asyncio.sleep(0.5)
             raise RuntimeError("Should not be reached")
 
     app.dependency_overrides[get_rag_answer_service] = lambda: SlowRagService()
-    monkeypatch.setattr(settings, "RAG_TURN_TIMEOUT_SEC", 0.05)
+    runtime_override(rag={"turn_timeout_sec": 0.05, "llm_timeout_sec": 0.05})
     try:
         response = client.post(
             "/rag/answer",
@@ -380,3 +382,39 @@ def test_answer_token_budget_exceeded_returns_429(client: TestClient):
         assert response.headers.get("Retry-After") is not None
     finally:
         app.state.token_budget = None
+
+
+def test_answer_passes_runtime_config_to_generation_service(client: TestClient, runtime_override):
+    """Runtime snapshot içindeki rag ayarları nesil servisine aktarılır."""
+    captured_configs = []
+
+    class SpyAnswerService:
+        config = GenerationConfig()
+        tokenizer = TiktokenTokenizer()
+
+        async def answer(self, question, *, k=None, config=None, **kwargs):
+            captured_configs.append(config)
+            from app.rag.generation.models import RagAnswer
+            return RagAnswer(
+                status="answered",
+                answer="Test cevabı",
+                citations=[],
+            )
+
+    runtime_override(rag={"top_k": 3, "temperature": 0.3})
+    app.dependency_overrides[get_rag_answer_service] = lambda: SpyAnswerService()
+
+    try:
+        response = client.post(
+            "/rag/answer",
+            json={"question": "Kargo kaç günde gelir?"},
+        )
+        assert response.status_code == 200
+        assert len(captured_configs) == 1
+        assert captured_configs[0] is not None
+        assert captured_configs[0].top_k == 3
+        assert captured_configs[0].temperature == 0.3
+    finally:
+        app.dependency_overrides.pop(get_rag_answer_service, None)
+
+
