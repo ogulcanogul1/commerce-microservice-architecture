@@ -378,3 +378,35 @@ async def test_service_empty_or_whitespace_llm_response_returns_fallback(
     assert reply.kind == "fallback"
     assert reply.reply == service._fallback_message
     assert len(reply.reply) > 0
+
+
+@pytest.mark.anyio
+async def test_service_respects_per_turn_limits(base_context: RequestContext) -> None:
+    """AgentService.chat dinamik limits verildiğinde bu sınırları LLM çağrısına iletir."""
+    from app.runtimeconfig.models import AgentRuntime
+
+    fake_llm1 = FakeLLMProvider(responses=["Tamamdır."])
+    service1 = AgentService(llm=fake_llm1, registry=ToolRegistry(), temperature=0.7, max_tokens=1000)
+
+    # 1. limits=None -> varsayılan init değerleri kullanılır
+    await service1.chat("Varsayılan limitlerle çağrı", base_context, limits=None)
+    assert len(fake_llm1.calls) == 1
+    assert fake_llm1.calls[0]["temperature"] == 0.7
+    assert fake_llm1.calls[0]["max_tokens"] == 1000
+
+    # 2. limits=AgentRuntime(...) -> dinamik değerler kullanılır
+    fake_llm2 = FakeLLMProvider(responses=["Tamamdır."])
+    service2 = AgentService(llm=fake_llm2, registry=ToolRegistry(), temperature=0.7, max_tokens=1000)
+    custom_limits = AgentRuntime(
+        max_steps=2,
+        turn_timeout_sec=25.0,
+        llm_timeout_sec=8.0,
+        temperature=0.15,
+        max_output_tokens=350,
+    )
+    await service2.chat("Özel limitlerle çağrı", base_context, limits=custom_limits)
+    assert len(fake_llm2.calls) == 1
+    assert fake_llm2.calls[0]["temperature"] == 0.15
+    assert fake_llm2.calls[0]["max_tokens"] == 350
+
+

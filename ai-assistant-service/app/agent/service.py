@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.pii import mask_pii
 from app.core.security import RequestContext
 from app.llm.base import BaseLLMProvider, ChatMessage, TokenUsage
+from app.runtimeconfig.models import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +46,23 @@ class AgentService:
         self._max_tokens = max_tokens if max_tokens is not None else settings.AGENT_MAX_OUTPUT_TOKENS
         self._fallback_message = fallback_message if fallback_message is not None else settings.AGENT_FALLBACK_MESSAGE
 
-    async def chat(self, message: str, ctx: RequestContext) -> AgentReply:
+    async def chat(
+        self,
+        message: str,
+        ctx: RequestContext,
+        *,
+        limits: AgentRuntime | None = None,
+    ) -> AgentReply:
         """Execute the agent chat turn for the given user message and verified security context."""
         start_time = time.perf_counter()
         llm_time_ms = 0.0
         tool_time_ms = 0.0
+
+        # İstek başına runtime snapshot limitleri (yoksa varsayılan nesne değerleri)
+        max_steps = limits.max_steps if limits else self._max_steps
+        llm_timeout_sec = limits.llm_timeout_sec if limits else self._llm_timeout_sec
+        temperature = limits.temperature if limits else self._temperature
+        max_tokens = limits.max_output_tokens if limits else self._max_tokens
 
         user_id_hash = hashlib.sha256(ctx.user_id.encode("utf-8")).hexdigest()[:12]
         tool_calls_log: list[dict[str, Any]] = []
@@ -74,7 +87,7 @@ class AgentService:
 
         try:
             step = 0
-            while step < self._max_steps:
+            while step < max_steps:
                 step += 1
                 steps_taken = step
 
@@ -84,10 +97,10 @@ class AgentService:
                     self._llm.generate(
                         messages=messages,
                         tools=self._registry.definitions(),
-                        temperature=self._temperature,
-                        max_tokens=self._max_tokens,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
                     ),
-                    timeout=self._llm_timeout_sec,
+                    timeout=llm_timeout_sec,
                 )
                 llm_time_ms += (time.perf_counter() - t0_llm) * 1000.0
 
@@ -135,7 +148,7 @@ class AgentService:
                     )
 
                     if issues:
-                        if not grounding_retry_attempted and step < self._max_steps:
+                        if not grounding_retry_attempted and step < max_steps:
                             # Modele 1 kez düzeltme fırsatı ver
                             grounding_retry_attempted = True
                             messages.append(ChatMessage(role="assistant", content=final_text))
