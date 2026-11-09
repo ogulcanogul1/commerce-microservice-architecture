@@ -15,15 +15,20 @@ from app.llm.base import ToolDefinition
 
 @dataclass(frozen=True)
 class ToolContext:
-    """Execution context injected into every tool invocation from verified request headers."""
+    """Her araç (tool) çağrısına enjekte edilen doğrulanmış istek bağlamı.
+    
+    Güvenlik Kuralı:
+    Müşteri kimliği (user_id) asla LLM'den veya kullanıcı promptundan alınmaz.
+    Gateway'in onayladığı RequestContext üzerinden bu nesneye aktarılır.
+    """
 
     user_id: str
     correlation_id: str | None
-    question: str  # Masked original user question
+    question: str  # Maskelenmiş orijinal kullanıcı sorusu
 
 
 class ToolResult(BaseModel):
-    """Unified outcome of a tool execution."""
+    """Bir aracın (tool) çalışması sonucunda dönen birleşik sonuç zarfı."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -32,7 +37,13 @@ class ToolResult(BaseModel):
     error: str | None = None
     terminal_reply: AgentReply | None = None
     pending_action: PendingAction | None = None
-    reason: str | None = None  # İç sonuç kodu (audit için). ASLA modele/müşteriye gösterilmez
+
+    # İç Sınıflandırma ve Audit Kodu:
+    # GÜVENLİK İLKESİ: Modele ve müşteriye sadece nötr jenerik hata döner ("Sipariş bulunamadı").
+    # Bu 'reason' alanı ise olayın bir sahiplik uyuşmazlığı ('ownership_mismatch'), yetkisiz erişim ('denied')
+    # veya gerçek bir 404 ('not_found') olduğunu belirterek yalnızca Audit mekanizmasına ve Enumeration alarmına bildirir.
+    # Bu alan KESİNLİKLE LLM promptuna veya istemci yanıtına yansıtılmaz.
+    reason: str | None = None
 
 
 class Tool(ABC):

@@ -57,10 +57,13 @@ class Settings(BaseSettings):
     COHERE_API_KEY: str = ""  # Cohere sağlayıcısı için API anahtarı
 
     # Gateway Security Configuration
+    # Ağ Geçidi Güvenlik Ayarları (Gateway Security)
     GATEWAY_INTERNAL_SECRET: str = "dgl-internal-gateway-secret-token-2026"
     GATEWAY_SECURITY_ENABLED: bool = True
 
-    # Audit & Enumeration Alarm Configuration
+    # Denetim İzi ve Tarama (Enumeration) Saldırısı Alarm Ayarları:
+    # Kullanıcı kayan zaman penceresi içinde (örn. 60 sn) bu sayıda (örn. 5) reddedilen/yetkisiz
+    # işlem (403, 404, ownership_mismatch) yaparsa sistem 'enumeration_suspected' alarmı üretir.
     AUDIT_DENY_THRESHOLD: int = Field(
         default=5, ge=1, description="Pencere içinde bu sayıda reddedilen erişim → enumeration alarmı"
     )

@@ -46,7 +46,11 @@ class GetShipmentTool(Tool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
         assert isinstance(args, GetShipmentArgs)
 
-        # 1. Aşama: Sipariş sahipliğini doğrula (Kargo servisinde müşteri kontrolü olmadığı için zorunlu)
+        # 1. Aşama: İki Aşamalı Sahiplik Doğrulaması (Kritik Güvenlik Bariyeri):
+        # 'shipping-service' veritabanında 'customerId' alanı yer almaz. Dolayısıyla kargo servisi
+        # tek başına sahiplik kontrolü yapamaz. IDOR açığını önlemek için Python katmanı ÖNCE 'order-service'
+        # üzerinden siparişin bu kullanıcıya ait olduğunu doğrular. Başkasına aitse 'ownership_mismatch'
+        # ile reddeder ve kargo servisine asla istek atmaz.
         order = await self._order_client.get_order_by_number(
             order_number=args.order_number,
             user_id=ctx.user_id,

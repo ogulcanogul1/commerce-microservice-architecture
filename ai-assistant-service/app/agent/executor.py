@@ -52,14 +52,18 @@ class ActionExecutor:
         reason = action.params.get("reason", "Müşteri talebiyle iptal")
 
         try:
-            # Durum tazeleme: Teklif ile onay arasında durum değişmiş olabilir
+            # 1. Aşama: Durum Tazeleme (State Refresh)
+            # Teklifin oluşturulduğu an ile kullanıcının onayladığı an arasında zaman geçmiştir
+            # (örn. sipariş kargoya verilmiş veya iptal edilmiş olabilir). Güncel durum veritabanından çekilir.
             current_order = await self._order_client.get_order_by_number(
                 order_number=order_number,
                 user_id=ctx.user_id,
                 correlation_id=ctx.correlation_id,
             )
 
-            # Sahiplik kontrolü
+            # 2. Aşama: Çalıştırma Anı Sahiplik Kontrolü (Execution-Time Ownership Check)
+            # Aksiyonu onaylayan kişinin gerçekten siparişin sahibi olup olmadığı son kez teyit edilir.
+            # Uyuşmazlık varsa 'ownership_check' denetim kaydı basılır ve enumeration sayacına işlenir.
             if current_order.customer_id.lower() != ctx.user_id.lower():
                 write_audit(
                     "ownership_check",

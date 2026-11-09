@@ -56,12 +56,18 @@ public class GatewaySecurityFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
 
+        // Filtre devre dışı bırakılmışsa veya istek muaf yollardan (/actuator, swagger vb.) birine ise geçişe izin ver
         if (!enabled || isExemptPath(request.getRequestURI())) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String receivedSecret = request.getHeader(GATEWAY_SECRET_HEADER);
+
+        // Sabit Zamanlı Karşılaştırma (Constant-Time Comparison / Timing Attack Koruması):
+        // Standart String.equals metodu ilk farklı karakterde döner; bu durum saldırganın milisaniyelik
+        // gecikme analizleriyle gizli anahtarı tahmin etmesine (Side-Channel Timing Attack) yol açabilir.
+        // MessageDigest.isEqual byte dizilerini daima sabit sürede karşılaştırır.
         boolean secretValid = receivedSecret != null
                 && MessageDigest.isEqual(
                         receivedSecret.getBytes(StandardCharsets.UTF_8),

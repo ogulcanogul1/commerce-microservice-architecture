@@ -161,13 +161,27 @@ async def chat(
     )
 
 
+# ==============================================================================
+# HASSAS İŞLEM (ACTION) ONAYLAMA VE REDDETME UÇ NOKTALARI
+# ==============================================================================
+
 @router.post("/actions/{action_id}/confirm", response_model=ActionResultResponse)
 async def confirm_action(
     req: Request,
     action_id: str = Path(pattern=r"^[A-Za-z0-9_\-]{16,64}$"),
     ctx: RequestContext = Depends(get_request_context),
 ) -> ActionResultResponse:
-    """Confirm and execute a pending sensitive action."""
+    """Bekleyen hassas işlemi (Human-in-the-Loop) onaylar ve yürütür.
+
+    Güvenlik ve Audit Kuralları:
+    1. Tek Kullanımlık Token Tüketimi (One-Time Consume):
+       `store.consume(action_id, ctx.user_id)` atomik olarak aksiyonu hafızadan silip döner.
+       Böylece aynı onay linki ikinci kez kullanılamaz (Replay Attack koruması).
+    2. Sahiplik İzolasyonu: Aksiyon ID'si geçerli olsa dahi oturum açan 'user_id' ile
+       oluşturan kişi eşleşmiyorsa aksiyon bulunamaz (404 döner).
+    3. Belirteç Hijyeni: 'action_id' tek kullanımlık bir yetki belirteci olduğu için
+       audit loguna ASLA yazılmaz; yalnızca 'action_type' kaydedilir.
+    """
     store: PendingActionStore | None = getattr(req.app.state, "action_store", None)
     executor: ActionExecutor | None = getattr(req.app.state, "action_executor", None)
 

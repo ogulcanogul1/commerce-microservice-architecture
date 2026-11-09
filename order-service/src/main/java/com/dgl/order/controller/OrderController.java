@@ -117,15 +117,26 @@ public class OrderController {
         return ResponseEntity.ok(commandBus.execute(new CancelOrderCommand(id, request)));
     }
 
+    /**
+     * Sipariş Sahipliği ve Yetki Denetimi (Fail-Closed Ownership Enforcement).
+     *
+     * Güvenlik İlkeleri:
+     * 1. Yönetici İstisnası: 'ROLE_ADMIN' rolüne sahip çağrılar (admin paneli vb.) sahiplik kısıtlamasından muaftır.
+     * 2. Varsayılan Olarak Kapalı (Fail-Closed): 'currentUserId' başlığı eksikse, boşsa veya siparişin sahibi
+     *    (resourceOwnerId) veritabanında null ise istek ASLA geçirilmez; 403 AccessDeniedException fırlatılır.
+     *    (Eski açık: header yokken 'null' geçip herkese izin veriyordu; bu açık kapatıldı).
+     * 3. IDOR Engelleme: Oturum açan kullanıcının UUID'si ile siparişin sahibinin UUID'si eşleşmek zorundadır.
+     */
     private void enforceOwnership(UUID resourceOwnerId, String currentUserId, String userRoles) {
         boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
         if (isAdmin) {
             return;
         }
-        // Fail-closed: kimlik yoksa ya da kaynak sahibi belirsizse erişim reddedilir
+        // Fail-Closed Kuralı: Kimlik bilgisi eksikse veya sipariş sahibi belirsizse erişimi kesinlikle engelle
         if (currentUserId == null || currentUserId.isBlank() || resourceOwnerId == null) {
             throw new AccessDeniedException("Access denied: caller identity is required");
         }
+        // Kullanıcı başkasına ait siparişi okumaya veya iptal etmeye çalışıyorsa engelle
         if (!currentUserId.equalsIgnoreCase(resourceOwnerId.toString())) {
             throw new AccessDeniedException("Access denied: you do not have permission to view or modify this order");
         }

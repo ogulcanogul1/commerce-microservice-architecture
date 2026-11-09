@@ -24,8 +24,11 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Security filter that blocks direct microservice access (Gateway Bypass).
- * Requires the trusted 'X-Gateway-Secret' header injected by the API Gateway.
+ * Ağ Geçidi Güvenlik Filtresi (Gateway Bypass Protection Filter).
+ *
+ * Mikroservise doğrudan gelen istekleri engelleyerek yalnızca API Gateway veya
+ * yetkili dahili servisler (örn. ai-assistant-service) tarafından gönderilen
+ * 'X-Gateway-Secret' başlığına sahip isteklerin geçmesine izin verir.
  */
 @Slf4j
 @Component
@@ -43,6 +46,7 @@ public class GatewaySecurityFilter extends OncePerRequestFilter {
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Sağlık ve dokümantasyon kontrolleri için gizli anahtar kontrolünden muaf tutulan yollar
     private static final List<String> EXEMPT_PATHS = List.of(
             "/actuator/**",
             "/v3/api-docs/**",
@@ -56,12 +60,17 @@ public class GatewaySecurityFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
 
+        // Filtre devre dışıysa veya istek muaf yollardan birine geldiyse geçişe izin ver
         if (!enabled || isExemptPath(request.getRequestURI())) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String receivedSecret = request.getHeader(GATEWAY_SECRET_HEADER);
+
+        // Sabit Zamanlı Karşılaştırma (Constant-Time Comparison / Timing Attack Koruması):
+        // Standart String.equals yerine MessageDigest.isEqual kullanılır; böylece byte dizisi
+        // daima sabit sürede karşılaştırılarak gecikme süresi analiziyle anahtar tahmini engellenir.
         boolean secretValid = receivedSecret != null
                 && MessageDigest.isEqual(
                         receivedSecret.getBytes(StandardCharsets.UTF_8),

@@ -110,6 +110,10 @@ def get_rag_answer_service(request: Request) -> RagAnswerService:
 )
 async def answer_question(
     payload: AnswerRequest,
+    # Güvenlik & Kimlik Doğrulaması (Adım 4):
+    # LLM çağrısı yapan ve token bütçesi harcayan bu uç nokta için kullanıcı kimliği zorunludur.
+    # 'ctx: RequestContext' bağımlılığı 'service' çözümleyicisinden ÖNCE tanımlanır; böylece kimliği
+    # doğrulanmamış istekler uygulama içi servislere ulaşmadan doğrudan 401 Unauthorized ile kesilir.
     ctx: RequestContext = Depends(get_request_context),
     service: RagAnswerService = Depends(get_rag_answer_service),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),

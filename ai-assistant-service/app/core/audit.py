@@ -1,9 +1,25 @@
-"""Audit kaydı (denetim izi) — uygulama logundan AYRI bir akış.
+"""Ayrık Denetim İzi ve Güvenlik Audit Günlüğü (Security Audit Logging).
 
-Kurallar:
-- PII yok: argüman değerleri yazılmaz, yalnızca isimleri ve kısa bir hash'i.
-- `user_id` ham UUID'dir (SIEM eşlemesi için), asla ad/e-posta/adres değil.
-- Yazım hiçbir koşulda istisna fırlatmaz.
+Bu modül, mikroservisin normal uygulama loglarından (application logs) TAMAMEN AYRI bir
+denetim ve güvenlik izi (audit trail) oluşturur.
+
+MİMARİ VE GÜVENLİK İLKELERİ:
+1. PII (Kişisel Veri) Hijyeni:
+   Audit kayıtlarına asla müşteri adı, açık adres veya sipariş detayı yazılmaz. Fonksiyonlara
+   gönderilen argümanlar yalnızca isim listesi (`arg_names`) ve 16 karakterlik SHA-256 özeti
+   (`args_hash`) olarak kaydedilir.
+2. Kimlik Takma Adı (Pseudonym):
+   Kullanıcı kimliği yalnızca standart UUID (`user_id`) olarak tutulur; e-posta/telefon girmez.
+3. Ayrık Akış (No Propagation):
+   `audit` logger'ının `propagate` değeri `False` yapılır; böylece audit kayıtları root logger'a
+   ve genel uygulama loglarına sızmaz, stdout'a salt JSON satırları halinde basılır. SIEM
+   (Loki, Elasticsearch) bu akışı ayrı indeksler.
+4. Fail-Safe Yazım:
+   Audit kaydı atılırken oluşabilecek herhangi bir istisna (disk/json hatası vb.) ASLA yukarıya
+   fırlatılmaz ve ana iş akışını (sipariş sorgulama/iptal) durdurmaz.
+5. Enumeration / IDOR Tespiti:
+   Kullanıcıların başkalarına ait siparişleri veya kaynakları art arda denemesini (tarama saldırısı)
+   yakalayan süreç içi bir sayaç (`DenyTracker`) içerir.
 """
 
 from collections import deque
@@ -16,35 +32,49 @@ import sys
 import time
 from typing import Any
 
+# Denetim kayıtlarının toplandığı özel ayrık logger adı
 AUDIT_LOGGER_NAME = "audit"
 
-# Tool/aksiyon sonuç sözlüğü. Sınıflandırma, kayıtların alarm kuralında kullanılabilmesi içindir.
-OUTCOME_OK = "ok"
-OUTCOME_DENIED = "denied"  # downstream 403
-OUTCOME_OWNERSHIP_MISMATCH = "ownership_mismatch"  # Python tarafı sahiplik kontrolü yakaladı
-OUTCOME_NOT_FOUND = "not_found"
-OUTCOME_INVALID_ARGS = "invalid_args"
-OUTCOME_BAD_REQUEST = "bad_request"
-OUTCOME_TIMEOUT = "timeout"
-OUTCOME_UNAVAILABLE = "unavailable"
-OUTCOME_ERROR = "error"
+# ==============================================================================
+# 1. STANDART AUDIT SONUÇ KODLARI (OUTCOMES)
+# ==============================================================================
+# Tüm araç ve güvenlik kontrolleri sonuçlarını bu standart kodlarla etiketler:
+OUTCOME_OK = "ok"                                      # İşlem başarılı
+OUTCOME_DENIED = "denied"                              # Downstream servis 403 Forbidden döndü
+OUTCOME_OWNERSHIP_MISMATCH = "ownership_mismatch"      # Python katmanındaki sahiplik kontrolü yetkisiz erişimi yakaladı
+OUTCOME_NOT_FOUND = "not_found"                        # İstenen kaynak bulunamadı (404)
+OUTCOME_INVALID_ARGS = "invalid_args"                  # Şema/tip doğrulama hatası
+OUTCOME_BAD_REQUEST = "bad_request"                    # Geçersiz istek parametresi
+OUTCOME_TIMEOUT = "timeout"                            # İşlem zaman aşımına uğradı
+OUTCOME_UNAVAILABLE = "unavailable"                    # Hedef mikroservis kapalı/erişilemiyor
+OUTCOME_ERROR = "error"                                # Beklenmeyen genel sistem hatası
 
-# Enumeration sinyali sayılan sonuçlar (başkasının/olmayan kaynağa erişim denemesi)
+# Saldırganın kaynak taraması (enumeration) yaptığına işaret eden şüpheli sonuçlar kümesi
 DENY_OUTCOMES = frozenset({OUTCOME_DENIED, OUTCOME_OWNERSHIP_MISMATCH, OUTCOME_NOT_FOUND})
 
 
+# ==============================================================================
+# 2. AUDIT LOGGER KURULUMU VE İZOLASYONU
+# ==============================================================================
+
 def get_audit_logger() -> logging.Logger:
-    """Ayrı, propagate etmeyen, stdout'a düz JSON satırı yazan logger'ı kurar (idempotent)."""
+    """Ayrık, ana loglara yayılmayan (propagate=False) ve stdout'a düz JSON basan logger'ı döner.
+
+    Özel İzolasyon Mekanizması:
+    Pytest'in `caplog` fikstürü arka planda tüm logger'lara dinamik olarak 'LogCaptureHandler' ekler.
+    Audit kayıtlarımızın normal test loglarına ve `caplog`'a sızmasını (böylece PII denetimlerinin
+    bozulmasını) engellemek için `addHandler` metodu filtrelenmiştir.
+    """
     audit_logger = logging.getLogger(AUDIT_LOGGER_NAME)
     if not audit_logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(logging.Formatter("%(message)s"))
         audit_logger.addHandler(handler)
     audit_logger.setLevel(logging.INFO)
+    # Ana root logger'a log aktarımını engelle (Log ayrıştırması için kritik)
     audit_logger.propagate = False
 
-    # Pytest caplog'un (LogCaptureHandler) bu logger'a doğrudan takılmasını engelle;
-    # audit kaydı uygulama log akışından (ve dolayısıyla caplog/root'tan) tamamen ayrı tutulmalıdır.
+    # Pytest LogCaptureHandler'ının bu logger'a takılmasını engelle
     if not hasattr(audit_logger, "_caplog_filtered"):
         orig_add_handler = audit_logger.addHandler
 
@@ -60,8 +90,18 @@ def get_audit_logger() -> logging.Logger:
     return audit_logger
 
 
+# ==============================================================================
+# 3. ARGÜMAN HASHLEME VE GÜVENLİ AUDIT YAZIMI
+# ==============================================================================
+
 def hash_args(args: Any) -> str:
-    """Argüman sözlüğünün kısa SHA-256 özeti. Değerler özetten geri okunmaz (düşük entropide kaba kuvvetle denenebilir; bkz. karar günlüğü)."""
+    """Argüman sözlüğünün tek yönlü kısa (16 karakter) SHA-256 özetini üretir.
+
+    Neden Yapılır?
+    Sipariş numaraları veya parametreler audit loguna açıkça yazılırsa kişisel veriler sızabilir.
+    Bunun yerine deterministik bir hash (`args_hash`) tutulur. Gerektiğinde denetçi, elindeki şüpheli
+    parametre setinin aynı hash'i verip vermediğini doğrulayabilir ama hash'ten geriye değer okunamaz.
+    """
     try:
         canonical = json.dumps(args if args is not None else {}, sort_keys=True, default=str, ensure_ascii=False)
     except (TypeError, ValueError):
@@ -77,7 +117,16 @@ def write_audit(
     outcome: str,
     **fields: Any,
 ) -> None:
-    """Tek satır JSON audit kaydı yazar. Hata olursa sessizce uygulama loguna düşer."""
+    """Tek satırlık standart JSON audit kaydı üretir ve stdout'a basar.
+
+    Alanlar:
+    - event: Olayın adı (örn. 'tool_call', 'perimeter_denied', 'action_confirm', 'enumeration_suspected')
+    - timestamp: UTC ISO-8601 milisaniye hassasiyetli zaman damgası
+    - user_id: Kullanıcının UUID'si
+    - correlation_id: İstek izleme kimliği
+    - outcome: İşlemin sonucu (ok, denied, timeout, error vb.)
+    - fields: Ek güvenli meta veriler (tool adı, argüman isimleri, süre vb.)
+    """
     try:
         record: dict[str, Any] = {
             "event": event,
@@ -88,14 +137,27 @@ def write_audit(
             **fields,
         }
         get_audit_logger().info(json.dumps(record, ensure_ascii=False, default=str))
-    except Exception:  # audit yazımı iş akışını asla bozmamalı
+    except Exception:
+        # Fail-Safe Kuralı: Audit yazımındaki bir hata asla ana iş mantığını (FastAPI handler) bozmamalıdır
         logging.getLogger(__name__).warning("Audit kaydı yazılamadı (event=%s)", event)
 
 
-class DenyTracker:
-    """Kullanıcı başına kayan pencerede reddedilen erişimleri sayar (süreç içi, instance başına).
+# ==============================================================================
+# 4. ENUMERATION / TARAMA SALDIRISI TAKİPÇİSİ (DenyTracker)
+# ==============================================================================
 
-    `record` eşik aşıldığında pencere başına BİR kez True döner (alarm seli olmaması için).
+class DenyTracker:
+    """Kullanıcı bazında kayan zaman penceresinde (sliding window) reddedilen erişimleri sayar.
+
+    Amaç:
+    Bir saldırgan art arda başkalarına ait sipariş numaralarını tahmin etmeye çalışıyorsa
+    (örn. ORD-1001, ORD-1002, ORD-1003...), belirli bir eşik (threshold) aşıldığında sistem
+    otomatik olarak 'enumeration_suspected' güvenlik alarmı üretir.
+
+    Özellikler:
+    - Kayan Zaman Penceresi: Belirlenen pencere süresinden (örn. 60 sn) eski denemeler otomatik silinir.
+    - Alarm Seli Koruması: Eşik aşıldığında pencere süresince yalnızca BİR kez True döner (spam alarm önlenir).
+    - Bellek Sınırı: En fazla 10.000 aktif kullanıcı hafızada tutulur (bellek şişirme saldırılarına karşı koruma).
     """
 
     _MAX_TRACKED_USERS = 10_000
@@ -113,27 +175,38 @@ class DenyTracker:
         self._alerted_until: dict[str, float] = {}
 
     def record(self, user_id: str) -> bool:
+        """Kullanıcının reddedilen bir erişimini kaydeder. Eşik aşıldıysa True döner."""
         now = self._clock()
+
+        # Bellek taşması koruması: Tablo aşırı büyürse sıfırla
         if len(self._events) >= self._MAX_TRACKED_USERS and user_id not in self._events:
-            # Bellek sınırı: tablo dolduysa eskiyi at (alarm kaçırmak, bellek sızdırmaktan iyidir)
             self._events.clear()
             self._alerted_until.clear()
+
+        # Kullanıcının ret zaman damgalarını tutan kuyruğu al
         stamps = self._events.setdefault(user_id, deque())
         stamps.append(now)
+
+        # Kayan zaman penceresinin dışına çıkan eski kayıtları kuyruktan temizle
         cutoff = now - self._window_sec
         while stamps and stamps[0] < cutoff:
             stamps.popleft()
+
+        # Eşik aşıldı mı ve bu pencere içinde daha önce alarm üretilmedi mi?
         if len(stamps) >= self._threshold and self._alerted_until.get(user_id, 0.0) <= now:
+            # Belirtilen pencere süresince bir daha mükerrer alarm üretilmesini engelle
             self._alerted_until[user_id] = now + self._window_sec
             return True
+
         return False
 
 
+# Süreç genelinde tekil (singleton) DenyTracker örneği
 _deny_tracker: DenyTracker | None = None
 
 
 def get_deny_tracker() -> DenyTracker:
-    """Ayarlardan beslenen süreç genelindeki tekil izleyici (tembel kurulum)."""
+    """Konfigürasyon ayarlarından beslenen tekil DenyTracker nesnesini döner."""
     global _deny_tracker
     if _deny_tracker is None:
         from app.core.config import settings
@@ -143,7 +216,7 @@ def get_deny_tracker() -> DenyTracker:
 
 
 def record_denied_access(user_id: str, correlation_id: str | None) -> None:
-    """Reddedilen erişimi sayar; eşik aşılırsa pencere başına bir kez enumeration alarmı yazar."""
+    """Yetkisiz/reddedilen erişimi sayaçta işler; eşik aşılmışsa 'enumeration_suspected' alarmı basar."""
     from app.core.config import settings
 
     if get_deny_tracker().record(user_id):

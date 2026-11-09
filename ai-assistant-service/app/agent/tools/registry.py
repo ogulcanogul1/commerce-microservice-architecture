@@ -102,7 +102,14 @@ class ToolRegistry:
         raw_args: dict[str, Any],
         ctx: ToolContext,
     ) -> ToolResult:
-        """Tool'u çalıştırır ve sonucundan bağımsız olarak bir audit kaydı yazar."""
+        """Merkezi Araç Çalıştırıcı ve Audit Sarmalayıcısı.
+
+        Tüm araç çağrıları bu metot üzerinden geçer:
+        1. Başlangıç zamanını monotonic saatle alır.
+        2. _execute_core ile asıl çalıştırma ve parametre doğrulamasını yapar.
+        3. Sonuç başarılı veya hatalı olsa dahi (finally bloğunda) mutlaka 'tool_call' audit kaydı düşer.
+        4. Sonuç bir yetkisiz erişim veya tarama ise DenyTracker sayacını günceller.
+        """
         started = time.monotonic()
         outcome = OUTCOME_ERROR
         try:
@@ -129,6 +136,8 @@ class ToolRegistry:
         outcome: str,
         started: float,
     ) -> None:
+        """Her araç çağrısı için PII içermeyen standart bir denetim kaydı yazar."""
+        # 1. PII içermeyen güvenli audit kaydı bas (argüman değerleri yerine hash ve süre yazılır)
         write_audit(
             "tool_call",
             user_id=ctx.user_id,
@@ -139,6 +148,7 @@ class ToolRegistry:
             args_hash=hash_args(raw_args),
             ms=round((time.monotonic() - started) * 1000),
         )
+        # 2. Eğer sonuç şüpheli bir yetki ihlali veya tarama ise enumeration sayacına işlet
         if outcome in DENY_OUTCOMES:
             record_denied_access(ctx.user_id, ctx.correlation_id)
 

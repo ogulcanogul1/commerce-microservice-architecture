@@ -520,7 +520,9 @@ async def lifespan(app: FastAPI):
     Tüm alt bileşenleri sıralı ve kontrollü bir şekilde başlatıp `app.state`'e ekler.
     Uygulama kapatıldığında (Ctrl+C veya SIGTERM) açık soketleri ve bağlantıları temizler.
     """
-    # -1. Adım: Güvensiz yapılandırma varsa (prod'da) servis hiç açılmasın
+    # -1. Adım: Başlangıç Güvenlik Denetimi (Startup Security Checks)
+    # Üretim (production) ortamında varsayılan zayıf secret veya kapalı çevre güvenliği varsa
+    # servisin çalışmasına izin verilmez (Fail-Fast prensibiyle uygulama burada anında durdurulur).
     enforce_security_startup(
         environment=settings.ENVIRONMENT,
         gateway_security_enabled=settings.GATEWAY_SECURITY_ENABLED,
@@ -616,7 +618,10 @@ register_problem_details_handlers(app)
 
 # Ana API yönlendiricisini (Router) dahil et (/agent, /api/v1/chat, /rag)
 app.include_router(api_router)
-# Actuator canlı yenileme yönlendiricisini dahil et (/actuator/refresh); gateway secret zorunlu
+# Actuator canlı konfigürasyon yenileme yönlendiricisi (/actuator/refresh).
+# Güvenlik Kuralı: Doğrudan dış ağdan veya yetkisiz çağrılmasını engellemek amacıyla
+# 'require_gateway_secret' bağımlılığıyla korunur (geçerli X-Gateway-Secret başlığı zorunludur).
+# Not: Aşağıdaki /health endpoint'i Docker/Kubernetes sağlık kontrolleri için kimliksiz (unauthenticated) 200 döner.
 app.include_router(actuator_router, dependencies=[Depends(require_gateway_secret)])
 
 

@@ -55,7 +55,10 @@ class RequestOrderCancellationTool(Tool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
         assert isinstance(args, RequestOrderCancellationArgs)
 
-        # 1. Siparişi sorgula ve sahipliğini doğrula
+        # 1. Aşama: Sipariş Sahipliği Doğrulaması (Human-in-the-Loop Ön Kontrolü):
+        # Model asla doğrudan iptal işlemi yapamaz; yalnızca 'PendingAction' teklifi oluşturabilir.
+        # Bu teklifi dahi oluşturmadan önce siparişin oturum açmış kullanıcıya ait olduğu teyit edilir.
+        # Yetkisiz bir kullanıcı başkasının siparişi için iptal teklifi dahi ÜRETEMEZ.
         order = await self._order_client.get_order_by_number(
             order_number=args.order_number,
             user_id=ctx.user_id,

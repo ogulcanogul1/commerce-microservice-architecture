@@ -49,7 +49,11 @@ class GetOrderTool(Tool):
             correlation_id=ctx.correlation_id,
         )
 
-        # Savunma derinliği: downstream hatalı kayıt dönerse bile müşteri kimliğini doğrula
+        # Savunma Derinliği (Defense-in-Depth):
+        # Downstream mikroservis (order-service) sahiplik doğrulaması yapsa bile,
+        # Python ajan katmanı dönen kaydın gerçekten bu kullanıcıya ait olduğunu ikinci kez teyit eder.
+        # Eğer bir uyuşmazlık varsa saldırgana siparişin varlığını ifşa etmemek için "Sipariş bulunamadı" denir,
+        # fakat iç denetim izine 'ownership_mismatch' kodu yazılarak enumeration alarmı beslenir.
         if order.customer_id.lower() != ctx.user_id.lower():
             return ToolResult(ok=False, error="Sipariş bulunamadı.", reason="ownership_mismatch")
 
