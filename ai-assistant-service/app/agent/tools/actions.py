@@ -63,7 +63,7 @@ class RequestOrderCancellationTool(Tool):
         )
 
         if order.customer_id.lower() != ctx.user_id.lower():
-            return ToolResult(ok=False, error="Sipariş bulunamadı.")
+            return ToolResult(ok=False, error="Sipariş bulunamadı.", reason="ownership_mismatch")
 
         # Zaten iptal edilmişse aksiyon oluşturma
         if order.status == "CANCELLED":
@@ -172,7 +172,7 @@ class RequestSupportTicketTool(Tool):
                 correlation_id=ctx.correlation_id,
             )
             if order.customer_id.lower() != ctx.user_id.lower():
-                return ToolResult(ok=False, error="Sipariş bulunamadı.")
+                return ToolResult(ok=False, error="Sipariş bulunamadı.", reason="ownership_mismatch")
 
         clean_subject, _ = mask_pii(args.subject.strip())
         clean_summary, _ = mask_pii(args.summary.strip())

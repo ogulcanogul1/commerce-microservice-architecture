@@ -54,7 +54,7 @@ class GetShipmentTool(Tool):
         )
 
         if order.customer_id.lower() != ctx.user_id.lower():
-            return ToolResult(ok=False, error="Sipariş bulunamadı.")
+            return ToolResult(ok=False, error="Sipariş bulunamadı.", reason="ownership_mismatch")
 
         # 2. Aşama: Sipariş ID'si üzerinden kargo bilgisini çek
         shipment = await self._shipping_client.get_shipment_by_order(

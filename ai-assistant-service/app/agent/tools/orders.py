@@ -1,9 +1,12 @@
 """Order query tools for getting specific orders and listing customer orders."""
 
+import logging
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.tools.base import Tool, ToolContext, ToolResult
 from app.clients.order import OrderClient
+
+logger = logging.getLogger(__name__)
 
 ORDER_STATUS_EXPLANATIONS: dict[str, str] = {
     "PENDING": "Sipariş oluşturuldu, stok ve ödeme onayı bekleniyor.",
@@ -48,7 +51,7 @@ class GetOrderTool(Tool):
 
         # Savunma derinliği: downstream hatalı kayıt dönerse bile müşteri kimliğini doğrula
         if order.customer_id.lower() != ctx.user_id.lower():
-            return ToolResult(ok=False, error="Sipariş bulunamadı.")
+            return ToolResult(ok=False, error="Sipariş bulunamadı.", reason="ownership_mismatch")
 
         status_aciklama = ORDER_STATUS_EXPLANATIONS.get(
             order.status,
@@ -113,6 +116,8 @@ class ListMyOrdersTool(Tool):
             order for order in page.items
             if order.customer_id.lower() == ctx.user_id.lower()
         ]
+        if len(verified_items) != len(page.items):
+            logger.error("Downstream başka müşteriye ait kayıt döndürdü (ownership isolation ihlali)")
 
         formatted_orders = [
             {
