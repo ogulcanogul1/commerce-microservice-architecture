@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.budget.deps import get_budget_subject, get_token_budget
+from app.budget.deps import get_token_budget
 from app.budget.estimator import estimate_chat_tokens
 from app.budget.service import TokenBudgetService
 from app.core.limits import ConcurrencyLimiter, get_ai_limiter
+from app.core.security import RequestContext, get_request_context
 from app.rag.generation.models import AbstainReason, GenerationConfig, RagAnswer
 from app.rag.generation.service import RagAnswerService
 from app.runtimeconfig.deps import get_runtime_settings
@@ -109,10 +110,10 @@ def get_rag_answer_service(request: Request) -> RagAnswerService:
 )
 async def answer_question(
     payload: AnswerRequest,
+    ctx: RequestContext = Depends(get_request_context),
     service: RagAnswerService = Depends(get_rag_answer_service),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
-    subject: str = Depends(get_budget_subject),
     budget: TokenBudgetService | None = Depends(get_token_budget),
     runtime: RuntimeSettings = Depends(get_runtime_settings),
 ) -> AnswerResponse:
@@ -136,7 +137,7 @@ async def answer_question(
                 )
 
                 async with await budget.reserve(
-                    subject,
+                    ctx.user_id,
                     estimated_tokens,
                     daily_limit=runtime.budget.daily_limit,
                     per_minute_limit=runtime.budget.per_minute_limit,

@@ -110,13 +110,17 @@ def rag_service(
     )
 
 
+VALID_USER_ID = "123e4567-e89b-12d3-a456-426614174000"
+AUTH_HEADERS = {"X-User-Id": VALID_USER_ID}
+
+
 @pytest.fixture
 def client(rag_service: RagAnswerService, memory_store: QdrantStore, fake_embedder: FakeEmbedder):
     """FastAPI TestClient; bağımlılıklar override edilir."""
     app.dependency_overrides[get_rag_answer_service] = lambda: rag_service
     app.dependency_overrides[get_qdrant_store] = lambda: memory_store
     app.dependency_overrides[get_embedder] = lambda: fake_embedder
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=AUTH_HEADERS) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 
@@ -247,6 +251,7 @@ def test_answer_service_not_configured():
         try:
             response = raw_client.post(
                 "/rag/answer",
+                headers=AUTH_HEADERS,
                 json={"question": "İade süresi?"},
             )
             assert response.status_code == 503
@@ -419,3 +424,38 @@ def test_answer_passes_runtime_config_to_generation_service(client: TestClient, 
         app.dependency_overrides.pop(get_rag_answer_service, None)
 
 
+
+
+
+def test_answer_without_user_id_returns_401(client: TestClient):
+    """X-User-Id başlığı olmadan /rag/answer çağrıldığında 401 Unauthorized dönmelidir."""
+    with TestClient(app) as unauth_client:
+        resp = unauth_client.post(
+            "/rag/answer",
+            json={"question": "İade süresi kaç gündür?"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Kimlik doğrulanamadı."
+
+
+def test_answer_with_invalid_uuid_returns_401(client: TestClient):
+    """Geçersiz UUID formatında X-User-Id ile /rag/answer çağrıldığında 401 dönmelidir."""
+    with TestClient(app) as invalid_client:
+        resp = invalid_client.post(
+            "/rag/answer",
+            headers={"X-User-Id": "not-a-valid-uuid"},
+            json={"question": "İade süresi kaç gündür?"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Kimlik doğrulanamadı."
+
+
+def test_answer_with_valid_user_id_succeeds(client: TestClient):
+    """Geçerli UUID formatında X-User-Id ile istek başarıyla işlenmelidir."""
+    resp = client.post(
+        "/rag/answer",
+        headers={"X-User-Id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"},
+        json={"question": "İade süresi kaç gündür?"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "answered"
