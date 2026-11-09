@@ -115,6 +115,33 @@ class OrderControllerTest {
     }
 
     @Test
+    @DisplayName("getOrderById: Should throw AccessDeniedException when currentUserId header is missing or blank (fail-closed)")
+    void getOrderById_shouldThrowAccessDenied_whenUserIdMissingOrBlank() {
+        when(queryBus.execute(any(GetOrderByIdQuery.class))).thenReturn(mockResponse);
+
+        assertThatThrownBy(() -> orderController.getOrderById(orderId, null, "ROLE_CUSTOMER"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("caller identity is required");
+
+        assertThatThrownBy(() -> orderController.getOrderById(orderId, "   ", "ROLE_CUSTOMER"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("caller identity is required");
+    }
+
+    @Test
+    @DisplayName("cancelOrder: Should throw AccessDeniedException when caller identity is missing")
+    void cancelOrder_shouldThrowAccessDenied_whenUserIdMissing() {
+        CancelOrderRequest request = new CancelOrderRequest("Reason");
+        when(queryBus.execute(any(GetOrderByIdQuery.class))).thenReturn(mockResponse);
+
+        assertThatThrownBy(() -> orderController.cancelOrder(orderId, request, null, "ROLE_CUSTOMER"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("caller identity is required");
+
+        verifyNoInteractions(commandBus);
+    }
+
+    @Test
     @DisplayName("getOrderById: Should allow admin to access any customer's order")
     void getOrderById_shouldAllowAdmin() {
         when(queryBus.execute(any(GetOrderByIdQuery.class))).thenReturn(mockResponse);

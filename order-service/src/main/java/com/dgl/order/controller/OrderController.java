@@ -118,11 +118,15 @@ public class OrderController {
     }
 
     private void enforceOwnership(UUID resourceOwnerId, String currentUserId, String userRoles) {
-        if (currentUserId == null || currentUserId.isBlank() || resourceOwnerId == null) {
+        boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
+        if (isAdmin) {
             return;
         }
-        boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
-        if (!isAdmin && !currentUserId.equalsIgnoreCase(resourceOwnerId.toString())) {
+        // Fail-closed: kimlik yoksa ya da kaynak sahibi belirsizse erişim reddedilir
+        if (currentUserId == null || currentUserId.isBlank() || resourceOwnerId == null) {
+            throw new AccessDeniedException("Access denied: caller identity is required");
+        }
+        if (!currentUserId.equalsIgnoreCase(resourceOwnerId.toString())) {
             throw new AccessDeniedException("Access denied: you do not have permission to view or modify this order");
         }
     }
