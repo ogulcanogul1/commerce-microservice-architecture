@@ -75,8 +75,11 @@ class RagAnswerService:
         *,
         k: int,
         source_file: str | None = None,
+        config: GenerationConfig | None = None,
     ) -> RetrievalOutcome:
         """Execute synchronous vector retrieval, apply optional reranking, and return complete outcome."""
+        cfg = config or self.config
+
         # 1. Koleksiyonun veritabanında var olup olmadığını doğrula
         collection_name = self.store.collection_name
         if not self.store.client.collection_exists(collection_name):
@@ -88,11 +91,11 @@ class RagAnswerService:
         # 2. Soru için embedding modelini YALNIZCA BİR KEZ çağır (Maliyet ve gecikme optimizasyonu)
         query_vec = self.embedder.embed_query(question)
 
-        use_rerank = self.config.rerank_enabled and self.reranker is not None
-        k_search = max(self.config.rerank_candidates, k) if use_rerank else k
+        use_rerank = cfg.rerank_enabled and self.reranker is not None
+        k_search = max(cfg.rerank_candidates, k) if use_rerank else k
 
         # 3. Ayarlanan arama moduna göre Qdrant üzerinde arama yap
-        mode = self.config.retrieval_mode
+        mode = cfg.retrieval_mode
         if mode == "dense":
             hits = search_dense(
                 client=self.store.client,
@@ -125,7 +128,7 @@ class RagAnswerService:
         # RRF skoru sıralamadan türediği için alaka seviyesini göstermez;
         # bu yüzden kapı kontrolü için her zaman gerçek dense cosine benzerlik skoruna bakılır.
         top_dense_score: float | None = None
-        if self.config.min_dense_score is not None:
+        if cfg.min_dense_score is not None:
             if mode == "dense":
                 top_dense_score = hits[0].score if hits else None
             else:
@@ -147,7 +150,7 @@ class RagAnswerService:
                 hits,
                 self.reranker,
                 top_k=k,
-                fail_open=self.config.rerank_fail_open,
+                fail_open=cfg.rerank_fail_open,
             )
             rerank_ms = (time.perf_counter() - t0) * 1000.0
             return RetrievalOutcome(
@@ -172,9 +175,10 @@ class RagAnswerService:
         *,
         k: int,
         source_file: str | None = None,
+        config: GenerationConfig | None = None,
     ) -> tuple[list[SearchHit], float | None]:
         """Execute synchronous vector retrieval and return hits alongside gate dense similarity score."""
-        outcome = self.retrieve_with_rerank(question, k=k, source_file=source_file)
+        outcome = self.retrieve_with_rerank(question, k=k, source_file=source_file, config=config)
         return outcome.hits, outcome.top_dense_score
 
     async def answer(
@@ -184,8 +188,10 @@ class RagAnswerService:
         k: int | None = None,
         source_file: str | None = None,
         correlation_id: str | None = None,
+        config: GenerationConfig | None = None,
     ) -> RagAnswer:
         """End-to-end RAG answer pipeline with grounding validation and retry."""
+        cfg = config or self.config
         t_total_start = time.perf_counter()
         retrieval_latency_ms = 0.0
         llm_latency_ms = 0.0
@@ -214,13 +220,14 @@ class RagAnswerService:
             # 2. ADIM: Asenkron Threadpool Üzerinde Arama (Retrieval + Rerank)
             # Senkron Qdrant ve embedder çağrıları event loop'u kilitlemesin diye threadpool'a verilir.
             # -------------------------------------------------------------------------
-            target_k = k if k is not None else self.config.top_k
+            target_k = k if k is not None else cfg.top_k
             t_retrieval_start = time.perf_counter()
             outcome = await run_in_threadpool(
                 self.retrieve_with_rerank,
                 masked_q,
                 k=target_k,
                 source_file=source_file,
+                config=cfg,
             )
             retrieval_latency_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
@@ -239,7 +246,7 @@ class RagAnswerService:
             if not hits:
                 final_answer = RagAnswer(
                     status="abstained",
-                    answer=self.config.abstain_message,
+                    answer=cfg.abstain_message,
                     abstain_reason="no_results",
                     attempts=0,
                     top_dense_score=top_score,
@@ -258,12 +265,12 @@ class RagAnswerService:
             # Bulunan en iyi sonucun benzerlik skoru belirlenen eşiğin altındaysa,
             # modelin alakasız metinlerden uydurma yapmasını önlemek için doğrudan abstain edilir.
             # -------------------------------------------------------------------------
-            if self.config.min_dense_score is not None and (
-                top_score is None or top_score < self.config.min_dense_score
+            if cfg.min_dense_score is not None and (
+                top_score is None or top_score < cfg.min_dense_score
             ):
                 final_answer = RagAnswer(
                     status="abstained",
-                    answer=self.config.abstain_message,
+                    answer=cfg.abstain_message,
                     abstain_reason="low_retrieval_score",
                     attempts=0,
                     top_dense_score=top_score,
@@ -284,14 +291,14 @@ class RagAnswerService:
             blocks = build_context(
                 hits,
                 tokenizer=self.tokenizer,
-                budget=self.config.context_token_budget,
+                budget=cfg.context_token_budget,
             )
             context_chunk_ids = [b.chunk.id for b in blocks]
 
             if not blocks:
                 final_answer = RagAnswer(
                     status="abstained",
-                    answer=self.config.abstain_message,
+                    answer=cfg.abstain_message,
                     abstain_reason="no_results",
                     attempts=0,
                     top_dense_score=top_score,
@@ -315,7 +322,7 @@ class RagAnswerService:
             last_provider: str | None = None
             last_model: str | None = None
 
-            for attempt in range(1, self.config.max_attempts + 1):
+            for attempt in range(1, cfg.max_attempts + 1):
                 # İlk denemede standart prompt; sonraki denemelerde hataların bildirildiği retry prompt'u
                 if attempt == 1:
                     messages = build_messages(masked_q, blocks)
@@ -332,10 +339,10 @@ class RagAnswerService:
                 resp = await asyncio.wait_for(
                     self.llm.generate(
                         messages,
-                        temperature=self.config.temperature,
-                        max_tokens=self.config.max_output_tokens,
+                        temperature=cfg.temperature,
+                        max_tokens=cfg.max_output_tokens,
                     ),
-                    timeout=self.config.llm_timeout_sec,
+                    timeout=cfg.llm_timeout_sec,
                 )
                 llm_latency_ms += (time.perf_counter() - t_llm_start) * 1000
 
@@ -360,7 +367,7 @@ class RagAnswerService:
                 if is_abstain(resp.content):
                     final_answer = RagAnswer(
                         status="abstained",
-                        answer=self.config.abstain_message,
+                        answer=cfg.abstain_message,
                         abstain_reason="model_abstained",
                         attempts=attempt,
                         top_dense_score=top_score,
@@ -422,9 +429,9 @@ class RagAnswerService:
             # -------------------------------------------------------------------------
             final_answer = RagAnswer(
                 status="abstained",
-                answer=self.config.abstain_message,
+                answer=cfg.abstain_message,
                 abstain_reason="validation_failed",
-                attempts=self.config.max_attempts,
+                attempts=cfg.max_attempts,
                 top_dense_score=top_score,
                 retrieved_chunk_ids=retrieved_chunk_ids,
                 context_chunk_ids=context_chunk_ids,

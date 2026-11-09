@@ -469,3 +469,35 @@ async def test_service_logs_on_exception(
     assert any("RAG Answer Generation failed with error" in r.message for r in caplog.records)
     assert any("test-corr-fail" in r.message for r in caplog.records)
     assert not any("İade süresi?" in r.message for r in caplog.records)
+
+
+@pytest.mark.anyio
+async def test_service_respects_per_call_generation_config(
+    memory_store: QdrantStore,
+    fake_embedder: FakeEmbedder,
+    generation_config: GenerationConfig,
+) -> None:
+    """RagAnswerService dinamik config ile çağrıldığında o ayarları kullanır."""
+    fake_llm = FakeLLMProvider(responses=["İade süresi 14 gündür [1].", "İkinci cevap [1]."])
+    service = RagAnswerService(
+        store=memory_store,
+        embedder=fake_embedder,
+        llm=fake_llm,
+        tokenizer=WhitespaceTokenizer(),
+        config=generation_config,
+    )
+
+    # 1. config=None -> self.config kullanılır
+    outcome1 = service.retrieve_with_rerank("İade süresi?", k=generation_config.top_k, config=None)
+    assert len(outcome1.hits) == generation_config.top_k
+
+    # 2. Özel GenerationConfig(top_k=1, temperature=0.2) ile çağrı
+    custom_cfg = generation_config.model_copy(update={"top_k": 1, "temperature": 0.2})
+    outcome2 = service.retrieve_with_rerank("İade süresi?", k=1, config=custom_cfg)
+    assert len(outcome2.hits) == 1
+
+    # 3. answer() metoduna custom_cfg aktarımı
+    ans = await service.answer("İade süresi?", config=custom_cfg)
+    assert ans.status == "answered"
+    assert fake_llm.calls[-1]["temperature"] == 0.2
+
