@@ -6,11 +6,23 @@ authenticated caller identity (X-User-Id) into an immutable RequestContext.
 
 from dataclasses import dataclass
 import hmac
+import re
 import uuid
 
 from fastapi import Header, HTTPException, status
 
 from app.core.config import settings
+
+# Gateway UUID üretir; harf, rakam, nokta, alt çizgi ve tire dışındakini kabul etme
+_CORRELATION_ID_PATTERN = re.compile(r"[A-Za-z0-9._\-]{1,64}")
+
+
+def _sanitize_correlation_id(value: str | None) -> str | None:
+    """Geçerli değilse None döner; ham değer loglanmaz."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped if _CORRELATION_ID_PATTERN.fullmatch(stripped) else None
 
 
 @dataclass(frozen=True)
@@ -50,7 +62,7 @@ async def get_request_context(
     normalized_user_id = str(parsed_uuid).lower()
     return RequestContext(
         user_id=normalized_user_id,
-        correlation_id=x_correlation_id,
+        correlation_id=_sanitize_correlation_id(x_correlation_id),
     )
 
 

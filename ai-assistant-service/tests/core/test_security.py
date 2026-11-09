@@ -100,3 +100,25 @@ def test_api_routes_enforce_gateway_secret_when_enabled() -> None:
     # 3. /docs ve /openapi.json muaf olmalı
     docs_resp = client.get("/docs")
     assert docs_resp.status_code == 200
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "corr_input,expected_output",
+    [
+        ("corr-123", "corr-123"),
+        ("a\nb", None),
+        ("x" * 65, None),
+        ("x" * 64, "x" * 64),
+        ("<script>", None),
+        (None, None),
+        ("123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000"),
+        ("corr.abc_123-def", "corr.abc_123-def"),
+        ("   corr-spaced   ", "corr-spaced"),
+    ],
+)
+async def test_sanitize_correlation_id(corr_input: str | None, expected_output: str | None) -> None:
+    valid_uuid = "123e4567-e89b-12d3-a456-426614174000"
+    ctx = await get_request_context(x_user_id=valid_uuid, x_correlation_id=corr_input)
+    assert ctx.correlation_id == expected_output
+
