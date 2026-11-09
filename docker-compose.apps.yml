@@ -271,6 +271,8 @@ services:
       - EUREKA_ENABLED=true
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - EUREKA_PREFER_IP=true
+      - CONFIG_SERVER_ENABLED=true
+      - CONFIG_SERVER_URL=http://config-server:8888/
       - TOKEN_BUDGET_ENABLED=true
       - GATEWAY_SECURITY_ENABLED=true
       - GATEWAY_INTERNAL_SECRET=dgl-internal-gateway-secret-token-2026
@@ -292,6 +294,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:11434/v1}
     depends_on:
+      config-server:
+        condition: service_started
       eureka-server:
         condition: service_started
       redis:
