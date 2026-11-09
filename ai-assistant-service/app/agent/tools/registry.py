@@ -28,8 +28,8 @@ from app.core.audit import (
     OUTCOME_OK,
     OUTCOME_TIMEOUT,
     OUTCOME_UNAVAILABLE,
-    get_deny_tracker,
     hash_args,
+    record_denied_access,
     write_audit,
 )
 from app.core.config import settings
@@ -139,15 +139,8 @@ class ToolRegistry:
             args_hash=hash_args(raw_args),
             ms=round((time.monotonic() - started) * 1000),
         )
-        if outcome in DENY_OUTCOMES and get_deny_tracker().record(ctx.user_id):
-            write_audit(
-                "enumeration_suspected",
-                user_id=ctx.user_id,
-                correlation_id=ctx.correlation_id,
-                outcome="alert",
-                threshold=settings.AUDIT_DENY_THRESHOLD,
-                window_sec=settings.AUDIT_DENY_WINDOW_SEC,
-            )
+        if outcome in DENY_OUTCOMES:
+            record_denied_access(ctx.user_id, ctx.correlation_id)
 
     async def _execute_core(
         self,

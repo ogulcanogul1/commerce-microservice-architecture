@@ -140,3 +140,18 @@ def get_deny_tracker() -> DenyTracker:
 
         _deny_tracker = DenyTracker(settings.AUDIT_DENY_THRESHOLD, settings.AUDIT_DENY_WINDOW_SEC)
     return _deny_tracker
+
+
+def record_denied_access(user_id: str, correlation_id: str | None) -> None:
+    """Reddedilen erişimi sayar; eşik aşılırsa pencere başına bir kez enumeration alarmı yazar."""
+    from app.core.config import settings
+
+    if get_deny_tracker().record(user_id):
+        write_audit(
+            "enumeration_suspected",
+            user_id=user_id,
+            correlation_id=correlation_id,
+            outcome="alert",
+            threshold=settings.AUDIT_DENY_THRESHOLD,
+            window_sec=settings.AUDIT_DENY_WINDOW_SEC,
+        )
