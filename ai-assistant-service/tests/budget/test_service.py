@@ -282,3 +282,26 @@ def test_get_budget_subject():
     assert get_budget_subject(None) == "anonymous"
     assert get_budget_subject("not-a-uuid") == "anonymous"
     assert get_budget_subject("") == "anonymous"
+
+
+@pytest.mark.anyio
+async def test_reserve_with_per_call_limits():
+    """reserve çağrısında iletilen dinamik limit parametreleri geçerli olur."""
+    store = InMemoryBudgetStore()
+    svc = TokenBudgetService(
+        store=store,
+        daily_limit=50000,
+        per_minute_limit=8000,
+        clock=lambda: FIXED_NOW,
+    )
+
+    # Varsayılan limitlerle 150 token rahatça ayrılır
+    res = await svc.reserve("user-dyn-1", amount=150)
+    assert res.reserved == 150
+
+    # per_minute_limit=100 verildiğinde 150 token ayrılmaya çalışılırsa TokenBudgetExceeded alınır
+    with pytest.raises(TokenBudgetExceeded) as exc_info:
+        await svc.reserve("user-dyn-2", amount=150, per_minute_limit=100)
+
+    assert exc_info.value.status_code == 429
+

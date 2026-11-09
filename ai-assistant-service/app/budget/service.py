@@ -172,8 +172,19 @@ class TokenBudgetService:
         self.fail_mode = fail_mode  # 'local' (bellek içi yedek) veya 'closed' (503 fail-closed)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def scopes_for(self, subject: str) -> list[Scope]:
+    def scopes_for(
+        self,
+        subject: str,
+        *,
+        daily_limit: int | None = None,
+        per_minute_limit: int | None = None,
+        provider_tpm_limit: int | None = None,
+    ) -> list[Scope]:
         """Kullanıcı kimliği (subject) ve geçerli zamana göre kontrol edilecek scope listesini üretir."""
+        effective_daily = daily_limit if daily_limit is not None else self.daily_limit
+        effective_per_min = per_minute_limit if per_minute_limit is not None else self.per_minute_limit
+        effective_tpm = provider_tpm_limit if provider_tpm_limit is not None else self.provider_tpm_limit
+
         now = self._clock()
         # Gün formatı: 20261108
         day_str = now.strftime("%Y%m%d")
@@ -184,32 +195,45 @@ class TokenBudgetService:
             # 1. Kullanıcı Günlük Kotası (TTL: 48 saat = 172800s)
             Scope(
                 key=f"tok:user:{subject}:day:{day_str}",
-                limit=self.daily_limit,
+                limit=effective_daily,
                 ttl_sec=172800,
             ),
             # 2. Kullanıcı Dakikalık Burst Kotası (TTL: 2 dakika = 120s)
             Scope(
                 key=f"tok:user:{subject}:min:{epoch_minute}",
-                limit=self.per_minute_limit,
+                limit=effective_per_min,
                 ttl_sec=120,
             ),
         ]
 
         # 3. Tüm Sunucuların Ortak Sağlayıcı TPM Kotası (Aktifse: provider_tpm_limit > 0)
-        if self.provider_tpm_limit > 0:
+        if effective_tpm > 0:
             scopes.append(
                 Scope(
                     key=f"tok:provider:{self.provider_name}:min:{epoch_minute}",
-                    limit=self.provider_tpm_limit,
+                    limit=effective_tpm,
                     ttl_sec=120,
                 )
             )
 
         return scopes
 
-    async def reserve(self, subject: str, amount: int) -> Reservation:
+    async def reserve(
+        self,
+        subject: str,
+        amount: int,
+        *,
+        daily_limit: int | None = None,
+        per_minute_limit: int | None = None,
+        provider_tpm_limit: int | None = None,
+    ) -> Reservation:
         """Kullanıcı için peşinen token rezerve eder ve Reservation context manager döner."""
-        scopes = self.scopes_for(subject)
+        scopes = self.scopes_for(
+            subject,
+            daily_limit=daily_limit,
+            per_minute_limit=per_minute_limit,
+            provider_tpm_limit=provider_tpm_limit,
+        )
         active_store = self._store
 
         try:
