@@ -82,6 +82,31 @@ def test_actuator_refresh_success_returns_changed_keys(test_client: TestClient) 
         app.state.config_server_client = old_client
 
 
+def test_actuator_refresh_failure_returns_503(test_client: TestClient) -> None:
+    """Config Server'a erişilemediğinde POST /actuator/refresh 503 dönmelidir."""
+    baseline = RuntimeSettings.from_startup(Settings(_env_file=None))
+    holder = RuntimeConfigHolder(baseline, frozenset())
+
+    def failing_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="Internal Server Error")
+
+    mock_client = ConfigServerClient("http://localhost:8888/", transport=httpx.MockTransport(failing_handler))
+
+    old_holder = getattr(app.state, "runtime_config", None)
+    old_client = getattr(app.state, "config_server_client", None)
+    app.state.runtime_config = holder
+    app.state.config_server_client = mock_client
+
+    try:
+        resp = test_client.post("/actuator/refresh")
+        assert resp.status_code == 503
+        assert "yenileme başarısız" in resp.json()["detail"]
+    finally:
+        app.state.runtime_config = old_holder
+        app.state.config_server_client = old_client
+
+
+
 def test_health_endpoint_exposes_config_metadata(test_client: TestClient) -> None:
     """GET /health endpoint'inin config durumunu ve metadata'sını şeffafça döndüğünü doğrular."""
     baseline = RuntimeSettings.from_startup(Settings(_env_file=None))

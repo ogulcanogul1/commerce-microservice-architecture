@@ -143,6 +143,11 @@ class RuntimeConfigHolder:
         return self._current
 
     @property
+    def version(self) -> str:
+        """Aktif konfigürasyonun 12 karakterlik SHA-256 sürüm karmasını (hash) döner."""
+        return self._version
+
+    @property
     def status(self) -> ConfigStatus:
         """/health uç noktası ve gözlemlenebilirlik için mevcut konfigürasyon durumunu döner."""
         return ConfigStatus(
