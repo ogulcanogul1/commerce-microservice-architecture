@@ -17,4 +17,7 @@ Tüm mimari kurallar, araç tanımları, güvenlik politikaları ve port dağıl
 - **Tur Başı Snapshot**: Endpoint'lerde `get_runtime_settings` ile tek snapshot alınır, servislere parametreyle (`limits`, `config`) geçirilir; tur ortasında config değişse bile devam eden istek etkilenmez.
 - **Secret ve Prompt Yasağı**: Config Server'a secret veya prompt girmez; tavan değerler Gateway TimeLimiter'a (`agent <= 65s`, `rag <= 50s`) bağlıdır.
 - **Önce Kod, Sonra Config**: Yeni bir runtime anahtarı eklerken `extra="forbid"` nedeniyle önce kod deploy edilir, sonra YAML güncellenir.
+- **Kimlik ve Güven Modeli**: İki kimlik (kullanıcı: `X-User-Id`, servis: `X-Gateway-Secret`). Kimlik ASLA tool parametresi olamaz; `X-User-Roles` bilerek iletilmez. Yetki downstream'dedir, Python ikinci savunma hattıdır. Üretimde zayıf secret ile fail-fast (`startup_checks`).
+- **Ayrık Audit**: `audit` logger (`propagate=False`, stdout JSON) PII içermez (`args_hash` + `arg_names`). `ToolResult.reason` modele yansımaz. Audit logları altyapıda ayrı index ve saklama süresiyle tutulmalıdır.
+- **Yeni Tool Kontrolü**: `extra="forbid"`, kimlik parametresi yok, 403/404 aynı hata metni ("bulunamadı"), sahiplik uyuşmazlığında `reason="ownership_mismatch"`, `ToolRegistry` kaydı (otomatik audit), yan etkili işlemler yalnızca `PendingAction` teklifi üretir.
 - **Birim Testleri**: Ağ veya Docker gerektirmeden `uv run pytest -m "not integration"` ile çalışır.

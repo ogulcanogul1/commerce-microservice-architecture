@@ -46,3 +46,16 @@
   4. **Şema Genişletme Sırası:** Config Server'a yeni bir anahtar ekleneceği zaman, `extra="forbid"` kuralı nedeniyle **önce Python kodu deploy edilir, ardından Config Server YAML dosyası güncellenir**. Aksi takdirde eski kod bilinmeyen anahtarı reddeder.
   5. **Yenileme ve Ağ Modeli (Bilinen Sınırlama):** Arka planda polling döngüsü bulunmaz; açılışta Config Server kapalıysa servis env fallback ile çalışır ve sonradan elle `POST /actuator/refresh` çağrılana kadar yerel ayarlarda kalır. `/actuator/**` uç noktaları Gateway arkasında değildir, yalnızca Docker dahili ağı içinden erişilebilir; eşzamanlı çağrılar `asyncio.Lock` ile korunur.
 
+## 7. Kimlik ve Güven Modeli (Identity & Trust Hardening)
+- **İki Kimlik Katmanı:** İsteklerde kullanıcı kimliği `X-User-Id` (`RequestContext`), servis güvenliği ise Gateway ile paylaşılan `X-Gateway-Secret` ile doğrulanır. Kimlik ASLA tool parametresi olamaz; `X-User-Roles` bilerek downstream'e iletilmez (AI servisi admin yetkisi kazanamaz). Asıl yetki kararı downstream mikroservistedir; Python katmanı ikinci savunma hattıdır.
+- **Fail-Fast Başlangıç (`startup_checks`):** `ENVIRONMENT != development` iken varsayılan veya 32 karakterden kısa secret ile servis ayağa kalkmaz (çıkış kodu 1).
+- **Ayrık Audit Kaydı:** Denetim kayıtları ayrık `audit` logger'ı (`propagate=False`, stdout JSON) üzerinden tutulur. PII (kullanıcı mesajı, sipariş no, adres vb.) içermez; yalnızca kullanıcı UUID, `arg_names` ve `args_hash` yer alır. `ToolResult.reason` iç sınıflama içindir, modele/kullanıcıya yansıtılmaz. Arka arkaya yetkisiz erişim denemeleri (`enumeration_suspected`) alarm üretir.
+- **Audit Saklama ve Değiştirilemezlik:** Audit akışı stdout'tan toplanır; uygulama logundan ayrı bir index/saklama süresi (örn. 1 yıl) ve değiştirilemezlik (WORM/immutability) altyapı (Loki/Elasticsearch) seviyesinde sağlanmalıdır; Python çalışma zamanı bunu garanti etmez.
+- **Yeni Araç (Tool) Kontrol Listesi:**
+  - [ ] Parametre şeması `extra="forbid"`; kimlik (`customer_id` vb.) parametresi yok.
+  - [ ] Kaynağa erişimde sahiplik kontrolü yapılır; uyuşmazlıkta `ToolResult(..., reason="ownership_mismatch")`.
+  - [ ] Hata metni 403 ve 404 için aynıdır ("bulunamadı"), varlık ifşa edilmez.
+  - [ ] Araç `ToolRegistry`'ye kayıtlıdır (audit sarmalaması otomatik).
+  - [ ] Yan etkili araç yalnızca `PendingAction` teklifi üretir; çalıştırma `ActionExecutor` + kullanıcı onayı ile yürütülür.
+
+
