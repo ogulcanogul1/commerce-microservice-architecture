@@ -71,3 +71,42 @@
 1. `python_plan/microservice/gateway-decisions.md` (Mimari kararlar)
 2. `python_plan/microservice/gateway-entegrasyonu.md` (Entegrasyon planı)
 3. `AGENTS.md` & `CLAUDE.md` (Her iki servis dizinindeki yönergeler)
+
+
+---
+
+## Tamamlanan Aşama: Spring Cloud Config Entegrasyonu (`python_plan/microservice/config-entegrasyonu.md`)
+
+`ai-assistant-service/python_plan/microservice/config-entegrasyonu.md` planındaki Adım 0'dan Adım 8'e kadar tüm adımlar eksiksiz tamamlanmış; Python ve Java servisleri izole test paketleriyle %100 doğrulanmış, adım adım commit'lenmiş ve `origin main` dalına push'lanmıştır. Mimari kararlar `python_plan/microservice/config-decisions.md` dosyasına kaydedilmiştir.
+
+### Tamamlanan Mimari Bileşenler ve Kapsam:
+1. **İki Katmanlı Konfigürasyon Mimarisi (`Settings` vs `RuntimeSettings`):**
+   - Açılışta ortam değişkenlerinden okunan statik ayarlar (`app/core/config.py`) ile çalışma zamanında dinamik yönetilen ayarlar (`app/runtimeconfig/models.py`) birbirinden ayrıldı.
+   - Secret yasağı, extra forbidden alan kontrolü, dondurulmuş (`frozen=True`) modeller ve Gateway TimeLimiter tavan denetimleri (`agent <= 65s`, `rag <= 50s`) uygulandı.
+2. **Spring Cloud Config Server YAML ve Java Sözleşme Testi:**
+   - `config-server/src/main/resources/config/ai-assistant-service/` altında profil bazlı hiyerarşik YAML dosyaları (`ai-assistant-service.yaml`, `-dev.yaml`, `-qa.yaml`, `-prod.yaml`) oluşturuldu.
+   - `ConfigServerApplicationTests` sınıfına profil öncelik hiyerarşisini doğrulayan sözleşme testi eklendi.
+3. **Property Sources Çözümleme (`app/runtimeconfig/parsing.py`):**
+   - Config Server'ın en yüksek öncelikli kaynağı listenin başına koyması nedeniyle ters sıra (`reversed`) ile birleştirme deseni uygulandı.
+   - Yalnızca `ai.` önekli anahtarlar süzüldü; ortak `application.yaml`'dan gelen harici anahtarlar ve çözülmemiş Spring placeholder'ları (`${...}`) elendi.
+4. **Config Server İstemcisi ve Atomik Değişim Deposu (`client.py`, `holder.py`):**
+   - `httpx` tabanlı `ConfigServerClient` ile JSON sözleşmesi çekimi.
+   - `RuntimeConfigHolder` ile validate-then-swap atomik değişim, SHA-256 içerik hash'i ile versiyonlama, ortam değişkeni koruması (pinned paths) ve listener desteği (`apply_log_level`).
+5. **Açılışta Yükleme (Initial Load) ve `POST /actuator/refresh` (`loader.py`, `actuator.py`):**
+   - Servis açılışında 3 denemeli üstel geri çekilme (`initial_load`) ile Config Server'dan konfigürasyon çekildi.
+   - Spring Boot Actuator standardıyla birebir uyumlu `POST /actuator/refresh` uç noktası eklendi.
+   - `/health` uç noktasına konfigürasyon kaynak ve durum meta verileri eklendi.
+6. **Tur Başına Tek Snapshot (`deps.py` ve Tüketiciler):**
+   - `get_runtime_settings(request)` dependency'si üzerinden her isteğin başında dondurulmuş snapshot alındı.
+   - `AgentService.chat`, `RagAnswerService.answer` ve `TokenBudgetService.reserve` metodlarına parametre olarak aktarılarak uçuştaki isteklerin tur ortası değişimlerden etkilenmemesi sağlandı.
+7. **Docker Compose ve Dev Canlı Düzenleme:**
+   - `docker-compose.apps.yml` dosyasına `CONFIG_SERVER_ENABLED=true` ve `CONFIG_SERVER_URL` eklendi.
+   - Yerel geliştirmede JAR rebuilding gerektirmeyen `docker-compose.config-dev.yml` override dosyası eklendi.
+
+### Test Özeti:
+- **Python (`ai-assistant-service`):**
+  - **665 passed**, 1 skipped, 7 deselected (Başlangıç 608 testten 665 teste çıkarıldı, sıfır hata/regresyon).
+- **Java Config Server (`config-server`):**
+  - **3 passed**, 0 failure (Profil öncelik sözleşme testi dahil).
+- **Docker Doğrulaması:**
+  - Yerel Docker daemon çalışmadığından canlı konteyner testi "doğrulanmadı" olarak işaretlendi; tüm birim/entegrasyon testleri in-memory test altyapısıyla eksiksiz doğrulandı.
