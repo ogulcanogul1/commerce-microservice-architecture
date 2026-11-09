@@ -108,3 +108,35 @@ async def test_initial_load_stops_immediately_on_validation_error(baseline_holde
     # Format/doğrulama hatasında 5 kez denememeli, 1. denemede durmalı
     assert calls == 1
     assert baseline_holder.status.last_error == "validation"
+
+
+@pytest.mark.anyio
+async def test_initial_load_succeeds_when_config_is_identical_to_baseline(
+    baseline_holder: RuntimeConfigHolder,
+) -> None:
+    """Config Server baseline ile aynı ayarları döndüğünde tek denemede başarılı (True) olmalıdır."""
+    calls = 0
+
+    class IdenticalClient(ConfigServerClient):
+        def __init__(self) -> None:
+            pass
+
+        async def fetch_property_sources(self, app_name: str, profile: str) -> list[dict[str, Any]]:
+            nonlocal calls
+            calls += 1
+            return [{"name": "app.yaml", "source": {"ai.agent.max-steps": baseline_holder.current.agent.max_steps}}]
+
+    ok = await initial_load(
+        baseline_holder,
+        IdenticalClient(),
+        "ai-assistant-service",
+        "dev",
+        attempts=3,
+        backoff_sec=0.01,
+    )
+    assert ok is True
+    assert calls == 1
+    assert baseline_holder.status.last_error is None
+    assert baseline_holder.status.consecutive_failures == 0
+    assert baseline_holder.status.source == "config-server"
+

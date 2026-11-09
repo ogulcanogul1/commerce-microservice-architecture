@@ -257,7 +257,8 @@ class RuntimeConfigHolder:
 
         # 2. Aşama: Gelen kaynakları doğrulayıp uygulama
         try:
-            return self.apply_property_sources(sources)
+            self.apply_property_sources(sources)
+            return True
         except ConfigFormatError as exc:
             self._record_failure("format")
             logger.error("Config Server format hatası: %s", str(exc))

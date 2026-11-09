@@ -177,6 +177,27 @@ async def test_refresh_fetch_error_and_recovery(baseline_settings: RuntimeSettin
     assert holder.current.agent.max_steps == 3
 
 
+@pytest.mark.anyio
+async def test_refresh_succeeds_when_config_is_identical_to_baseline(baseline_settings: RuntimeSettings) -> None:
+    """Config Server baseline ile birebir aynı değerleri dönse bile refresh başarılı (True) sayılmalıdır."""
+    holder = RuntimeConfigHolder(baseline_settings, frozenset())
+
+    class IdenticalClient(ConfigServerClient):
+        def __init__(self) -> None:
+            pass
+
+        async def fetch_property_sources(self, app_name: str, profile: str) -> list[dict[str, Any]]:
+            return [{"name": "app.yaml", "source": {"ai.agent.max-steps": baseline_settings.agent.max_steps}}]
+
+    ok = await holder.refresh(IdenticalClient(), "ai-assistant-service", "dev")
+    assert ok is True
+    assert holder.status.source == "config-server"
+    assert holder.status.last_error is None
+    assert holder.status.consecutive_failures == 0
+    assert holder.status.last_success_at is not None
+
+
+
 def test_pinned_path_wins_over_config_server(baseline_settings: RuntimeSettings) -> None:
     """Env ile sabitlenmiş (pinned) alanların Config Server değeriyle ezilemeyeceğini doğrular."""
     # agent.max_steps sabitlenmiş olsun (baseline değeri 4)
