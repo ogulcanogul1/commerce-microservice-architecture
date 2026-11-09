@@ -19,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.List;
 
@@ -61,7 +62,11 @@ public class GatewaySecurityFilter extends OncePerRequestFilter {
         }
 
         String receivedSecret = request.getHeader(GATEWAY_SECRET_HEADER);
-        if (receivedSecret == null || !expectedSecret.equals(receivedSecret)) {
+        boolean secretValid = receivedSecret != null
+                && MessageDigest.isEqual(
+                        receivedSecret.getBytes(StandardCharsets.UTF_8),
+                        expectedSecret.getBytes(StandardCharsets.UTF_8));
+        if (!secretValid) {
             log.warn("Blocked direct access attempt to path [{}] from IP [{}]. Missing or invalid {}.",
                     request.getRequestURI(), request.getRemoteAddr(), GATEWAY_SECRET_HEADER);
             writeForbiddenResponse(response);

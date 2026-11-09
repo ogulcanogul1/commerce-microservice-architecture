@@ -88,6 +88,19 @@ class GatewaySecurityFilterTest {
     }
 
     @Test
+    @DisplayName("Should reject request with 403 Forbidden when secret has different length")
+    void shouldBlockWhenSecretHasDifferentLength() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/orders");
+        request.addHeader(GatewaySecurityFilter.GATEWAY_SECRET_HEADER, "short");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        gatewaySecurityFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain, never()).doFilter(any(), any());
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
     @DisplayName("Should allow all requests when filter is disabled via configuration")
     void shouldAllowWhenDisabled() throws ServletException, IOException {
         ReflectionTestUtils.setField(gatewaySecurityFilter, "enabled", false);
