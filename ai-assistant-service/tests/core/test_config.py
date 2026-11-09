@@ -33,3 +33,16 @@ def test_config_server_initial_attempts_validation() -> None:
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None, CONFIG_INITIAL_ATTEMPTS=11)
+
+
+
+def test_audit_deny_threshold_validation() -> None:
+    """AUDIT_DENY_THRESHOLD en az 1 olmalıdır; 0 veya negatif değerler ValidationError fırlatır."""
+    s = Settings(_env_file=None, AUDIT_DENY_THRESHOLD=5)
+    assert s.AUDIT_DENY_THRESHOLD == 5
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, AUDIT_DENY_THRESHOLD=0)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, AUDIT_DENY_THRESHOLD=-1)

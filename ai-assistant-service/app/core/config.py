@@ -61,8 +61,12 @@ class Settings(BaseSettings):
     GATEWAY_SECURITY_ENABLED: bool = True
 
     # Audit & Enumeration Alarm Configuration
-    AUDIT_DENY_THRESHOLD: int = 5  # Pencere içinde bu sayıda reddedilen erişim → enumeration alarmı
-    AUDIT_DENY_WINDOW_SEC: float = 60.0  # Reddedilen erişimlerin sayıldığı pencere (saniye)
+    AUDIT_DENY_THRESHOLD: int = Field(
+        default=5, ge=1, description="Pencere içinde bu sayıda reddedilen erişim → enumeration alarmı"
+    )
+    AUDIT_DENY_WINDOW_SEC: float = Field(
+        default=60.0, gt=0.0, description="Reddedilen erişimlerin sayıldığı pencere (saniye)"
+    )
 
     # Eureka Discovery Configuration
     EUREKA_ENABLED: bool = False
