@@ -7,6 +7,7 @@ and indirect prompt injection escaping via render_for_model.
 import asyncio
 import json
 import logging
+import time
 from typing import Any
 from pydantic import ValidationError
 
@@ -16,6 +17,20 @@ from app.clients.base import (
     DownstreamForbidden,
     DownstreamNotFound,
     DownstreamUnavailable,
+)
+from app.core.audit import (
+    DENY_OUTCOMES,
+    OUTCOME_BAD_REQUEST,
+    OUTCOME_DENIED,
+    OUTCOME_ERROR,
+    OUTCOME_INVALID_ARGS,
+    OUTCOME_NOT_FOUND,
+    OUTCOME_OK,
+    OUTCOME_TIMEOUT,
+    OUTCOME_UNAVAILABLE,
+    get_deny_tracker,
+    hash_args,
+    write_audit,
 )
 from app.core.config import settings
 from app.llm.base import ToolDefinition
@@ -87,10 +102,63 @@ class ToolRegistry:
         raw_args: dict[str, Any],
         ctx: ToolContext,
     ) -> ToolResult:
+        """Tool'u çalıştırır ve sonucundan bağımsız olarak bir audit kaydı yazar."""
+        started = time.monotonic()
+        outcome = OUTCOME_ERROR
+        try:
+            result = await self._execute_core(name, raw_args, ctx)
+            outcome = result.reason or (OUTCOME_OK if result.ok else OUTCOME_ERROR)
+            return result
+        except asyncio.TimeoutError:
+            outcome = OUTCOME_TIMEOUT
+            raise
+        except DownstreamUnavailable:
+            outcome = OUTCOME_UNAVAILABLE
+            raise
+        except Exception:
+            outcome = OUTCOME_ERROR
+            raise
+        finally:
+            self._record_audit(name, raw_args, ctx, outcome, started)
+
+    def _record_audit(
+        self,
+        name: str,
+        raw_args: Any,
+        ctx: ToolContext,
+        outcome: str,
+        started: float,
+    ) -> None:
+        write_audit(
+            "tool_call",
+            user_id=ctx.user_id,
+            correlation_id=ctx.correlation_id,
+            outcome=outcome,
+            tool=name,
+            arg_names=sorted(raw_args) if isinstance(raw_args, dict) else [],
+            args_hash=hash_args(raw_args),
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        if outcome in DENY_OUTCOMES and get_deny_tracker().record(ctx.user_id):
+            write_audit(
+                "enumeration_suspected",
+                user_id=ctx.user_id,
+                correlation_id=ctx.correlation_id,
+                outcome="alert",
+                threshold=settings.AUDIT_DENY_THRESHOLD,
+                window_sec=settings.AUDIT_DENY_WINDOW_SEC,
+            )
+
+    async def _execute_core(
+        self,
+        name: str,
+        raw_args: dict[str, Any],
+        ctx: ToolContext,
+    ) -> ToolResult:
         """Validate input arguments, run tool with timeout, and handle exceptions safely."""
         tool = self._tools.get(name)
         if tool is None:
-            return ToolResult(ok=False, error=f"Bilinmeyen araç: {name}")
+            return ToolResult(ok=False, error=f"Bilinmeyen araç: {name}", reason=OUTCOME_INVALID_ARGS)
 
         parsed_args = raw_args
         if isinstance(raw_args, str):
@@ -98,10 +166,10 @@ class ToolRegistry:
                 parsed_args = json.loads(raw_args)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning("Tool '%s' raw_args JSON decoding failed: %s", name, e)
-                return ToolResult(ok=False, error="Geçersiz araç parametreleri (JSON format hatası).")
+                return ToolResult(ok=False, error="Geçersiz araç parametreleri (JSON format hatası).", reason=OUTCOME_INVALID_ARGS)
 
         if not isinstance(parsed_args, dict):
-            return ToolResult(ok=False, error="Geçersiz araç parametreleri (parametreler sözlük formatında olmalıdır).")
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri (parametreler sözlük formatında olmalıdır).", reason=OUTCOME_INVALID_ARGS)
 
         try:
             validated_args = tool.args_model.model_validate(parsed_args)
@@ -114,14 +182,14 @@ class ToolRegistry:
             ]
             fields_str = ", ".join(f for f in invalid_fields if f)
             if fields_str:
-                return ToolResult(ok=False, error=f"Geçersiz araç parametreleri ({fields_str})")
-            return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
+                return ToolResult(ok=False, error=f"Geçersiz araç parametreleri ({fields_str})", reason=OUTCOME_INVALID_ARGS)
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri.", reason=OUTCOME_INVALID_ARGS)
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning("Tool '%s' parameter decode failed: %s", name, e)
-            return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri.", reason=OUTCOME_INVALID_ARGS)
         except Exception as e:
             logger.warning("Tool '%s' unexpected parameter validation exception: %s", name, e)
-            return ToolResult(ok=False, error="Geçersiz araç parametreleri.")
+            return ToolResult(ok=False, error="Geçersiz araç parametreleri.", reason=OUTCOME_INVALID_ARGS)
 
         timeout = getattr(tool, "timeout_sec", None) or self._timeout_sec
         try:
@@ -133,12 +201,15 @@ class ToolRegistry:
             logger.warning("Tool '%s' timed out after %s seconds", name, timeout)
             if name == "search_policy":
                 raise
-            return ToolResult(ok=False, error="Araç zaman aşımına uğradı.")
-        except (DownstreamNotFound, DownstreamForbidden):
+            return ToolResult(ok=False, error="Araç zaman aşımına uğradı.", reason=OUTCOME_TIMEOUT)
+        except DownstreamNotFound:
             # Varlık sızdırmama kuralı: 404 ve 403 aynı hata metnine çevrilir
-            return ToolResult(ok=False, error="Sipariş bulunamadı.")
+            return ToolResult(ok=False, error="Sipariş bulunamadı.", reason=OUTCOME_NOT_FOUND)
+        except DownstreamForbidden:
+            # Varlık sızdırmama kuralı: 404 ve 403 aynı hata metnine çevrilir
+            return ToolResult(ok=False, error="Sipariş bulunamadı.", reason=OUTCOME_DENIED)
         except DownstreamBadRequest as exc:
-            return ToolResult(ok=False, error=exc.detail or "Geçersiz işlem parametreleri.")
+            return ToolResult(ok=False, error=exc.detail or "Geçersiz işlem parametreleri.", reason=OUTCOME_BAD_REQUEST)
         except DownstreamUnavailable:
             # Altyapı kesintileri HTTP 503 olarak yukarı taşınır
             raise
@@ -147,14 +218,14 @@ class ToolRegistry:
                 # RAG altyapı kesintileri (Qdrant, LLM vb.) gizlenmez; HTTP 503 olarak yukarı taşınır
                 raise
             logger.exception("Unexpected error executing tool '%s'", name)
-            return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.")
+            return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.", reason=OUTCOME_ERROR)
         except ValueError as exc:
             # Dahili kod ayrıntılarını, stack detaylarını veya kötü niyetli input yankılarını sızdırma
             msg = str(exc)
             logger.warning("Tool '%s' raised ValueError: %s", name, msg)
             if "Geçersiz sipariş numarası" in msg:
-                return ToolResult(ok=False, error="Geçersiz sipariş numarası.")
-            return ToolResult(ok=False, error="Geçersiz parametre veya işlem değeri.")
+                return ToolResult(ok=False, error="Geçersiz sipariş numarası.", reason=OUTCOME_BAD_REQUEST)
+            return ToolResult(ok=False, error="Geçersiz parametre veya işlem değeri.", reason=OUTCOME_BAD_REQUEST)
         except Exception as exc:
             logger.exception("Unexpected error executing tool '%s': %s", name, exc)
-            return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.")
+            return ToolResult(ok=False, error="Araç çalıştırılırken bir hata oluştu.", reason=OUTCOME_ERROR)
