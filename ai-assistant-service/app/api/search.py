@@ -164,8 +164,8 @@ def get_embedder(request: Request) -> Embedder:
 )
 def search_documents(
     payload: SearchRequest,
-    store: QdrantStore = Depends(get_qdrant_store),
-    embedder: Embedder = Depends(get_embedder),
+    store: QdrantStore = Depends(get_qdrant_store),  # -> app.state üzerinden Qdrant vektör koleksiyonu bağlantısını çözer
+    embedder: Embedder = Depends(get_embedder),  # -> app.state üzerinden sorguyu vektörleştirecek Embedding modelini çözer
 ) -> SearchResponse:
     """RAG Arama işlemini yürüten ana denetleyici metot.
 

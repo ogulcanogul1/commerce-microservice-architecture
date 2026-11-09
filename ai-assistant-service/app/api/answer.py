@@ -114,12 +114,12 @@ async def answer_question(
     # LLM çağrısı yapan ve token bütçesi harcayan bu uç nokta için kullanıcı kimliği zorunludur.
     # 'ctx: RequestContext' bağımlılığı 'service' çözümleyicisinden ÖNCE tanımlanır; böylece kimliği
     # doğrulanmamış istekler uygulama içi servislere ulaşmadan doğrudan 401 Unauthorized ile kesilir.
-    ctx: RequestContext = Depends(get_request_context),
-    service: RagAnswerService = Depends(get_rag_answer_service),
+    ctx: RequestContext = Depends(get_request_context),  # -> X-User-Id ve X-Correlation-Id başlıklarını doğrular, temizler ve RequestContext üretir
+    service: RagAnswerService = Depends(get_rag_answer_service),  # -> app.state üzerinden doküman arama ve LLM cevaplama motorunu (RAG) çözer
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
-    limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
-    budget: TokenBudgetService | None = Depends(get_token_budget),
-    runtime: RuntimeSettings = Depends(get_runtime_settings),
+    limiter: ConcurrencyLimiter = Depends(get_ai_limiter),  # -> Instance başına maksimum eşzamanlı LLM istek (concurrency slot) sınırlayıcısını çözer
+    budget: TokenBudgetService | None = Depends(get_token_budget),  # -> Redis tabanlı kullanıcı ve model token bütçesi/kota yönetim servisini çözer
+    runtime: RuntimeSettings = Depends(get_runtime_settings),  # -> Spring Cloud Config Server'dan gelen anlık (frozen snapshot) ayarları çözer
 ) -> AnswerResponse:
     """Execute end-to-end grounded RAG question answering."""
     try:

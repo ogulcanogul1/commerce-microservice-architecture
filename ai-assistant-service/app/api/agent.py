@@ -83,10 +83,10 @@ class ActionResultResponse(BaseModel):
 async def chat(
     request: ChatRequest,
     req: Request,
-    ctx: RequestContext = Depends(get_request_context),
-    limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
-    budget: TokenBudgetService | None = Depends(get_token_budget),
-    runtime: RuntimeSettings = Depends(get_runtime_settings),
+    ctx: RequestContext = Depends(get_request_context),  # -> Gateway'in X-User-Id başlığını doğrular ve kullanıcı kimlik bağlamını üretir
+    limiter: ConcurrencyLimiter = Depends(get_ai_limiter),  # -> Eşzamanlı istek kotasını (concurrency slot) kontrol eden sınırlayıcıyı çözer
+    budget: TokenBudgetService | None = Depends(get_token_budget),  # -> Kullanıcının günlük/dakikalık LLM token bütçesini yöneten servisi çözer
+    runtime: RuntimeSettings = Depends(get_runtime_settings),  # -> Spring Cloud Config Server dinamik runtime konfigürasyon snapshot'ını çözer
 ) -> ChatResponse:
     """Execute conversational turn with customer support agent."""
     service: AgentService | None = getattr(req.app.state, "agent_service", None)
@@ -169,7 +169,7 @@ async def chat(
 async def confirm_action(
     req: Request,
     action_id: str = Path(pattern=r"^[A-Za-z0-9_\-]{16,64}$"),
-    ctx: RequestContext = Depends(get_request_context),
+    ctx: RequestContext = Depends(get_request_context),  # -> Onaylayan kullanıcının kimliğini (user_id) doğrular; IDOR koruması sağlar
 ) -> ActionResultResponse:
     """Bekleyen hassas işlemi (Human-in-the-Loop) onaylar ve yürütür.
 
@@ -256,7 +256,7 @@ async def confirm_action(
 async def reject_action(
     req: Request,
     action_id: str = Path(pattern=r"^[A-Za-z0-9_\-]{16,64}$"),
-    ctx: RequestContext = Depends(get_request_context),
+    ctx: RequestContext = Depends(get_request_context),  # -> Reddeden kullanıcının kimliğini (user_id) doğrular; IDOR koruması sağlar
 ) -> ActionResultResponse:
     """Explicitly reject/cancel a pending action."""
     store: PendingActionStore | None = getattr(req.app.state, "action_store", None)
