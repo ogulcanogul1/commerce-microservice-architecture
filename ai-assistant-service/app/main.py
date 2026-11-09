@@ -11,6 +11,7 @@ bağımsız fonksiyonlara ayrılmıştır (SRP - Single Responsibility Principle
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import logging
 from typing import Any, Callable
 
@@ -26,6 +27,7 @@ from app.agent.tools.orders import GetOrderTool, ListMyOrdersTool
 from app.agent.tools.policy import SearchPolicyTool
 from app.agent.tools.registry import ToolRegistry
 from app.agent.tools.shipping import GetShipmentTool
+from app.api.actuator import router as actuator_router
 from app.api.api import api_router
 from app.clients.order import OrderClient
 from app.clients.shipping import ShippingClient
@@ -48,8 +50,68 @@ from app.rag.generation.service import RagAnswerService
 from app.rag.rerank.factory import build_reranker_from_settings
 from app.rag.vectorstore.models import QdrantConfig
 from app.rag.vectorstore.store import QdrantStore
+from app.runtimeconfig.client import ConfigServerClient
+from app.runtimeconfig.holder import RuntimeConfigHolder
+from app.runtimeconfig.listeners import apply_log_level
+from app.runtimeconfig.loader import initial_load
+from app.runtimeconfig.models import RuntimeSettings, pinned_paths
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# 0. RUNTIME KONFİGÜRASYON (CONFIG SERVER) KURULUMU
+# ============================================================================
+
+async def _init_runtime_config() -> tuple[RuntimeConfigHolder, ConfigServerClient | None]:
+    """Başlangıçta Config Server'dan ayarları çeker ve holder'ı hazırlar.
+
+    Mimari Kural:
+    Bu fonksiyon lifespan'in en başında çağrılmalıdır. Instance henüz trafik
+    almaya başlamadan önce çalışma zamanı konfigürasyonu kesinleşmiş olmalıdır.
+    """
+    baseline = RuntimeSettings.from_startup(settings)
+    pinned = pinned_paths(settings)
+    holder = RuntimeConfigHolder(baseline, pinned)
+
+    # Log seviyesi dinleyicisini bağla ve baseline değerini uygula
+    holder.add_listener(apply_log_level)
+    apply_log_level(None, holder.current)
+
+    if not settings.CONFIG_SERVER_ENABLED:
+        return holder, None
+
+    if pinned:
+        logger.warning(
+            "Env ile sabitlenmiş runtime alanları (Config Server yok sayacak): %s",
+            ", ".join(sorted(pinned)),
+        )
+
+    client = ConfigServerClient(
+        settings.CONFIG_SERVER_URL,
+        timeout_sec=settings.CONFIG_REQUEST_TIMEOUT_SEC,
+    )
+
+    # Açılışta en fazla 3 kez bağlanmayı dene
+    ok = await initial_load(
+        holder,
+        client,
+        app_name=settings.SERVICE_NAME,
+        profile=settings.CONFIG_PROFILE,
+        attempts=settings.CONFIG_INITIAL_ATTEMPTS,
+    )
+
+    if not ok:
+        if settings.CONFIG_FAIL_FAST:
+            await client.aclose()
+            raise RuntimeError(
+                "Config Server'dan başlangıç konfigürasyonu alınamadı (CONFIG_FAIL_FAST=true)"
+            )
+        logger.warning(
+            "Config Server'a ulaşılamadı; yerel/env runtime ayarlarıyla devam ediliyor."
+        )
+
+    return holder, client
 
 
 # ============================================================================
@@ -393,6 +455,7 @@ async def _cleanup_resources(
     ticket_publisher: TicketPublisher | None,
     client: QdrantClient | None,
     redis_client: Any | None = None,
+    config_server_client: ConfigServerClient | None = None,
 ) -> None:
     """Uygulama kapanırken açık ağ bağlantılarını ve thread'leri güvenle serbest bırakır."""
     if sigterm_restore is not None:
@@ -406,6 +469,12 @@ async def _cleanup_resources(
             await eureka_registrar.stop()
         except Exception as exc:
             logger.warning("Eureka registrar kapatılırken hata: %s", exc)
+
+    if config_server_client is not None:
+        try:
+            await config_server_client.aclose()
+        except Exception as exc:
+            logger.warning("ConfigServerClient kapatılırken hata: %s", exc)
 
     if redis_client is not None:
         try:
@@ -449,6 +518,9 @@ async def lifespan(app: FastAPI):
     Tüm alt bileşenleri sıralı ve kontrollü bir şekilde başlatıp `app.state`'e ekler.
     Uygulama kapatıldığında (Ctrl+C veya SIGTERM) açık soketleri ve bağlantıları temizler.
     """
+    # 0. Adım: Runtime Konfigürasyon (Config Server) Başlatma
+    runtime_config, config_client = await _init_runtime_config()
+
     # 1. Adım: Vektör Veritabanı ve Embedding modellerini ayağa kaldır
     embedder, client, store = _init_vector_store()
 
@@ -479,6 +551,8 @@ async def lifespan(app: FastAPI):
     token_budget, redis_client = _init_token_budget()
 
     # Tüm servis referanslarını FastAPI endpoint'lerinin erişebilmesi için app.state'e kaydet
+    app.state.runtime_config = runtime_config
+    app.state.config_server_client = config_client
     app.state.embedder = embedder
     app.state.qdrant_client = client
     app.state.qdrant_store = store
@@ -509,6 +583,7 @@ async def lifespan(app: FastAPI):
         ticket_publisher=ticket_publisher,
         client=client,
         redis_client=redis_client,
+        config_server_client=config_client,
     )
 
 
@@ -531,13 +606,33 @@ register_problem_details_handlers(app)
 
 # Ana API yönlendiricisini (Router) dahil et (/agent, /api/v1/chat, /rag)
 app.include_router(api_router)
+# Actuator canlı yenileme yönlendiricisini dahil et (/actuator/refresh)
+app.include_router(actuator_router)
 
 
 @app.get("/health")
 async def health_check():
     """Kubernetes veya Eureka için kimlik doğrulamasız sağlık kontrolü endpoint'i."""
-    return {
+    res: dict[str, Any] = {
         "status": "UP",
         "service": settings.SERVICE_NAME,
         "environment": settings.ENVIRONMENT,
     }
+    holder = getattr(app.state, "runtime_config", None)
+    if holder is not None:
+        status = holder.status
+        now = datetime.now(timezone.utc)
+        last_success_age_sec = (
+            int((now - status.last_success_at).total_seconds())
+            if status.last_success_at is not None
+            else None
+        )
+        res["config"] = {
+            "source": status.source,
+            "version": status.version,
+            "last_success_age_sec": last_success_age_sec,
+            "consecutive_failures": status.consecutive_failures,
+            "last_error": status.last_error,
+            "pinned": list(status.pinned),
+        }
+    return res

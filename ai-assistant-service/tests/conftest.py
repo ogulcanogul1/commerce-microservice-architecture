@@ -19,3 +19,18 @@ def disable_gateway_security_for_tests() -> Generator[None, None, None]:
         yield
     finally:
         settings.GATEWAY_SECURITY_ENABLED = original_state
+
+
+@pytest.fixture(autouse=True)
+def disable_config_server_for_tests() -> Generator[None, None, None]:
+    """Birim testleri sırasında gerçek Config Server'a ağ çağrısı yapılmasını varsayılan olarak engeller.
+
+    Config Server'ı test eden testler monkeypatch ile CONFIG_SERVER_ENABLED=True yapıp
+    MockTransport sağlayabilir.
+    """
+    original_state = settings.CONFIG_SERVER_ENABLED
+    settings.CONFIG_SERVER_ENABLED = False
+    try:
+        yield
+    finally:
+        settings.CONFIG_SERVER_ENABLED = original_state
