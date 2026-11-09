@@ -1,9 +1,11 @@
 package com.dgl.config;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.config.environment.Environment;
+import org.springframework.cloud.config.environment.PropertySource;
 import org.springframework.cloud.config.server.environment.EnvironmentRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,5 +41,29 @@ class ConfigServerApplicationTests {
 
         assertThat(hasOrderConfig).isTrue();
         assertThat(hasCommonConfig).isTrue();
+    }
+
+    @Test
+    void shouldServeAiAssistantRuntimeKeysWithProfilePrecedence() {
+        Environment environment = environmentRepository.findOne("ai-assistant-service", "prod", null);
+        assertThat(environment).isNotNull();
+
+        List<PropertySource> sources = environment.getPropertySources();
+        int prodIndex = indexOf(sources, "ai-assistant-service-prod.yaml");
+        int baseIndex = indexOf(sources, "ai-assistant-service.yaml");
+
+        // propertySources en yüksek öncelik başta: prod dosyası temel dosyadan ÖNCE gelmeli
+        assertThat(prodIndex).isGreaterThanOrEqualTo(0).isLessThan(baseIndex);
+        assertThat(sources.get(baseIndex).getSource().containsKey("ai.agent.max-steps")).isTrue();
+        assertThat(sources.get(prodIndex).getSource().containsKey("ai.logging.level")).isTrue();
+    }
+
+    private static int indexOf(List<PropertySource> sources, String fileName) {
+        for (int i = 0; i < sources.size(); i++) {
+            if (sources.get(i).getName().contains(fileName)) {
+                return i;
+            }
+        }
+        return -1;
     }
 }
