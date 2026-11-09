@@ -80,12 +80,6 @@ class Settings(BaseSettings):
     CONFIG_PROFILE: Literal["dev", "qa", "prod", "default", "test"] = Field(
         default="dev", description="Config Server profili (dev/qa/prod; Java servisleriyle uyumlu varsayılan dev)"
     )
-    CONFIG_POLL_INTERVAL_SEC: float = Field(
-        default=30.0, ge=5.0, description="Config Server'ı sorgulama (poll) periyodu (sn)"
-    )
-    CONFIG_POLL_JITTER_RATIO: float = Field(
-        default=0.2, ge=0.0, le=0.5, description="Poll periyoduna eklenecek rastgele sapma oranı (+-%20)"
-    )
     CONFIG_REQUEST_TIMEOUT_SEC: float = Field(
         default=3.0, gt=0.0, description="Config Server tekil HTTP GET zaman aşımı (sn)"
     )

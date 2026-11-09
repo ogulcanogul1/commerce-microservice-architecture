@@ -9,26 +9,9 @@ def test_config_server_default_settings() -> None:
     assert settings.CONFIG_SERVER_ENABLED is False
     assert settings.CONFIG_SERVER_URL == "http://localhost:8888/"
     assert settings.CONFIG_PROFILE == "dev"
-    assert settings.CONFIG_POLL_INTERVAL_SEC == 30.0
-    assert settings.CONFIG_POLL_JITTER_RATIO == 0.2
     assert settings.CONFIG_REQUEST_TIMEOUT_SEC == 3.0
     assert settings.CONFIG_INITIAL_ATTEMPTS == 3
     assert settings.CONFIG_FAIL_FAST is False
-
-
-def test_config_server_jitter_ratio_validation() -> None:
-    """CONFIG_POLL_JITTER_RATIO 0.0 ile 0.5 aralığı dışında ValidationError fırlatmalıdır."""
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, CONFIG_POLL_JITTER_RATIO=0.9)
-
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, CONFIG_POLL_JITTER_RATIO=-0.1)
-
-
-def test_config_server_poll_interval_validation() -> None:
-    """CONFIG_POLL_INTERVAL_SEC 5.0 saniyenin altında ise ValidationError fırlatmalıdır."""
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, CONFIG_POLL_INTERVAL_SEC=2.0)
 
 
 def test_config_server_profile_validation() -> None:
