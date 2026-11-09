@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Literal
 
@@ -13,10 +14,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.budget.deps import get_budget_subject, get_token_budget
 from app.budget.estimator import estimate_chat_tokens
 from app.budget.service import TokenBudgetService
-from app.core.config import settings
 from app.core.limits import ConcurrencyLimiter, get_ai_limiter
-from app.rag.generation.models import AbstainReason, RagAnswer
+from app.rag.generation.models import AbstainReason, GenerationConfig, RagAnswer
 from app.rag.generation.service import RagAnswerService
+from app.runtimeconfig.deps import get_runtime_settings
+from app.runtimeconfig.models import RuntimeSettings
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +115,14 @@ async def answer_question(
     limiter: ConcurrencyLimiter = Depends(get_ai_limiter),
     subject: str = Depends(get_budget_subject),
     budget: TokenBudgetService | None = Depends(get_token_budget),
+    runtime: RuntimeSettings = Depends(get_runtime_settings),
 ) -> AnswerResponse:
     """Execute end-to-end grounded RAG question answering."""
+    # İstek başına runtime snapshot'ından doğrulanmış GenerationConfig türet
+    gen_config = GenerationConfig.model_validate(
+        {**service.config.model_dump(), **runtime.rag.generation_overrides()}
+    )
+
     try:
         # 1. Eşzamanlılık sınırı (ConcurrencyLimiter): Slot doluysa fast-fail 503
         async with limiter.slot():
@@ -123,33 +131,76 @@ async def answer_question(
                 estimated_tokens = estimate_chat_tokens(
                     payload.question,
                     service.tokenizer,
-                    overhead=settings.TOKEN_BUDGET_PROMPT_OVERHEAD,
-                    max_output=settings.RAG_MAX_OUTPUT_TOKENS,
+                    overhead=runtime.budget.prompt_overhead,
+                    max_output=runtime.rag.max_output_tokens,
                     steps=1,
                 )
-                async with await budget.reserve(subject, estimated_tokens) as reservation:
-                    # 3. RAG tur zaman aşımı: En fazla 45 sn
-                    async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
-                        rag_answer: RagAnswer = await service.answer(
+                from app.core.config import settings as startup_settings
+                daily_limit = (
+                    budget.daily_limit
+                    if budget.daily_limit != startup_settings.TOKEN_BUDGET_DAILY_LIMIT
+                    else runtime.budget.daily_limit
+                )
+                per_minute_limit = (
+                    budget.per_minute_limit
+                    if budget.per_minute_limit != startup_settings.TOKEN_BUDGET_PER_MINUTE_LIMIT
+                    else runtime.budget.per_minute_limit
+                )
+                provider_tpm_limit = (
+                    budget.provider_tpm_limit
+                    if budget.provider_tpm_limit != startup_settings.PROVIDER_TPM_LIMIT
+                    else runtime.budget.provider_tpm_limit
+                )
+
+                async with await budget.reserve(
+                    subject,
+                    estimated_tokens,
+                    daily_limit=daily_limit,
+                    per_minute_limit=per_minute_limit,
+                    provider_tpm_limit=provider_tpm_limit,
+                ) as reservation:
+                    # 3. RAG tur zaman aşımı: En fazla runtime.rag.turn_timeout_sec
+                    async with asyncio.timeout(runtime.rag.turn_timeout_sec):
+                        ans_params = inspect.signature(service.answer).parameters
+                        if "config" in ans_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in ans_params.values()):
+                            rag_answer: RagAnswer = await service.answer(
+                                payload.question,
+                                k=payload.k,
+                                source_file=payload.source_file,
+                                correlation_id=x_correlation_id,
+                                config=gen_config,
+                            )
+                        else:
+                            rag_answer = await service.answer(
+                                payload.question,
+                                k=payload.k,
+                                source_file=payload.source_file,
+                                correlation_id=x_correlation_id,
+                            )
+                        reservation.record(rag_answer.usage)
+            else:
+                async with asyncio.timeout(runtime.rag.turn_timeout_sec):
+                    ans_params = inspect.signature(service.answer).parameters
+                    if "config" in ans_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in ans_params.values()):
+                        rag_answer = await service.answer(
+                            payload.question,
+                            k=payload.k,
+                            source_file=payload.source_file,
+                            correlation_id=x_correlation_id,
+                            config=gen_config,
+                        )
+                    else:
+                        rag_answer = await service.answer(
                             payload.question,
                             k=payload.k,
                             source_file=payload.source_file,
                             correlation_id=x_correlation_id,
                         )
-                        reservation.record(rag_answer.usage)
-            else:
-                async with asyncio.timeout(settings.RAG_TURN_TIMEOUT_SEC):
-                    rag_answer: RagAnswer = await service.answer(
-                        payload.question,
-                        k=payload.k,
-                        source_file=payload.source_file,
-                        correlation_id=x_correlation_id,
-                    )
     except (asyncio.TimeoutError, TimeoutError):
         # Kural: Loglara kullanıcı sorusu veya metin ASLA yazılmaz! Yalnızca timeout durumu loglanır.
         logger.warning(
             "RAG Answer üretimi zaman aşımına uğradı (limit: %.1fs)",
-            settings.RAG_TURN_TIMEOUT_SEC,
+            runtime.rag.turn_timeout_sec,
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
