@@ -357,7 +357,7 @@ def test_answer_overloaded_returns_503(client: TestClient):
         app.state.ai_limiter = old_limiter
 
 
-def test_answer_token_budget_exceeded_returns_429(client: TestClient):
+def test_answer_token_budget_exceeded_returns_429(client: TestClient, runtime_override):
     """RAG cevabında bütçe aşıldığında 429 TokenBudgetExceeded dönmelidir."""
     from app.budget.service import TokenBudgetService
     from app.budget.store import InMemoryBudgetStore
@@ -369,6 +369,7 @@ def test_answer_token_budget_exceeded_returns_429(client: TestClient):
         per_minute_limit=5,
     )
     app.state.token_budget = svc
+    runtime_override(budget={"daily_limit": 5, "per_minute_limit": 5})
     try:
         response = client.post(
             "/rag/answer",

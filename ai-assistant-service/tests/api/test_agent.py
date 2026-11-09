@@ -458,7 +458,7 @@ def test_chat_timeout_returns_503(test_client: TestClient):
     """LLM zaman aşımı 503 dönmeli ve temiz mesaj verilmelidir."""
     mock_service = type("MockService", (), {})()
 
-    async def timeout_chat(message: str, ctx):
+    async def timeout_chat(message: str, ctx, **kwargs):
         raise asyncio.TimeoutError()
 
     mock_service.chat = timeout_chat
@@ -698,7 +698,7 @@ def test_agent_chat_overloaded_returns_503(test_client):
     assert resp.headers.get("Retry-After") == "5"
 
 
-def test_agent_chat_token_budget_exceeded_returns_429(test_client):
+def test_agent_chat_token_budget_exceeded_returns_429(test_client, runtime_override):
     """Token bütçesi aşıldığında 429 Too Many Requests ve RFC 7807 detayları dönmelidir."""
     from app.budget.service import TokenBudgetService
     from app.budget.store import InMemoryBudgetStore
@@ -712,6 +712,7 @@ def test_agent_chat_token_budget_exceeded_returns_429(test_client):
     )
     app.state.agent_service = object()
     app.state.token_budget = svc
+    runtime_override(budget={"daily_limit": 10, "per_minute_limit": 10})
 
     try:
         resp = test_client.post(

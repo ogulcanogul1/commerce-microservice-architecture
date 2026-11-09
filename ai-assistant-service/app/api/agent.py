@@ -2,7 +2,6 @@
 
 import asyncio
 from datetime import datetime
-import inspect
 import logging
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
@@ -109,46 +108,21 @@ async def chat(
                     max_output=runtime.agent.max_output_tokens,
                     steps=min(2, max(1, runtime.agent.max_steps)),
                 )
-                # Bütçe servisi test tarafından özel limitlerle başlatılmışsa onun limitlerini koru
-                from app.core.config import settings as startup_settings
-                daily_limit = (
-                    budget.daily_limit
-                    if budget.daily_limit != startup_settings.TOKEN_BUDGET_DAILY_LIMIT
-                    else runtime.budget.daily_limit
-                )
-                per_minute_limit = (
-                    budget.per_minute_limit
-                    if budget.per_minute_limit != startup_settings.TOKEN_BUDGET_PER_MINUTE_LIMIT
-                    else runtime.budget.per_minute_limit
-                )
-                provider_tpm_limit = (
-                    budget.provider_tpm_limit
-                    if budget.provider_tpm_limit != startup_settings.PROVIDER_TPM_LIMIT
-                    else runtime.budget.provider_tpm_limit
-                )
 
                 async with await budget.reserve(
                     ctx.user_id,
                     estimated_tokens,
-                    daily_limit=daily_limit,
-                    per_minute_limit=per_minute_limit,
-                    provider_tpm_limit=provider_tpm_limit,
+                    daily_limit=runtime.budget.daily_limit,
+                    per_minute_limit=runtime.budget.per_minute_limit,
+                    provider_tpm_limit=runtime.budget.provider_tpm_limit,
                 ) as reservation:
                     # 3. Tur zaman aşımı (Turn Timeout): En fazla runtime.agent.turn_timeout_sec
                     async with asyncio.timeout(runtime.agent.turn_timeout_sec):
-                        chat_params = inspect.signature(service.chat).parameters
-                        if "limits" in chat_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in chat_params.values()):
-                            reply = await service.chat(request.message, ctx, limits=runtime.agent)
-                        else:
-                            reply = await service.chat(request.message, ctx)
+                        reply = await service.chat(request.message, ctx, limits=runtime.agent)
                         reservation.record(reply.usage)
             else:
                 async with asyncio.timeout(runtime.agent.turn_timeout_sec):
-                    chat_params = inspect.signature(service.chat).parameters
-                    if "limits" in chat_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in chat_params.values()):
-                        reply = await service.chat(request.message, ctx, limits=runtime.agent)
-                    else:
-                        reply = await service.chat(request.message, ctx)
+                    reply = await service.chat(request.message, ctx, limits=runtime.agent)
     except (asyncio.TimeoutError, TimeoutError):
         # Kural: Loglara soru, mesaj veya kişisel veri ASLA yazılmaz! Yalnızca timeout durumu loglanır.
         logger.warning(
