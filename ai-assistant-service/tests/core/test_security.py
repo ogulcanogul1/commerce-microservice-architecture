@@ -1,3 +1,5 @@
+import json
+from typing import Any
 import uuid
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -122,3 +124,31 @@ async def test_sanitize_correlation_id(corr_input: str | None, expected_output: 
     ctx = await get_request_context(x_user_id=valid_uuid, x_correlation_id=corr_input)
     assert ctx.correlation_id == expected_output
 
+
+
+
+@pytest.mark.anyio
+async def test_perimeter_denied_audit_records(audit_records: list[dict[str, Any]]) -> None:
+    """Çevre güvenliği reddedildiğinde audit kaydı yazıldığını ve secret sızdırılmadığını doğrular."""
+    # 1. Eksik kimlik
+    with pytest.raises(HTTPException):
+        await get_request_context(x_user_id=None)
+    assert audit_records[-1]["event"] == "perimeter_denied"
+    assert audit_records[-1]["outcome"] == "missing_identity"
+
+    # 2. Geçersiz kimlik
+    with pytest.raises(HTTPException):
+        await get_request_context(x_user_id="abc")
+    assert audit_records[-1]["event"] == "perimeter_denied"
+    assert audit_records[-1]["outcome"] == "invalid_identity"
+
+    # 3. Yanlış secret
+    settings.GATEWAY_SECURITY_ENABLED = True
+    wrong_secret = "attacker-secret-xyz-999"
+    with pytest.raises(HTTPException):
+        await require_gateway_secret(x_gateway_secret=wrong_secret)
+    assert audit_records[-1]["event"] == "perimeter_denied"
+    assert audit_records[-1]["outcome"] == "secret_mismatch"
+
+    # Yanlış secret değeri audit kaydında ASLA yer almamalıdır
+    assert wrong_secret not in json.dumps(audit_records)

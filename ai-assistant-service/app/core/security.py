@@ -11,6 +11,7 @@ import uuid
 
 from fastapi import Header, HTTPException, status
 
+from app.core.audit import write_audit
 from app.core.config import settings
 
 # Gateway UUID üretir; harf, rakam, nokta, alt çizgi ve tire dışındakini kabul etme
@@ -46,6 +47,7 @@ async def get_request_context(
         RequestContext: Normalized user_id and optional correlation_id.
     """
     if not x_user_id or not x_user_id.strip():
+        write_audit("perimeter_denied", user_id=None, correlation_id=None, outcome="missing_identity")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Kimlik doğrulanamadı.",
@@ -54,6 +56,7 @@ async def get_request_context(
     try:
         parsed_uuid = uuid.UUID(x_user_id.strip())
     except (ValueError, AttributeError):
+        write_audit("perimeter_denied", user_id=None, correlation_id=None, outcome="invalid_identity")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Kimlik doğrulanamadı.",
@@ -82,6 +85,7 @@ async def require_gateway_secret(
 
     expected_secret = settings.GATEWAY_INTERNAL_SECRET
     if not x_gateway_secret or not hmac.compare_digest(x_gateway_secret, expected_secret):
+        write_audit("perimeter_denied", user_id=None, correlation_id=None, outcome="secret_mismatch")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Doğrudan erişim engellendi.",
