@@ -18,6 +18,7 @@ from app.agent.tools.registry import ToolRegistry, render_for_model
 from app.core.config import settings
 from app.core.pii import mask_pii
 from app.core.security import RequestContext
+from app.observability.metrics import AI_LLM_REQUEST_DURATION, AI_LLM_TOKENS
 from app.llm.base import BaseLLMProvider, ChatMessage, TokenUsage
 from app.runtimeconfig.models import AgentRuntime
 
@@ -91,22 +92,45 @@ class AgentService:
                 step += 1
                 steps_taken = step
 
-                # LLM Çağrısı
-                t0_llm = time.perf_counter()
-                resp = await asyncio.wait_for(
-                    self._llm.generate(
-                        messages=messages,
-                        tools=self._registry.definitions(),
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                    ),
-                    timeout=llm_timeout_sec,
+                # LLM Çağrısı ve Metrik Gözlemi
+                provider = (
+                    getattr(self._llm, "provider_name", None)
+                    or getattr(self._llm, "provider", None)
+                    or getattr(self._llm, "name", None)
+                    or settings.DEFAULT_LLM_PROVIDER
+                    or "unknown"
                 )
+                t0_llm = time.perf_counter()
+                try:
+                    resp = await asyncio.wait_for(
+                        self._llm.generate(
+                            messages=messages,
+                            tools=self._registry.definitions(),
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                        ),
+                        timeout=llm_timeout_sec,
+                    )
+                    AI_LLM_REQUEST_DURATION.labels(provider=provider, outcome="success").observe(
+                        time.perf_counter() - t0_llm
+                    )
+                except Exception:
+                    AI_LLM_REQUEST_DURATION.labels(provider=provider, outcome="error").observe(
+                        time.perf_counter() - t0_llm
+                    )
+                    raise
+
                 llm_time_ms += (time.perf_counter() - t0_llm) * 1000.0
 
                 if resp.usage:
-                    total_input_tokens += resp.usage.input_tokens or 0
-                    total_output_tokens += resp.usage.output_tokens or 0
+                    in_tok = resp.usage.input_tokens or 0
+                    out_tok = resp.usage.output_tokens or 0
+                    total_input_tokens += in_tok
+                    total_output_tokens += out_tok
+                    if in_tok > 0:
+                        AI_LLM_TOKENS.labels(provider=provider, direction="input").inc(in_tok)
+                    if out_tok > 0:
+                        AI_LLM_TOKENS.labels(provider=provider, direction="output").inc(out_tok)
 
                 # Durum A: Model tool çağırmadı, nihai yanıt metni üretti
                 if not resp.tool_calls:

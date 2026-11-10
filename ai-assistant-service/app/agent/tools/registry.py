@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.agent.tools.base import Tool, ToolContext, ToolResult
+from app.observability.metrics import AI_TOOL_CALL_DURATION
 from app.clients.base import (
     DownstreamBadRequest,
     DownstreamForbidden,
@@ -129,6 +130,10 @@ class ToolRegistry:
             outcome = OUTCOME_ERROR
             raise
         finally:
+            elapsed = time.monotonic() - started
+            # Kardinalite koruması: Kayıtlı olmayan araçlar 'unknown' olarak etiketlenir
+            safe_tool_name = name if name in self._tools else "unknown"
+            AI_TOOL_CALL_DURATION.labels(tool_name=safe_tool_name, outcome=outcome).observe(elapsed)
             try:
                 await asyncio.shield(self._record_audit(name, raw_args, ctx, outcome, started))
             except Exception:

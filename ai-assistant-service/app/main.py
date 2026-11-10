@@ -46,6 +46,7 @@ from app.discovery.registrar import EurekaRegistrar
 from app.llm.factory import LLMFactory
 from app.observability.context import RequestContextMiddleware
 from app.observability.logging import configure_logging
+from app.observability.metrics import HttpMetricsMiddleware
 from app.observability.tracing import setup_tracing, shutdown_tracing
 from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.base import Embedder
@@ -634,6 +635,9 @@ app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.AI_MAX_BODY_BYTES
 
 # Dağıtık izleme bağlamı: X-Correlation-Id başlığını temizleyip ContextVar'a kaydet
 app.add_middleware(RequestContextMiddleware)
+
+# Prometheus HTTP İstek Metrikleri: Süre, route şablonu, durum kodu ve sonuç dağılımını ölç
+app.add_middleware(HttpMetricsMiddleware)
 
 # RFC 7807 standart ProblemDetails hata yakalayıcılarını kaydet
 register_problem_details_handlers(app)
