@@ -45,6 +45,7 @@ from app.discovery.network import resolve_instance_host
 from app.discovery.registrar import EurekaRegistrar
 from app.llm.factory import LLMFactory
 from app.observability.context import RequestContextMiddleware
+from app.observability.logging import configure_logging
 from app.observability.tracing import setup_tracing, shutdown_tracing
 from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.base import Embedder
@@ -61,6 +62,9 @@ from app.runtimeconfig.loader import initial_load
 from app.runtimeconfig.models import RuntimeSettings, pinned_paths
 
 logger = logging.getLogger(__name__)
+
+# Uygulama genelinde kurumsal loglama altyapısını başlat (stdout handler, JSON/PII formatlayıcı)
+configure_logging()
 
 
 # ============================================================================
