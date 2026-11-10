@@ -15,6 +15,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 @RestController
@@ -68,10 +69,17 @@ public class DeadLetterController {
     }
 
     private void enforceAdmin(String userRoles) {
-        if (userRoles != null && !userRoles.isBlank()) {
-            if (!userRoles.contains("ROLE_ADMIN")) {
-                throw new AccessDeniedException("Access denied: only administrators may manage the Dead Letter Queue");
-            }
+        if (!hasAdminRole(userRoles)) {
+            throw new AccessDeniedException("Access denied: only administrators may manage the Dead Letter Queue");
         }
+    }
+
+    private boolean hasAdminRole(String userRoles) {
+        if (userRoles == null || userRoles.isBlank()) {
+            return false;
+        }
+        return Arrays.stream(userRoles.split(","))
+                .map(String::trim)
+                .anyMatch("ROLE_ADMIN"::equalsIgnoreCase);
     }
 }

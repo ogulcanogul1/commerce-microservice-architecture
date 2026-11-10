@@ -76,6 +76,16 @@ class DeadLetterControllerTest {
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Access denied");
 
+        assertThatThrownBy(() -> controller.getDeadLetters(
+                DeadLetterStatus.PENDING, "ROLE_ADMINISTRATOR", pageRequest))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Access denied");
+
+        assertThatThrownBy(() -> controller.getDeadLetters(
+                DeadLetterStatus.PENDING, null, pageRequest))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Access denied");
+
         verifyNoInteractions(deadLetterService);
     }
 

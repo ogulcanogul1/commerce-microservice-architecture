@@ -27,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 @RestController
@@ -128,8 +129,7 @@ public class OrderController {
      * 3. IDOR Engelleme: Oturum açan kullanıcının UUID'si ile siparişin sahibinin UUID'si eşleşmek zorundadır.
      */
     private void enforceOwnership(UUID resourceOwnerId, String currentUserId, String userRoles) {
-        boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
-        if (isAdmin) {
+        if (hasAdminRole(userRoles)) {
             return;
         }
         // Fail-Closed Kuralı: Kimlik bilgisi eksikse veya sipariş sahibi belirsizse erişimi kesinlikle engelle
@@ -154,8 +154,17 @@ public class OrderController {
     }
 
     private void enforceAdmin(String userRoles) {
-        if (userRoles == null || !userRoles.contains("ROLE_ADMIN")) {
+        if (!hasAdminRole(userRoles)) {
             throw new AccessDeniedException("Access denied: only administrators may update order status directly");
         }
+    }
+
+    private boolean hasAdminRole(String userRoles) {
+        if (userRoles == null || userRoles.isBlank()) {
+            return false;
+        }
+        return Arrays.stream(userRoles.split(","))
+                .map(String::trim)
+                .anyMatch("ROLE_ADMIN"::equalsIgnoreCase);
     }
 }

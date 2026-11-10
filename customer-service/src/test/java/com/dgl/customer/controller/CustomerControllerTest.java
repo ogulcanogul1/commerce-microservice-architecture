@@ -152,6 +152,11 @@ class CustomerControllerTest {
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Access denied");
 
+        assertThatThrownBy(() -> controller.getAllCustomers(
+                customerId.toString(), "ROLE_ADMINISTRATOR", pageRequest))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Access denied");
+
         verifyNoInteractions(queryBus);
     }
 

@@ -155,6 +155,18 @@ class OrderControllerTest {
     }
 
     @Test
+    @DisplayName("getOrderById: Should deny user with role containing ROLE_ADMIN as substring (e.g. ROLE_ADMINISTRATOR)")
+    void getOrderById_shouldDenyRoleAdministratorPrefixMatch() {
+        when(queryBus.execute(any(GetOrderByIdQuery.class))).thenReturn(mockResponse);
+        String attackerUserId = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> orderController.getOrderById(
+                orderId, attackerUserId, "ROLE_ADMINISTRATOR"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("you do not have permission");
+    }
+
+    @Test
     @DisplayName("getOrderByOrderNumber: Should dispatch GetOrderByOrderNumberQuery and return 200 OK")
     void getOrderByOrderNumber_shouldDispatchQueryAndReturnOk() {
         when(queryBus.execute(any(GetOrderByOrderNumberQuery.class))).thenReturn(mockResponse);

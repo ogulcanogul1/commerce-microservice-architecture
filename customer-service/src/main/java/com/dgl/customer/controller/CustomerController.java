@@ -27,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 @RestController
@@ -92,7 +93,7 @@ public class CustomerController {
             @RequestHeader(value = "X-User-Roles", required = false) String userRoles,
             @PageableDefault(size = 20) Pageable pageable) {
         if (currentUserId != null && !currentUserId.isBlank()) {
-            boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
+            boolean isAdmin = hasAdminRole(userRoles);
             if (!isAdmin) {
                 throw new AccessDeniedException("Access denied: only administrators may list all customer profiles");
             }
@@ -136,9 +137,18 @@ public class CustomerController {
         if (currentUserId == null || currentUserId.isBlank() || resourceOwnerId == null) {
             return;
         }
-        boolean isAdmin = userRoles != null && userRoles.contains("ROLE_ADMIN");
+        boolean isAdmin = hasAdminRole(userRoles);
         if (!isAdmin && !currentUserId.equalsIgnoreCase(resourceOwnerId.toString())) {
             throw new AccessDeniedException("Access denied: you do not have permission to view or modify this customer profile");
         }
+    }
+
+    private boolean hasAdminRole(String userRoles) {
+        if (userRoles == null || userRoles.isBlank()) {
+            return false;
+        }
+        return Arrays.stream(userRoles.split(","))
+                .map(String::trim)
+                .anyMatch("ROLE_ADMIN"::equalsIgnoreCase);
     }
 }
