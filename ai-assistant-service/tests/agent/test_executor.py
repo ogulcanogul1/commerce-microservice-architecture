@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 
 from app.agent.executor import ActionExecutor
 from app.agent.models import PendingAction
-from app.clients.base import DownstreamBadRequest
+from app.clients.base import (
+    DownstreamBadRequest,
+    DownstreamForbidden,
+    DownstreamNotFound,
+)
 from app.clients.models import OrderView
 from app.core.security import RequestContext
 
@@ -143,6 +147,72 @@ async def test_executor_cancel_order_downstream_bad_request() -> None:
     assert result.message == "Bu sipariş mevcut durumunda iptal edilemiyor."
     # Ham teknik detay müşteriye sızdırılmamalı
     assert "SHIPPING_CREATED" not in result.message
+
+
+@pytest.mark.anyio
+async def test_executor_cancel_order_downstream_forbidden(
+    audit_records: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_order = AsyncMock()
+    mock_order.get_order_by_number.side_effect = DownstreamForbidden("Access denied")
+    mock_publisher = AsyncMock()
+
+    executor = ActionExecutor(order_client=mock_order, ticket_publisher=mock_publisher)
+    ctx = RequestContext(user_id="user-1", correlation_id="c-forbidden")
+
+    action = PendingAction(
+        action_id="act-1",
+        user_id="user-1",
+        action_type="cancel_order",
+        params={"order_id": "ord-id-1", "order_number": "ORD-1", "reason": "İptal"},
+        summary="İptal?",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc),
+    )
+
+    result = await executor.execute(action, ctx)
+
+    assert result.ok is False
+    assert "yetkiniz yok" in result.message
+
+    ownership_audits = [r for r in audit_records if r.get("event") == "ownership_check"]
+    assert len(ownership_audits) == 1
+    assert ownership_audits[0]["outcome"] == "denied"
+    assert ownership_audits[0]["action_type"] == "cancel_order"
+    assert ownership_audits[0]["user_id"] == "user-1"
+
+
+@pytest.mark.anyio
+async def test_executor_cancel_order_downstream_not_found(
+    audit_records: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_order = AsyncMock()
+    mock_order.get_order_by_number.side_effect = DownstreamNotFound("Order not found")
+    mock_publisher = AsyncMock()
+
+    executor = ActionExecutor(order_client=mock_order, ticket_publisher=mock_publisher)
+    ctx = RequestContext(user_id="user-1", correlation_id="c-notfound")
+
+    action = PendingAction(
+        action_id="act-1",
+        user_id="user-1",
+        action_type="cancel_order",
+        params={"order_id": "ord-id-1", "order_number": "ORD-1", "reason": "İptal"},
+        summary="İptal?",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc),
+    )
+
+    result = await executor.execute(action, ctx)
+
+    assert result.ok is False
+    assert "Sipariş bulunamadı" in result.message
+
+    ownership_audits = [r for r in audit_records if r.get("event") == "ownership_check"]
+    assert len(ownership_audits) == 1
+    assert ownership_audits[0]["outcome"] == "not_found"
+    assert ownership_audits[0]["action_type"] == "cancel_order"
+    assert ownership_audits[0]["user_id"] == "user-1"
 
 
 @pytest.mark.anyio
