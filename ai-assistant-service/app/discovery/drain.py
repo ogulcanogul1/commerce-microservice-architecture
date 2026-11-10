@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 
 # Güçlü referans saklayıcı (asyncio task'larının çöp toplayıcı tarafından silinmesini engeller)
 _drain_tasks: set[asyncio.Task[Any]] = set()
+# SIGTERM tetiklendiğinde readiness kontrolünün OUT_OF_SERVICE dönmesi için drain bayrağı
+_is_draining: bool = False
+
+
+def is_draining() -> bool:
+    """Uygulamanın SIGTERM alıp Eureka'dan çekilme (drain) sürecinde olup olmadığını döner."""
+    return _is_draining
 
 
 def install_sigterm_drain(
@@ -56,6 +63,8 @@ def install_sigterm_drain(
         if handled:
             return
         handled = True
+        global _is_draining
+        _is_draining = True
 
         logger.info(
             "SIGTERM sinyali yakalandi. Eureka'dan cekilme basliyor (drain bekleme suresi: %d sn)...",
@@ -97,6 +106,8 @@ def install_sigterm_drain(
         return lambda: None
 
     def restore() -> None:
+        global _is_draining
+        _is_draining = False
         try:
             signal.signal(signal.SIGTERM, previous)
         except (ValueError, OSError):

@@ -29,6 +29,7 @@ from app.agent.tools.registry import ToolRegistry
 from app.agent.tools.shipping import GetShipmentTool
 from app.api.actuator import router as actuator_router
 from app.api.api import api_router
+from app.api.observability import observability_router
 from app.clients.order import OrderClient
 from app.clients.shipping import ShippingClient
 from app.core.config import settings
@@ -598,10 +599,18 @@ async def lifespan(app: FastAPI):
     eureka_registrar, sigterm_restore = await _init_eureka()
     app.state.eureka_registrar = eureka_registrar
 
+    # Açılış hazırlığı tamamlandı: Kubernetes/Eureka readiness probu için hazır olarak işaretle
+    app.state.ready = True
+    app.state.draining = False
+
     # --- UYGULAMA ÇALIŞIYOR (İstekler kabul edilir) ---
     yield
 
     # --- UYGULAMA KAPANIYOR (Shutdown temizliği) ---
+    # Kapanış başladığında yeni trafik gelmemesi için hemen NotReady (drain) durumuna geç
+    app.state.ready = False
+    app.state.draining = True
+
     await _cleanup_resources(
         sigterm_restore=sigterm_restore,
         eureka_registrar=eureka_registrar,
@@ -649,6 +658,10 @@ app.include_router(api_router)
 # 'require_gateway_secret' bağımlılığıyla korunur (geçerli X-Gateway-Secret başlığı zorunludur).
 # Not: Aşağıdaki /health endpoint'i Docker/Kubernetes sağlık kontrolleri için kimliksiz (unauthenticated) 200 döner.
 app.include_router(actuator_router, dependencies=[Depends(require_gateway_secret)])
+
+# Gözlemlenebilirlik yönlendiricisi: /actuator/prometheus, /actuator/health/liveness, /actuator/health/readiness
+# Güvenlik Kuralı: Prometheus scrape ve orchestrator probaları özel başlık gönderemez; secret'sız açılır.
+app.include_router(observability_router)
 
 
 @app.get("/health")
