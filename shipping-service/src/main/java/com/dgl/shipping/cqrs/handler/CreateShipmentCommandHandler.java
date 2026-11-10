@@ -36,6 +36,7 @@ public class CreateShipmentCommandHandler implements CommandHandler<CreateShipme
 
         Shipment shipment = Shipment.builder()
                 .orderId(request.orderId())
+                .customerId(request.customerId())
                 .trackingNumber(trackingNumber)
                 .carrier(request.carrier())
                 .status(ShipmentStatus.CREATED)

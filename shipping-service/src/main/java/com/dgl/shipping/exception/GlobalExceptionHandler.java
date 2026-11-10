@@ -27,6 +27,16 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDeniedException(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        problem.setTitle("Access Denied");
+        problem.setType(URI.create("https://api.commerce.com/errors/forbidden"));
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
     @ExceptionHandler(InvalidShippingStateException.class)
     public ProblemDetail handleInvalidStateException(InvalidShippingStateException ex) {
         log.warn("Invalid shipping state: {}", ex.getMessage());

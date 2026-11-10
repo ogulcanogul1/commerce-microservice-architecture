@@ -25,6 +25,7 @@ public class ShipmentResponseMapper {
         return new ShipmentResponse(
                 shipment.getId(),
                 shipment.getOrderId(),
+                shipment.getCustomerId(),
                 shipment.getTrackingNumber(),
                 shipment.getCarrier(),
                 shipment.getStatus(),

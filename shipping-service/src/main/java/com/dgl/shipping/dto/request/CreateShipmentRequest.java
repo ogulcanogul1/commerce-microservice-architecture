@@ -10,6 +10,8 @@ public record CreateShipmentRequest(
     @NotNull(message = "Order ID is required")
     UUID orderId,
 
+    UUID customerId,
+
     @NotNull(message = "Carrier is required")
     Carrier carrier,
 
@@ -18,4 +20,8 @@ public record CreateShipmentRequest(
 
     @NotBlank(message = "Delivery address is required")
     String deliveryAddress
-) {}
+) {
+    public CreateShipmentRequest(UUID orderId, Carrier carrier, String recipientName, String deliveryAddress) {
+        this(orderId, null, carrier, recipientName, deliveryAddress);
+    }
+}

@@ -15,6 +15,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "shipments", indexes = {
     @Index(name = "idx_shipments_order_id", columnList = "order_id"),
+    @Index(name = "idx_shipments_customer_id", columnList = "customer_id"),
     @Index(name = "idx_shipments_tracking_number", columnList = "tracking_number"),
     @Index(name = "idx_shipments_status", columnList = "status")
 })
@@ -31,6 +32,9 @@ public class Shipment {
 
     @Column(name = "order_id", nullable = false, unique = true)
     private UUID orderId;
+
+    @Column(name = "customer_id")
+    private UUID customerId;
 
     @Column(name = "tracking_number", nullable = false, unique = true, length = 100)
     private String trackingNumber;

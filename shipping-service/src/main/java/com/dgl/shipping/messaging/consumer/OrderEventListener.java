@@ -63,6 +63,7 @@ public class OrderEventListener {
 
             CreateShipmentRequest request = new CreateShipmentRequest(
                     orderId,
+                    customerId,
                     Carrier.YURTICI,
                     recipientName,
                     deliveryAddress

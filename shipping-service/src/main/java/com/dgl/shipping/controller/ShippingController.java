@@ -12,6 +12,7 @@ import com.dgl.shipping.dto.request.CreateShipmentRequest;
 import com.dgl.shipping.dto.request.UpdateShipmentStatusRequest;
 import com.dgl.shipping.dto.response.ShipmentResponse;
 import com.dgl.shipping.dto.response.TrackingResponse;
+import com.dgl.shipping.exception.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -22,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 @RestController
@@ -48,10 +50,15 @@ public class ShippingController {
     @Operation(summary = "Get shipment by ID", description = "Retrieves shipment by unique identifier")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Shipment found"),
+            @ApiResponse(responseCode = "403", description = "Access denied: you do not have permission to view this shipment"),
             @ApiResponse(responseCode = "404", description = "Shipment not found")
     })
-    public ResponseEntity<ShipmentResponse> getShipmentById(@PathVariable UUID id) {
+    public ResponseEntity<ShipmentResponse> getShipmentById(
+            @PathVariable UUID id,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
         ShipmentResponse response = queryBus.execute(new GetShipmentByIdQuery(id));
+        enforceOwnership(response.customerId(), currentUserId, userRoles);
         return ResponseEntity.ok(response);
     }
 
@@ -59,10 +66,15 @@ public class ShippingController {
     @Operation(summary = "Get shipment by order ID", description = "Retrieves shipment linked to a specific order")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Shipment found"),
+            @ApiResponse(responseCode = "403", description = "Access denied: you do not have permission to view this shipment"),
             @ApiResponse(responseCode = "404", description = "Shipment not found")
     })
-    public ResponseEntity<ShipmentResponse> getShipmentByOrderId(@PathVariable UUID orderId) {
+    public ResponseEntity<ShipmentResponse> getShipmentByOrderId(
+            @PathVariable UUID orderId,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
         ShipmentResponse response = queryBus.execute(new GetShipmentByOrderIdQuery(orderId));
+        enforceOwnership(response.customerId(), currentUserId, userRoles);
         return ResponseEntity.ok(response);
     }
 
@@ -81,11 +93,14 @@ public class ShippingController {
     @Operation(summary = "Update shipment status", description = "Carrier callback/webhook endpoint to advance delivery stage")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Status updated"),
+            @ApiResponse(responseCode = "403", description = "Access denied: only administrators may update shipment status directly"),
             @ApiResponse(responseCode = "404", description = "Shipment not found")
     })
     public ResponseEntity<ShipmentResponse> updateShipmentStatus(
             @PathVariable UUID id,
-            @Valid @RequestBody UpdateShipmentStatusRequest request) {
+            @Valid @RequestBody UpdateShipmentStatusRequest request,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+        enforceAdmin(userRoles);
         ShipmentResponse response = commandBus.execute(new UpdateShipmentStatusCommand(id, request));
         return ResponseEntity.ok(response);
     }
@@ -95,12 +110,44 @@ public class ShippingController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Shipment cancelled"),
             @ApiResponse(responseCode = "400", description = "Shipment already delivered or cannot be cancelled"),
+            @ApiResponse(responseCode = "403", description = "Access denied: you do not have permission to cancel this shipment"),
             @ApiResponse(responseCode = "404", description = "Shipment not found")
     })
     public ResponseEntity<ShipmentResponse> cancelShipment(
             @PathVariable UUID id,
-            @RequestParam(required = false, defaultValue = "Cancelled by user/saga") String reason) {
+            @RequestParam(required = false, defaultValue = "Cancelled by user/saga") String reason,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+        ShipmentResponse existing = queryBus.execute(new GetShipmentByIdQuery(id));
+        enforceOwnership(existing.customerId(), currentUserId, userRoles);
         ShipmentResponse response = commandBus.execute(new CancelShipmentCommand(id, reason));
         return ResponseEntity.ok(response);
+    }
+
+    private void enforceOwnership(UUID resourceOwnerId, String currentUserId, String userRoles) {
+        if (hasAdminRole(userRoles)) {
+            return;
+        }
+        if (currentUserId == null || currentUserId.isBlank() || resourceOwnerId == null) {
+            throw new AccessDeniedException("Access denied: caller identity is required");
+        }
+        if (!currentUserId.equalsIgnoreCase(resourceOwnerId.toString())) {
+            throw new AccessDeniedException("Access denied: you do not have permission to view or modify this shipment");
+        }
+    }
+
+    private void enforceAdmin(String userRoles) {
+        if (!hasAdminRole(userRoles)) {
+            throw new AccessDeniedException("Access denied: only administrators may update shipment status directly");
+        }
+    }
+
+    private boolean hasAdminRole(String userRoles) {
+        if (userRoles == null || userRoles.isBlank()) {
+            return false;
+        }
+        return Arrays.stream(userRoles.split(","))
+                .map(String::trim)
+                .anyMatch("ROLE_ADMIN"::equalsIgnoreCase);
     }
 }
