@@ -242,7 +242,15 @@ def _init_downstream_and_actions() -> tuple[OrderClient, ShippingClient, Pending
                 socket_connect_timeout=2.0,
             )
             action_store = RedisPendingActionStore(sync_redis)
-            logger.info("RedisPendingActionStore başlatıldı (%s:%d)", settings.REDIS_HOST, settings.REDIS_PORT)
+            from app.core.audit import RedisDenyTracker, set_deny_tracker
+            set_deny_tracker(
+                RedisDenyTracker(
+                    sync_redis,
+                    threshold=settings.AUDIT_DENY_THRESHOLD,
+                    window_sec=settings.AUDIT_DENY_WINDOW_SEC,
+                )
+            )
+            logger.info("RedisPendingActionStore ve RedisDenyTracker başlatıldı (%s:%d)", settings.REDIS_HOST, settings.REDIS_PORT)
         except Exception as exc:
             logger.warning("RedisPendingActionStore başlatılamadı, InMemory depoya geçiliyor: %s", exc)
             action_store = InMemoryPendingActionStore()

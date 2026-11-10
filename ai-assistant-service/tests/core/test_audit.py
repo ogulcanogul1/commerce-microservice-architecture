@@ -8,8 +8,11 @@ from app.agent.tools.base import ToolResult
 from app.agent.tools.registry import render_for_model
 from app.core.audit import (
     DenyTracker,
+    InMemoryDenyTracker,
+    RedisDenyTracker,
     get_audit_logger,
     hash_args,
+    set_deny_tracker,
     write_audit,
 )
 
@@ -124,3 +127,68 @@ def test_tool_result_reason_is_not_rendered_for_model() -> None:
     rendered = render_for_model("get_order", result)
     assert "ownership_mismatch" not in rendered
     assert "Sipariş bulunamadı." in rendered
+
+
+def test_redis_deny_tracker_distributed_instances_reach_threshold() -> None:
+    """N farklı instance aynı Redis üzerinde çalıştığında eşik instance'lar arasında toplanır."""
+    import fakeredis
+
+    shared_redis = fakeredis.FakeRedis()
+    current_time = [1000.0]
+
+    # 3 farklı mikroservis instance'ı simüle ediliyor
+    instance_1 = RedisDenyTracker(shared_redis, threshold=5, window_sec=60.0, clock=lambda: current_time[0])
+    instance_2 = RedisDenyTracker(shared_redis, threshold=5, window_sec=60.0, clock=lambda: current_time[0])
+    instance_3 = RedisDenyTracker(shared_redis, threshold=5, window_sec=60.0, clock=lambda: current_time[0])
+
+    user = "attacker-user-id-1234"
+
+    # İstekler instance'lar arasında dağıtılıyor (round-robin)
+    assert not instance_1.record(user)  # 1. ret
+    assert not instance_2.record(user)  # 2. ret
+    assert not instance_3.record(user)  # 3. ret
+    assert not instance_1.record(user)  # 4. ret
+
+    # 5. ret Instance 2'ye geldiğinde toplam eşik (5) aşıldığı için alarm üretilir!
+    assert instance_2.record(user)
+
+    # 6. ret Instance 3'e geldiğinde pencere içinde alarm zaten üretildiği için mükerrer alarm basılmaz
+    assert not instance_3.record(user)
+
+
+def test_redis_deny_tracker_sliding_window_expiration() -> None:
+    """Pencere süresi dolduğunda eski retler düşer ve sayaç sıfırlanır."""
+    import fakeredis
+
+    fake_redis = fakeredis.FakeRedis()
+    current_time = [2000.0]
+
+    tracker = RedisDenyTracker(fake_redis, threshold=3, window_sec=30.0, clock=lambda: current_time[0])
+    user = "user-expire-test"
+
+    assert not tracker.record(user)  # 1
+    assert not tracker.record(user)  # 2
+    assert tracker.record(user)      # 3 -> alert!
+
+    # 31 saniye sonra pencere dışına çıkılır
+    current_time[0] += 31.0
+
+    # Yeni retler başlar
+    assert not tracker.record(user)  # 1
+    assert not tracker.record(user)  # 2
+    assert tracker.record(user)      # 3 -> tekrar alert!
+
+
+def test_redis_deny_tracker_fallback_on_redis_error() -> None:
+    """Redis bağlantısı koptuğunda veya hata verdiğinde servis çökmez, yerel belleğe döner."""
+    from unittest.mock import MagicMock
+
+    broken_redis = MagicMock()
+    broken_redis.eval.side_effect = RuntimeError("Redis connection lost")
+
+    tracker = RedisDenyTracker(broken_redis, threshold=2, window_sec=60.0)
+    user = "user-fallback"
+
+    # İstisna fırlatılmaz, fallback devreye girer
+    assert not tracker.record(user)
+    assert tracker.record(user)  # 2. denemede yerel bellek üzerinden alarm üretir

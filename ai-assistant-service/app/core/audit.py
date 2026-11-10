@@ -31,9 +31,11 @@ import logging
 import sys
 import time
 from typing import Any
+import uuid
 
 # Denetim kayıtlarının toplandığı özel ayrık logger adı
 AUDIT_LOGGER_NAME = "audit"
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # 1. STANDART AUDIT SONUÇ KODLARI (OUTCOMES)
@@ -146,7 +148,7 @@ def write_audit(
 # 4. ENUMERATION / TARAMA SALDIRISI TAKİPÇİSİ (DenyTracker)
 # ==============================================================================
 
-class DenyTracker:
+class InMemoryDenyTracker:
     """Kullanıcı bazında kayan zaman penceresinde (sliding window) reddedilen erişimleri sayar.
 
     Amaç:
@@ -201,18 +203,103 @@ class DenyTracker:
         return False
 
 
+# Geriye dönük uyumluluk için takma ad (alias)
+DenyTracker = InMemoryDenyTracker
+
+
+RECORD_DENIED_LUA_SCRIPT = """
+local window_key = KEYS[1]
+local alerted_key = KEYS[2]
+local now = tonumber(ARGV[1])
+local cutoff = tonumber(ARGV[2])
+local threshold = tonumber(ARGV[3])
+local ttl = math.ceil(tonumber(ARGV[4]))
+local member_id = ARGV[5]
+
+redis.call('ZREMRANGEBYSCORE', window_key, '-inf', cutoff)
+redis.call('ZADD', window_key, now, member_id)
+redis.call('EXPIRE', window_key, ttl)
+
+local count = redis.call('ZCARD', window_key)
+if count >= threshold then
+    local alerted_until = tonumber(redis.call('GET', alerted_key) or '0')
+    if alerted_until <= now then
+        local next_alert = now + tonumber(ARGV[4])
+        redis.call('SET', alerted_key, tostring(next_alert), 'EX', ttl)
+        return 1
+    end
+end
+return 0
+"""
+
+
+class RedisDenyTracker:
+    """Redis tabanlı dağıtık DenyTracker (Distributed Sliding Window).
+
+    Amaç:
+    Birden fazla instance çalıştığında (N instance), saldırganın farklı instance'lara
+    dağılan istekleri tek bir Redis Sorted Set üzerinde birikir. Böylece eşik
+    fiilen N katına çıkmaz; sistem genelinde kesin olarak 'threshold' değeri aşıldığında
+    'enumeration_suspected' alarmı üretilir.
+    """
+
+    def __init__(
+        self,
+        redis_client: Any,
+        threshold: int,
+        window_sec: float,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self._redis = redis_client
+        self._threshold = threshold
+        self._window_sec = window_sec
+        self._clock = clock
+        self._local_fallback = InMemoryDenyTracker(threshold, window_sec)
+
+    def record(self, user_id: str) -> bool:
+        """Kullanıcının reddedilen erişimini Redis'e kaydeder. Eşik aşıldıysa True döner."""
+        now = self._clock()
+        cutoff = now - self._window_sec
+        member_id = f"{now:.6f}:{uuid.uuid4().hex[:8]}"
+        window_key = f"audit:deny:window:{user_id}"
+        alerted_key = f"audit:deny:alerted:{user_id}"
+
+        try:
+            res = self._redis.eval(
+                RECORD_DENIED_LUA_SCRIPT,
+                2,
+                window_key,
+                alerted_key,
+                str(now),
+                str(cutoff),
+                str(self._threshold),
+                str(self._window_sec),
+                member_id,
+            )
+            return bool(res == 1 or res == b"1")
+        except Exception as exc:
+            logger.warning("RedisDenyTracker hatası, InMemory depoya dönülüyor: %s", exc)
+            return self._local_fallback.record(user_id)
+
+
 # Süreç genelinde tekil (singleton) DenyTracker örneği
-_deny_tracker: DenyTracker | None = None
+_deny_tracker: Any | None = None
 
 
-def get_deny_tracker() -> DenyTracker:
+def get_deny_tracker() -> Any:
     """Konfigürasyon ayarlarından beslenen tekil DenyTracker nesnesini döner."""
     global _deny_tracker
     if _deny_tracker is None:
         from app.core.config import settings
 
-        _deny_tracker = DenyTracker(settings.AUDIT_DENY_THRESHOLD, settings.AUDIT_DENY_WINDOW_SEC)
+        _deny_tracker = InMemoryDenyTracker(settings.AUDIT_DENY_THRESHOLD, settings.AUDIT_DENY_WINDOW_SEC)
     return _deny_tracker
+
+
+def set_deny_tracker(tracker: Any) -> None:
+    """DenyTracker nesnesini çalışma zamanında değiştirir (örn. Redis entegrasyonu veya testler)."""
+    global _deny_tracker
+    _deny_tracker = tracker
 
 
 def record_denied_access(user_id: str, correlation_id: str | None) -> None:
