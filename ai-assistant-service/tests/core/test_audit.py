@@ -179,16 +179,70 @@ def test_redis_deny_tracker_sliding_window_expiration() -> None:
     assert tracker.record(user)      # 3 -> tekrar alert!
 
 
-def test_redis_deny_tracker_fallback_on_redis_error() -> None:
-    """Redis bağlantısı koptuğunda veya hata verdiğinde servis çökmez, yerel belleğe döner."""
+def test_redis_deny_tracker_fallback_on_redis_error_with_circuit_breaker() -> None:
+    """Redis bağlantısı koptuğunda veya hata verdiğinde devre açılır ve sonraki çağrılarda Redis bloklanmaz."""
     from unittest.mock import MagicMock
 
     broken_redis = MagicMock()
     broken_redis.eval.side_effect = RuntimeError("Redis connection lost")
 
-    tracker = RedisDenyTracker(broken_redis, threshold=2, window_sec=60.0)
+    current_time = [100.0]
+    tracker = RedisDenyTracker(
+        broken_redis,
+        threshold=2,
+        window_sec=60.0,
+        clock=lambda: current_time[0],
+        circuit_cooldown_sec=30.0,
+    )
     user = "user-fallback"
 
-    # İstisna fırlatılmaz, fallback devreye girer
+    # İlk denemede Redis eval çağrılır, hata alır ve devre kesici açılır
     assert not tracker.record(user)
+    assert broken_redis.eval.call_count == 1
+
+    # İkinci denemede devre açık olduğundan Redis eval HİÇ çağrılmaz, doğrudan fallback çalışır
     assert tracker.record(user)  # 2. denemede yerel bellek üzerinden alarm üretir
+    assert broken_redis.eval.call_count == 1  # Eval çağrısı artmadı!
+
+    # 31 saniye sonra devre kapanır (cooldown bitti) ve tekrar Redis denenir
+    current_time[0] += 31.0
+    tracker.record(user)
+    assert broken_redis.eval.call_count == 2
+
+
+def test_redis_deny_tracker_cluster_hash_tags_used() -> None:
+    """Redis anahtarları Redis Cluster'da CROSSSLOT hatası vermemek için {user_id} hash tag içermelidir."""
+    from unittest.mock import MagicMock
+
+    mock_redis = MagicMock()
+    mock_redis.eval.return_value = 0
+
+    tracker = RedisDenyTracker(mock_redis, threshold=3, window_sec=60.0)
+    tracker.record("alice-42")
+
+    assert mock_redis.eval.called
+    call_args = mock_redis.eval.call_args[0]
+    window_key = call_args[2]
+    alerted_key = call_args[3]
+
+    assert window_key == "audit:deny:{alice-42}:window"
+    assert alerted_key == "audit:deny:{alice-42}:alerted"
+
+
+@pytest.mark.anyio
+async def test_record_denied_access_async(monkeypatch: pytest.MonkeyPatch, audit_records: list[dict[str, Any]]) -> None:
+    """record_denied_access async çalışmalı ve event loop'u bloklamadan audit alarmı basmalıdır."""
+    from app.core.audit import record_denied_access, InMemoryDenyTracker, set_deny_tracker
+
+    tracker = InMemoryDenyTracker(threshold=2, window_sec=60.0)
+    set_deny_tracker(tracker)
+
+    await record_denied_access("user-async-1", "corr-async-1")
+    assert not any(r.get("event") == "enumeration_suspected" for r in audit_records)
+
+    await record_denied_access("user-async-1", "corr-async-1")
+    alerts = [r for r in audit_records if r.get("event") == "enumeration_suspected"]
+    assert len(alerts) == 1
+    assert alerts[0]["user_id"] == "user-async-1"
+    assert alerts[0]["correlation_id"] == "corr-async-1"
+

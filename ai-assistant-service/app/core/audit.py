@@ -22,6 +22,7 @@ MİMARİ VE GÜVENLİK İLKELERİ:
    yakalayan süreç içi bir sayaç (`DenyTracker`) içerir.
 """
 
+import asyncio
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -249,20 +250,31 @@ class RedisDenyTracker:
         threshold: int,
         window_sec: float,
         clock: Callable[[], float] = time.time,
+        circuit_cooldown_sec: float = 30.0,
     ) -> None:
         self._redis = redis_client
         self._threshold = threshold
         self._window_sec = window_sec
         self._clock = clock
-        self._local_fallback = InMemoryDenyTracker(threshold, window_sec)
+        self._circuit_cooldown_sec = circuit_cooldown_sec
+        self._circuit_open_until = 0.0
+        self._local_fallback = InMemoryDenyTracker(threshold, window_sec, clock=clock)
 
     def record(self, user_id: str) -> bool:
         """Kullanıcının reddedilen erişimini Redis'e kaydeder. Eşik aşıldıysa True döner."""
         now = self._clock()
+
+        # Devre kesici (Circuit Breaker): Redis daha önce hata verdiyse cooldown süresince
+        # Redis soketini bloklamadan doğrudan yerel InMemory depoya yönlendir
+        if now < self._circuit_open_until:
+            return self._local_fallback.record(user_id)
+
         cutoff = now - self._window_sec
         member_id = f"{now:.6f}:{uuid.uuid4().hex[:8]}"
-        window_key = f"audit:deny:window:{user_id}"
-        alerted_key = f"audit:deny:alerted:{user_id}"
+        # Redis Cluster uyumluluğu için {user_id} hash tag kullanılır.
+        # Bu sayede hem window_key hem de alerted_key aynı hash slot'a düşer (CROSSSLOT önlenir).
+        window_key = f"audit:deny:{{{user_id}}}:window"
+        alerted_key = f"audit:deny:{{{user_id}}}:alerted"
 
         try:
             res = self._redis.eval(
@@ -276,9 +288,15 @@ class RedisDenyTracker:
                 str(self._window_sec),
                 member_id,
             )
+            self._circuit_open_until = 0.0
             return bool(res == 1 or res == b"1")
         except Exception as exc:
-            logger.warning("RedisDenyTracker hatası, InMemory depoya dönülüyor: %s", exc)
+            self._circuit_open_until = now + self._circuit_cooldown_sec
+            logger.warning(
+                "RedisDenyTracker hatası (devre %.1f sn açık kalacak), InMemory depoya dönülüyor: %s",
+                self._circuit_cooldown_sec,
+                exc,
+            )
             return self._local_fallback.record(user_id)
 
 
@@ -302,11 +320,13 @@ def set_deny_tracker(tracker: Any) -> None:
     _deny_tracker = tracker
 
 
-def record_denied_access(user_id: str, correlation_id: str | None) -> None:
+async def record_denied_access(user_id: str, correlation_id: str | None) -> None:
     """Yetkisiz/reddedilen erişimi sayaçta işler; eşik aşılmışsa 'enumeration_suspected' alarmı basar."""
     from app.core.config import settings
 
-    if get_deny_tracker().record(user_id):
+    tracker = get_deny_tracker()
+    triggered = await asyncio.to_thread(tracker.record, user_id)
+    if triggered:
         write_audit(
             "enumeration_suspected",
             user_id=user_id,

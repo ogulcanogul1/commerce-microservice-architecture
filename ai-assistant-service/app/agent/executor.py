@@ -72,7 +72,7 @@ class ActionExecutor:
                     outcome=OUTCOME_OWNERSHIP_MISMATCH,
                     action_type="cancel_order",
                 )
-                record_denied_access(ctx.user_id, ctx.correlation_id)
+                await record_denied_access(ctx.user_id, ctx.correlation_id)
                 return ExecutionResult(
                     ok=False,
                     message="Bu sipariş için işlem yapma yetkiniz yok.",

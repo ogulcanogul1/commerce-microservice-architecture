@@ -126,9 +126,9 @@ class ToolRegistry:
             outcome = OUTCOME_ERROR
             raise
         finally:
-            self._record_audit(name, raw_args, ctx, outcome, started)
+            await self._record_audit(name, raw_args, ctx, outcome, started)
 
-    def _record_audit(
+    async def _record_audit(
         self,
         name: str,
         raw_args: Any,
@@ -150,7 +150,7 @@ class ToolRegistry:
         )
         # 2. Eğer sonuç şüpheli bir yetki ihlali veya tarama ise enumeration sayacına işlet
         if outcome in DENY_OUTCOMES:
-            record_denied_access(ctx.user_id, ctx.correlation_id)
+            await record_denied_access(ctx.user_id, ctx.correlation_id)
 
     async def _execute_core(
         self,
