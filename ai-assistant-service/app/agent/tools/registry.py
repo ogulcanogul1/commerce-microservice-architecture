@@ -177,21 +177,27 @@ class ToolRegistry:
         try:
             validated_args = tool.args_model.model_validate(parsed_args)
         except ValidationError as e:
-            logger.warning("Tool '%s' validation failed: %s", name, e)
-            # Dahili Python türlerini veya sınıf ayrıntılarını sızdırmadan yalnızca parametre alanlarını özetle
+            # Dahili Python türlerini veya ham girdi değerlerini sızdırmadan yalnızca parametre alanlarını özetle
             invalid_fields = [
                 ".".join(str(p) for p in err.get("loc", []) if str(p) != "__root__")
                 for err in e.errors()
             ]
             fields_str = ", ".join(f for f in invalid_fields if f)
+            error_types = [err.get("type") for err in e.errors()]
+            logger.warning(
+                "Tool '%s' validation failed for fields: %s (types: %s)",
+                name,
+                fields_str or "unknown",
+                error_types,
+            )
             if fields_str:
                 return ToolResult(ok=False, error=f"Geçersiz araç parametreleri ({fields_str})", reason=OUTCOME_INVALID_ARGS)
             return ToolResult(ok=False, error="Geçersiz araç parametreleri.", reason=OUTCOME_INVALID_ARGS)
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.warning("Tool '%s' parameter decode failed: %s", name, e)
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning("Tool '%s' parameter decode failed: %s", name, type(exc).__name__)
             return ToolResult(ok=False, error="Geçersiz araç parametreleri.", reason=OUTCOME_INVALID_ARGS)
-        except Exception as e:
-            logger.warning("Tool '%s' unexpected parameter validation exception: %s", name, e)
+        except Exception as exc:
+            logger.warning("Tool '%s' unexpected parameter validation exception: %s", name, type(exc).__name__)
             return ToolResult(ok=False, error="Geçersiz araç parametreleri.", reason=OUTCOME_INVALID_ARGS)
 
         timeout = getattr(tool, "timeout_sec", None) or self._timeout_sec
@@ -225,7 +231,7 @@ class ToolRegistry:
         except ValueError as exc:
             # Dahili kod ayrıntılarını, stack detaylarını veya kötü niyetli input yankılarını sızdırma
             msg = str(exc)
-            logger.warning("Tool '%s' raised ValueError: %s", name, msg)
+            logger.warning("Tool '%s' raised ValueError: %s", name, type(exc).__name__)
             if "Geçersiz sipariş numarası" in msg:
                 return ToolResult(ok=False, error="Geçersiz sipariş numarası.", reason=OUTCOME_BAD_REQUEST)
             return ToolResult(ok=False, error="Geçersiz parametre veya işlem değeri.", reason=OUTCOME_BAD_REQUEST)

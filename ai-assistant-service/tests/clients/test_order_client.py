@@ -160,6 +160,8 @@ async def test_order_client_post_does_not_retry_on_connection_error() -> None:
         "AB",  # < 3 karakter
         "A" * 45,  # > 40 karakter
         "ORD 123",  # boşluk
+        "ORD-123\n",  # satır sonu karakteri
+        "ORD-123\r\n",  # CRLF karakteri
     ],
 )
 async def test_order_client_path_injection_defense(malicious_order_number: str) -> None:

@@ -12,7 +12,7 @@ from app.clients.base import DownstreamClient
 from app.clients.models import OrderPage, OrderView
 from app.core.config import settings
 
-_ORDER_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9\-]{3,40}$")
+_ORDER_NUMBER_PATTERN = re.compile(r"\A[A-Za-z0-9\-]{3,40}\Z")
 
 
 class OrderClient(DownstreamClient):
@@ -29,10 +29,12 @@ class OrderClient(DownstreamClient):
         super().__init__(url, timeout_sec=timeout_sec, transport=transport)
 
     def _validate_order_number(self, order_number: str) -> str:
-        """Validate against path injection (../, query params, special chars)."""
+        """Validate against path injection (../, query params, special chars, newlines)."""
+        if "\n" in order_number or "\r" in order_number:
+            raise ValueError("Geçersiz sipariş numarası biçimi")
         clean = order_number.strip()
-        if not _ORDER_NUMBER_PATTERN.match(clean):
-            raise ValueError(f"Geçersiz sipariş numarası biçimi: {clean}")
+        if not _ORDER_NUMBER_PATTERN.fullmatch(clean):
+            raise ValueError("Geçersiz sipariş numarası biçimi")
         return clean
 
     async def get_order_by_number(

@@ -774,6 +774,50 @@ async def test_sec_15_log_hygiene_no_raw_user_id_prompt_or_amounts(
     assert "user_id_hash=" in log_text
 
 
+@pytest.mark.anyio
+async def test_sec_15_b_log_hygiene_on_validation_failure_and_invalid_order_number(
+    security_test_rig, caplog
+):
+    """15b. Log Hygiene: Raw arguments, PII, and injection payloads must NEVER appear in warning logs on validation/value errors."""
+    from app.agent.tools.base import ToolContext
+    rig = security_test_rig
+    registry = ToolRegistry()
+    registry.register(GetOrderTool(order_client=rig["order_client"]))
+
+    ctx = ToolContext(user_id=USER_A, correlation_id="test-log-hygiene-corr", question="sipariş kontrol")
+
+    with caplog.at_level(logging.WARNING):
+        # 1. Validation error: Pydantic type error with sensitive payload
+        secret_payload_1 = "SUPER_SECRET_PAYLOAD_123456"
+        res1 = await registry.execute(
+            "get_order",
+            {"order_number": 123456789, "secret": secret_payload_1},
+            ctx,
+        )
+        assert not res1.ok
+        assert res1.reason == "invalid_args"
+
+        # 2. ValueError: invalid order number pattern with sensitive string
+        secret_order_no = "ORD-MALICIOUS!PAYLOAD$$#-999"
+        res2 = await registry.execute(
+            "get_order",
+            {"order_number": secret_order_no},
+            ctx,
+        )
+        assert not res2.ok
+        assert res2.reason == "bad_request"
+
+    log_text = caplog.text
+
+    # Raw sensitive payload in validation error must NOT be logged
+    assert secret_payload_1 not in log_text
+    assert "123456789" not in log_text
+
+    # Raw invalid order number must NOT be logged
+    assert secret_order_no not in log_text
+    assert "MALICIOUS" not in log_text
+
+
 def test_sec_16_gateway_secret_enforcement_blocks_downstream():
     """16. Gateway Security: Request without gateway secret fails with 403 before any downstream logic."""
     old_enabled = settings.GATEWAY_SECURITY_ENABLED
