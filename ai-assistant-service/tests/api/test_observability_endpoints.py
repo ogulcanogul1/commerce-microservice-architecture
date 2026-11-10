@@ -102,6 +102,14 @@ def test_readiness_probe_lifecycle_states(monkeypatch: pytest.MonkeyPatch):
     assert resp4.json()["status"] == "OUT_OF_SERVICE"
     assert resp4.json()["components"]["redis"] == "DOWN"
 
+    # 5. Durum: REDIS_ENABLED=True ancak redis_client=None (Açılışta InMemory deposuna fallback yapıldı)
+    # Servisin kalıcı olarak 503 OUT_OF_SERVICE'te kilitlenmesini önlemek için redis: DISABLED ve 200 UP dönmelidir
+    test_app.state.redis_client = None
+    resp5 = client.get("/actuator/health/readiness")
+    assert resp5.status_code == 200
+    assert resp5.json()["status"] == "UP"
+    assert resp5.json()["components"]["redis"] == "DISABLED"
+
 
 def test_readiness_probe_llm_outage_independence(monkeypatch: pytest.MonkeyPatch):
     """Dış LLM sağlayıcısı tamamen çökse bile readiness probunun 200 UP kaldığını

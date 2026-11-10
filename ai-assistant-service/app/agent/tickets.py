@@ -10,10 +10,11 @@ import logging
 from typing import Any, Protocol
 import uuid
 
+from opentelemetry import trace
+
 from app.core.config import settings
 from app.core.pii import mask_pii
 from app.observability.propagation import build_kafka_headers
-from opentelemetry import trace
 
 logger = logging.getLogger(__name__)
 

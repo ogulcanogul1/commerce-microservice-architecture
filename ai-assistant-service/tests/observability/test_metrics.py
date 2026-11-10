@@ -146,7 +146,7 @@ async def test_tool_registry_metrics_known_and_unknown_tools():
 async def test_agent_service_llm_duration_and_token_counters():
     """AgentService.chat içinde LLM süre histogramının ve token sayaçlarının arttığını doğrular."""
     mock_llm = AsyncMock(spec=BaseLLMProvider)
-    mock_llm.provider_name = "test_llm_provider"
+    mock_llm.provider = "test_llm_provider"
     # LLM yanıtı ve token kullanımı ayarla
     mock_llm.generate.return_value = LLMResponse(
         content="Merhaba! Size nasıl yardımcı olabilirim?",

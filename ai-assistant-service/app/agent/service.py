@@ -18,8 +18,8 @@ from app.agent.tools.registry import ToolRegistry, render_for_model
 from app.core.config import settings
 from app.core.pii import mask_pii
 from app.core.security import RequestContext
-from app.observability.metrics import AI_LLM_REQUEST_DURATION, AI_LLM_TOKENS
 from app.llm.base import BaseLLMProvider, ChatMessage, TokenUsage
+from app.observability.metrics import AI_LLM_REQUEST_DURATION, AI_LLM_TOKENS
 from app.runtimeconfig.models import AgentRuntime
 
 logger = logging.getLogger(__name__)
@@ -92,13 +92,12 @@ class AgentService:
                 step += 1
                 steps_taken = step
 
-                # LLM Çağrısı ve Metrik Gözlemi
+                # LLM Çağrısı ve Metrik Gözlemi (Tekil kaynak: BaseLLMProvider.provider)
+                raw_provider = getattr(self._llm, "provider", None)
                 provider = (
-                    getattr(self._llm, "provider_name", None)
-                    or getattr(self._llm, "provider", None)
-                    or getattr(self._llm, "name", None)
-                    or settings.DEFAULT_LLM_PROVIDER
-                    or "unknown"
+                    raw_provider
+                    if isinstance(raw_provider, str) and raw_provider.strip()
+                    else (settings.DEFAULT_LLM_PROVIDER or "unknown")
                 )
                 t0_llm = time.perf_counter()
                 try:

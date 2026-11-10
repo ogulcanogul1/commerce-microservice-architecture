@@ -77,7 +77,9 @@ async def check_readiness(
             except Exception:
                 components["redis"] = "DOWN"
         else:
-            components["redis"] = "DOWN"
+            # Redis açılışta bağlanamadı ve uygulama InMemory deposuna fallback yaptıysa
+            # servisi kalıcı 503 OUT_OF_SERVICE durumunda kilitlememek için DISABLED kabul edilir
+            components["redis"] = "DISABLED"
 
         if components["redis"] == "DOWN":
             is_ready = False
