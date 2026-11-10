@@ -44,6 +44,7 @@ from app.discovery.models import InstanceInfo
 from app.discovery.network import resolve_instance_host
 from app.discovery.registrar import EurekaRegistrar
 from app.llm.factory import LLMFactory
+from app.observability.tracing import setup_tracing, shutdown_tracing
 from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.base import Embedder
 from app.rag.embedding.factory import get_default_embedder
@@ -605,6 +606,8 @@ async def lifespan(app: FastAPI):
         redis_client=redis_client,
         config_server_client=config_client,
     )
+    # Açık span tamponunu boşalt ve trace sağlayıcısını güvenle kapat
+    shutdown_tracing(tracing_provider)
 
 
 # ============================================================================
@@ -617,6 +620,9 @@ app = FastAPI(
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
+
+# OpenTelemetry Dağıtık İzleme (Tracing) kurulumu ve FastAPI/HTTPX enstrümantasyonu
+tracing_provider = setup_tracing(app)
 
 # İstek gövdesi koruması: 64 KB üzerindeki POST isteklerini belleğe almadan 413 Payload Too Large ile reddet
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.AI_MAX_BODY_BYTES)
