@@ -94,3 +94,12 @@ scrape_configs:
       - targets: ['loki:3100']
         labels:
           application: 'loki'
+
+  - job_name: 'ai-assistant-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['ai-assistant-service:8089']
+        labels:
+          application: 'ai-assistant-service'
+          environment: 'development'
+
