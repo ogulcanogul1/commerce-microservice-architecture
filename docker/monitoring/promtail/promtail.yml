@@ -24,6 +24,17 @@ scrape_configs:
             stream: stream
             attrs: attrs
             tag: attrs.tag
+      - match:
+          selector: '{job="docker-containers"} |~ "\"service\":\"ai-assistant-service\""'
+          stages:
+            - json:
+                source: output
+                expressions:
+                  level: level
+                  app: service
+            - labels:
+                level:
+                app:
       - regex:
           expression: '(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2})\s+(?P<level>\w+)\s+(?P<pid>\d+)\s+---\s+\[(?P<app>[^\]]+)\]\s+\[(?P<thread>[^\]]+)\]\s+\[(?P<traceId>[a-f0-9]*),(?P<spanId>[a-f0-9]*),(?P<correlationId>[^\]]*)\]\s+(?P<logger>[^\s]+)\s+:\s+(?P<message>.*)'
       - labels:

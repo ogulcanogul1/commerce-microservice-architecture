@@ -290,6 +290,7 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - OTEL_ENABLED=true
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
+      - LOG_FORMAT=json
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-gemini}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
