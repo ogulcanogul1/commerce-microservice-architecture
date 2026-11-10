@@ -199,14 +199,29 @@ class OrderControllerTest {
     }
 
     @Test
-    @DisplayName("updateOrderStatus: Should dispatch UpdateOrderStatusCommand and return 200 OK")
+    @DisplayName("updateOrderStatus: Should dispatch UpdateOrderStatusCommand when caller is admin")
     void updateOrderStatus_shouldDispatchCommandAndReturnOk() {
         when(commandBus.execute(any(UpdateOrderStatusCommand.class))).thenReturn(mockResponse);
 
-        ResponseEntity<OrderResponse> response = orderController.updateOrderStatus(orderId, OrderStatus.CONFIRMED, "Reason");
+        ResponseEntity<OrderResponse> response = orderController.updateOrderStatus(
+                orderId, OrderStatus.CONFIRMED, "Reason", "ROLE_ADMIN");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isSameAs(mockResponse);
         verify(commandBus).execute(new UpdateOrderStatusCommand(orderId, OrderStatus.CONFIRMED, "Reason"));
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus: Should throw AccessDeniedException when caller is not admin")
+    void updateOrderStatus_shouldThrowAccessDeniedWhenNotAdmin() {
+        assertThatThrownBy(() -> orderController.updateOrderStatus(
+                orderId, OrderStatus.CONFIRMED, "Reason", "ROLE_USER"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("only administrators may update order status directly");
+
+        assertThatThrownBy(() -> orderController.updateOrderStatus(
+                orderId, OrderStatus.CONFIRMED, "Reason", null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("only administrators may update order status directly");
     }
 }

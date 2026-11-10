@@ -147,7 +147,15 @@ public class OrderController {
     public ResponseEntity<OrderResponse> updateOrderStatus(
             @PathVariable UUID id,
             @RequestParam OrderStatus status,
-            @RequestParam(required = false) String reason) {
+            @RequestParam(required = false) String reason,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+        enforceAdmin(userRoles);
         return ResponseEntity.ok(commandBus.execute(new UpdateOrderStatusCommand(id, status, reason)));
+    }
+
+    private void enforceAdmin(String userRoles) {
+        if (userRoles == null || !userRoles.contains("ROLE_ADMIN")) {
+            throw new AccessDeniedException("Access denied: only administrators may update order status directly");
+        }
     }
 }
