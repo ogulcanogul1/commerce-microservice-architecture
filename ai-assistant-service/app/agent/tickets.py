@@ -12,6 +12,8 @@ import uuid
 
 from app.core.config import settings
 from app.core.pii import mask_pii
+from app.observability.propagation import build_kafka_headers
+from opentelemetry import trace
 
 logger = logging.getLogger(__name__)
 
@@ -111,4 +113,15 @@ class KafkaTicketPublisher:
         key = str(event.get("aggregateId", "")).encode("utf-8")
         value = json.dumps(event, ensure_ascii=False).encode("utf-8")
         assert self._producer is not None
-        await self._producer.send_and_wait(self._topic, key=key, value=value)
+
+        # Dağıtık İzleme: Kafka mesajı gönderimini PRODUCER türünde bir span ile sarmala.
+        # Bu sayede Tempo'da 'ai-assistant-service -> Kafka -> notification-service' zinciri kesintisiz bağlanır.
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+            f"{self._topic} publish",
+            kind=trace.SpanKind.PRODUCER,
+            attributes={"messaging.system": "kafka", "messaging.destination.name": self._topic},
+        ):
+            # Aktif span'den traceparent ve olaydan correlationId başlıklarını üret
+            headers = build_kafka_headers(event.get("correlationId"))
+            await self._producer.send_and_wait(self._topic, key=key, value=value, headers=headers)
