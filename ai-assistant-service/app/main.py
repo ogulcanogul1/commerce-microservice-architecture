@@ -44,6 +44,7 @@ from app.discovery.models import InstanceInfo
 from app.discovery.network import resolve_instance_host
 from app.discovery.registrar import EurekaRegistrar
 from app.llm.factory import LLMFactory
+from app.observability.context import RequestContextMiddleware
 from app.observability.tracing import setup_tracing, shutdown_tracing
 from app.rag.chunking.tokenizer import TiktokenTokenizer
 from app.rag.embedding.base import Embedder
@@ -626,6 +627,9 @@ tracing_provider = setup_tracing(app)
 
 # İstek gövdesi koruması: 64 KB üzerindeki POST isteklerini belleğe almadan 413 Payload Too Large ile reddet
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.AI_MAX_BODY_BYTES)
+
+# Dağıtık izleme bağlamı: X-Correlation-Id başlığını temizleyip ContextVar'a kaydet
+app.add_middleware(RequestContextMiddleware)
 
 # RFC 7807 standart ProblemDetails hata yakalayıcılarını kaydet
 register_problem_details_handlers(app)

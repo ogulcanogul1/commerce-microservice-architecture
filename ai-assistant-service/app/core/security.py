@@ -41,6 +41,11 @@ def _sanitize_correlation_id(value: str | None) -> str | None:
     return stripped if _CORRELATION_ID_PATTERN.fullmatch(stripped) else None
 
 
+# Dış modüllerin (observability/context.py vb.) aynı katı doğrulama kuralını
+# doğrudan kullanabilmesi için sağlanan genel (public) takma ad:
+sanitize_correlation_id = _sanitize_correlation_id
+
+
 def hash_user_id(user_id: str) -> str:
     """Produces a deterministic 12-char SHA-256 hash of the user ID for safe logging."""
     return hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12]
