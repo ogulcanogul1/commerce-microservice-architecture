@@ -25,7 +25,7 @@ scrape_configs:
             attrs: attrs
             tag: attrs.tag
       - match:
-          selector: '{job="docker-containers"} |~ "\"service\":\"ai-assistant-service\""'
+          selector: '{job="docker-containers"} |~ "ai-assistant-service"'
           stages:
             - json:
                 source: output

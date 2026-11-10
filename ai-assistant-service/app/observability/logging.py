@@ -96,16 +96,20 @@ class JsonLogFormatter(logging.Formatter):
             if value:
                 payload[key] = value
 
-        # L2 Koruması: Hata (exception) durumunda stack trace'i tek satırlık string alanına al
+        # L2 Koruması: Hata (exception) veya stack_info durumunda stack trace'i tek satırlık alana al
         # Böylece Loki'de 30 satırlık bir hata 30 ayrı kayıt yerine TEK bir log kaydı olur.
         if record.exc_info:
             formatted_exc = self.formatException(record.exc_info)
             # Stack trace içinde de fonksiyon argümanlarından PII sızabileceği için onu da maskele
             masked_exc, _ = mask_pii(formatted_exc)
             payload["stack_trace"] = masked_exc
+        elif getattr(record, "stack_info", None):
+            formatted_stack = self.formatStack(record.stack_info)
+            masked_stack, _ = mask_pii(formatted_stack)
+            payload["stack_trace"] = masked_stack
 
-        # Tek satır JSON dizesine dönüştür (ensure_ascii=False ile Türkçe karakterler bozulmaz)
-        return json.dumps(payload, ensure_ascii=False)
+        # Tek satır kompakt JSON dizesine dönüştür (separators=(',', ':') gereksiz boşlukları temizler)
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def configure_logging() -> None:
