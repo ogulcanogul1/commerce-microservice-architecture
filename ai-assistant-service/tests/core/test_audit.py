@@ -307,3 +307,39 @@ def test_redis_deny_tracker_writes_audit_when_circuit_trips(audit_records: list[
     assert circuit_audits[0]["cooldown_sec"] == 15.0
 
 
+def test_in_memory_deny_tracker_thread_safety() -> None:
+    """Eşzamanlı worker thread'ler çalışırken RuntimeError (dictionary resize) veya yarış oluşmaz."""
+    import concurrent.futures
+
+    tracker = InMemoryDenyTracker(threshold=10, window_sec=60.0)
+    tracker._MAX_TRACKED_USERS = 50  # Sık sık tahliye tetiklensin
+
+    def worker(worker_id: int) -> None:
+        for i in range(100):
+            # Hem ortak bir kullanıcı hem de kendine ait kullanıcıları yazar
+            tracker.record(f"user-worker-{worker_id}-{i}")
+            tracker.record("shared-target-user")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(worker, w) for w in range(8)]
+        for f in concurrent.futures.as_completed(futures):
+            f.result()  # İstisna fırlatırsa test başarısız olur
+
+    assert len(tracker._events) <= 50
+
+
+@pytest.mark.anyio
+async def test_record_denied_access_fail_safe_swallows_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """record_denied_access içindeki beklenmeyen istisnalar iş akışına sızmaz (fail-safe audit ilkesi)."""
+    from unittest.mock import MagicMock
+    from app.core.audit import record_denied_access
+
+    broken_tracker = MagicMock()
+    broken_tracker.record.side_effect = RuntimeError("Catastrophic tracker failure")
+    monkeypatch.setattr("app.core.audit.get_deny_tracker", lambda: broken_tracker)
+
+    # İstisna fırlatılmamalı!
+    await record_denied_access("user-fail-safe", "corr-fail-safe")
+
+
+

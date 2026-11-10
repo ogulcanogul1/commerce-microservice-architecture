@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -171,3 +172,35 @@ def test_render_for_model_escaping_and_truncation() -> None:
     rendered_huge = render_for_model("test_tool", huge_res, max_chars=200)
     assert '"truncated": true' in rendered_huge or '"truncated": True' in rendered_huge or "truncated" in rendered_huge
     assert len(rendered_huge) < 500
+
+
+@pytest.mark.anyio
+async def test_registry_cancellation_emits_audit_via_shield(audit_records: list[dict[str, Any]]) -> None:
+    """İstemci bağlantısı koptuğunda (CancelledError) shield sayesinde audit kaydı kesintiye uğramadan yazılır."""
+    class HangingTool(Tool):
+        name = "hanging_tool"
+        description = "hangs forever"
+        args_model = DummyArgs
+
+        async def run(self, args: BaseModel, ctx: ToolContext) -> ToolResult:
+            await asyncio.sleep(100.0)
+            return ToolResult(ok=True)
+
+    registry = ToolRegistry()
+    registry.register(HangingTool())
+    ctx = ToolContext(user_id="user-cancel", correlation_id="c-cancel", question="q")
+
+    task = asyncio.create_task(registry.execute("hanging_tool", {"query": "q"}, ctx))
+    await asyncio.sleep(0.02)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    tool_audits = [
+        r for r in audit_records
+        if r.get("event") == "tool_call" and r.get("user_id") == "user-cancel"
+    ]
+    assert len(tool_audits) == 1
+    assert tool_audits[0]["outcome"] == "timeout"
+

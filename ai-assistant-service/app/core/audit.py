@@ -30,6 +30,7 @@ import hashlib
 import json
 import logging
 import sys
+import threading
 import time
 from typing import Any
 import uuid
@@ -154,46 +155,48 @@ class InMemoryDenyTracker:
         self._threshold = threshold
         self._window_sec = window_sec
         self._clock = clock
+        self._lock = threading.Lock()
         self._events: dict[str, deque[float]] = {}
         self._alerted_until: dict[str, float] = {}
 
     def record(self, user_id: str) -> bool:
         """Kullanıcının reddedilen bir erişimini kaydeder. Eşik aşıldıysa True döner."""
-        now = self._clock()
+        with self._lock:
+            now = self._clock()
 
-        # Bellek taşması koruması: Tablo aşırı büyürse önce süresi dolmuş kayıtları temizle,
-        # hala doluysa en eski girdiyi tahliye et (tüm tabloyu sıfırlayarak başkalarının sayacını silme DoS'unu önle).
-        if len(self._events) >= self._MAX_TRACKED_USERS and user_id not in self._events:
+            # Bellek taşması koruması: Tablo aşırı büyürse önce süresi dolmuş kayıtları temizle,
+            # hala doluysa en eski girdiyi tahliye et (tüm tabloyu sıfırlayarak başkalarının sayacını silme DoS'unu önle).
+            if len(self._events) >= self._MAX_TRACKED_USERS and user_id not in self._events:
+                cutoff = now - self._window_sec
+                expired_users = [
+                    u for u, q in self._events.items()
+                    if not q or q[-1] < cutoff
+                ]
+                for u in expired_users:
+                    self._events.pop(u, None)
+                    self._alerted_until.pop(u, None)
+
+                while len(self._events) >= self._MAX_TRACKED_USERS:
+                    oldest_user = next(iter(self._events))
+                    self._events.pop(oldest_user, None)
+                    self._alerted_until.pop(oldest_user, None)
+
+            # Kullanıcının ret zaman damgalarını tutan kuyruğu al
+            stamps = self._events.setdefault(user_id, deque())
+            stamps.append(now)
+
+            # Kayan zaman penceresinin dışına çıkan eski kayıtları kuyruktan temizle
             cutoff = now - self._window_sec
-            expired_users = [
-                u for u, q in self._events.items()
-                if not q or q[-1] < cutoff
-            ]
-            for u in expired_users:
-                self._events.pop(u, None)
-                self._alerted_until.pop(u, None)
+            while stamps and stamps[0] < cutoff:
+                stamps.popleft()
 
-            while len(self._events) >= self._MAX_TRACKED_USERS:
-                oldest_user = next(iter(self._events))
-                self._events.pop(oldest_user, None)
-                self._alerted_until.pop(oldest_user, None)
+            # Eşik aşıldı mı ve bu pencere içinde daha önce alarm üretilmedi mi?
+            if len(stamps) >= self._threshold and self._alerted_until.get(user_id, 0.0) <= now:
+                # Belirtilen pencere süresince bir daha mükerrer alarm üretilmesini engelle
+                self._alerted_until[user_id] = now + self._window_sec
+                return True
 
-        # Kullanıcının ret zaman damgalarını tutan kuyruğu al
-        stamps = self._events.setdefault(user_id, deque())
-        stamps.append(now)
-
-        # Kayan zaman penceresinin dışına çıkan eski kayıtları kuyruktan temizle
-        cutoff = now - self._window_sec
-        while stamps and stamps[0] < cutoff:
-            stamps.popleft()
-
-        # Eşik aşıldı mı ve bu pencere içinde daha önce alarm üretilmedi mi?
-        if len(stamps) >= self._threshold and self._alerted_until.get(user_id, 0.0) <= now:
-            # Belirtilen pencere süresince bir daha mükerrer alarm üretilmesini engelle
-            self._alerted_until[user_id] = now + self._window_sec
-            return True
-
-        return False
+            return False
 
 
 # Geriye dönük uyumluluk için takma ad (alias)
@@ -321,16 +324,19 @@ def set_deny_tracker(tracker: Any) -> None:
 
 async def record_denied_access(user_id: str, correlation_id: str | None) -> None:
     """Yetkisiz/reddedilen erişimi sayaçta işler; eşik aşılmışsa 'enumeration_suspected' alarmı basar."""
-    from app.core.config import settings
+    try:
+        from app.core.config import settings
 
-    tracker = get_deny_tracker()
-    triggered = await asyncio.to_thread(tracker.record, user_id)
-    if triggered:
-        write_audit(
-            "enumeration_suspected",
-            user_id=user_id,
-            correlation_id=correlation_id,
-            outcome="alert",
-            threshold=settings.AUDIT_DENY_THRESHOLD,
-            window_sec=settings.AUDIT_DENY_WINDOW_SEC,
-        )
+        tracker = get_deny_tracker()
+        triggered = await asyncio.to_thread(tracker.record, user_id)
+        if triggered:
+            write_audit(
+                "enumeration_suspected",
+                user_id=user_id,
+                correlation_id=correlation_id,
+                outcome="alert",
+                threshold=settings.AUDIT_DENY_THRESHOLD,
+                window_sec=settings.AUDIT_DENY_WINDOW_SEC,
+            )
+    except Exception as exc:
+        logger.warning("record_denied_access hatası: %s", type(exc).__name__)

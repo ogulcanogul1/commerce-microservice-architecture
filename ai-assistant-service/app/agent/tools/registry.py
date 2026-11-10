@@ -122,11 +122,17 @@ class ToolRegistry:
         except DownstreamUnavailable:
             outcome = OUTCOME_UNAVAILABLE
             raise
+        except asyncio.CancelledError:
+            outcome = OUTCOME_TIMEOUT
+            raise
         except Exception:
             outcome = OUTCOME_ERROR
             raise
         finally:
-            await self._record_audit(name, raw_args, ctx, outcome, started)
+            try:
+                await asyncio.shield(self._record_audit(name, raw_args, ctx, outcome, started))
+            except Exception:
+                pass
 
     async def _record_audit(
         self,
