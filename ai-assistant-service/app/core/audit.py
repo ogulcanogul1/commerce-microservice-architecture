@@ -35,6 +35,8 @@ import time
 from typing import Any
 import uuid
 
+from opentelemetry import trace
+
 # Denetim kayıtlarının toplandığı özel ayrık logger adı
 AUDIT_LOGGER_NAME = "audit"
 logger = logging.getLogger(__name__)
@@ -112,6 +114,9 @@ def write_audit(
     - fields: Ek güvenli meta veriler (tool adı, argüman isimleri, süre vb.)
     """
     try:
+        # Aktif OpenTelemetry trace bağlamını oku (varsa SIEM-Tempo eşleştirmesi için traceId eklenir)
+        ctx = trace.get_current_span().get_span_context()
+
         record: dict[str, Any] = {
             "event": event,
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
@@ -120,6 +125,9 @@ def write_audit(
             "outcome": outcome,
             **fields,
         }
+        if ctx.is_valid:
+            record["traceId"] = format(ctx.trace_id, "032x")
+
         get_audit_logger().info(json.dumps(record, ensure_ascii=False, default=str))
     except Exception:
         # Fail-Safe Kuralı: Audit yazımındaki bir hata asla ana iş mantığını (FastAPI handler) bozmamalıdır

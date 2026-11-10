@@ -342,4 +342,46 @@ async def test_record_denied_access_fail_safe_swallows_exception(monkeypatch: py
     await record_denied_access("user-fail-safe", "corr-fail-safe")
 
 
+def test_write_audit_includes_trace_id_when_span_active(audit_records: list[dict[str, Any]]) -> None:
+    """Aktif bir span varken write_audit kaydına traceId eklendiğini, span yokken eklenmediğini doğrular."""
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from app.observability.tracing import build_tracer_provider
+
+    # 1. Span olmadan audit yazımı -> traceId olmamalı
+    write_audit(
+        "no_span_event",
+        user_id="user-no-span",
+        correlation_id="corr-no-span",
+        outcome="ok",
+    )
+    assert len(audit_records) == 1
+    assert "traceId" not in audit_records[0]
+
+    # 2. Aktif span ile audit yazımı -> traceId bulunmalı
+    memory_exporter = InMemorySpanExporter()
+    provider = build_tracer_provider(SimpleSpanProcessor(memory_exporter))
+    tracer = provider.get_tracer("test-audit-tracer")
+
+    try:
+        with tracer.start_as_current_span("audit-span") as span:
+            ctx = span.get_span_context()
+            expected_trace_id = format(ctx.trace_id, "032x")
+
+            write_audit(
+                "span_event",
+                user_id="user-with-span",
+                correlation_id="corr-with-span",
+                outcome="ok",
+            )
+
+        assert len(audit_records) == 2
+        record_with_span = audit_records[1]
+        assert record_with_span["event"] == "span_event"
+        assert record_with_span.get("traceId") == expected_trace_id
+    finally:
+        provider.shutdown()
+
+
+
 
