@@ -268,6 +268,7 @@ services:
     environment:
       - SERVICE_NAME=ai-assistant-service
       - PORT=8089
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - EUREKA_ENABLED=true
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - EUREKA_PREFER_IP=true
@@ -275,7 +276,8 @@ services:
       - CONFIG_SERVER_URL=http://config-server:8888/
       - TOKEN_BUDGET_ENABLED=true
       - GATEWAY_SECURITY_ENABLED=true
-      - GATEWAY_INTERNAL_SECRET=dgl-internal-gateway-secret-token-2026
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET:-dgl-internal-gateway-secret-token-2026}
+      - TICKET_PUBLISHER=${TICKET_PUBLISHER:-kafka}
       - ORDER_SERVICE_URL=http://order-service:8082
       - PRODUCT_SERVICE_URL=http://product-service:8081
       - SHIPPING_SERVICE_URL=http://shipping-service:8085

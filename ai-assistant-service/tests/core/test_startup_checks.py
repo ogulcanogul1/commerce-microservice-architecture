@@ -105,3 +105,19 @@ def test_environment_check_is_case_insensitive():
             gateway_secret=KNOWN_DEFAULT_SECRET,
             ticket_publisher="kafka",
         )
+
+
+def test_default_settings_is_production_and_fails_fast_with_default_secret():
+    """Varsayılan konfigürasyonda ENVIRONMENT=production ve DEBUG=False'dur; bilinen secret ile fail-fast çöker."""
+    from app.core.config import Settings
+
+    s = Settings(_env_file=None)
+    assert s.ENVIRONMENT == "production"
+    assert s.DEBUG is False
+    with pytest.raises(RuntimeError, match="Güvensiz yapılandırma"):
+        enforce_security_startup(
+            environment=s.ENVIRONMENT,
+            gateway_security_enabled=s.GATEWAY_SECURITY_ENABLED,
+            gateway_secret=s.GATEWAY_INTERNAL_SECRET,
+            ticket_publisher=s.TICKET_PUBLISHER,
+        )

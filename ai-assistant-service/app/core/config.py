@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     # Service Info
     SERVICE_NAME: str = "ai-assistant-service"
     PORT: int = 8089
-    ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    ENVIRONMENT: str = "production"
+    DEBUG: bool = False
 
     # API Keys
     OPENAI_API_KEY: str = ""

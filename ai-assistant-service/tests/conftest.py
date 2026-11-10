@@ -8,6 +8,17 @@ from app.core.config import settings
 
 
 @pytest.fixture(autouse=True)
+def set_test_environment() -> Generator[None, None, None]:
+    """Ensure tests run in 'test' environment by default to avoid production fail-fast during unit tests."""
+    original_env = settings.ENVIRONMENT
+    settings.ENVIRONMENT = "test"
+    try:
+        yield
+    finally:
+        settings.ENVIRONMENT = original_env
+
+
+@pytest.fixture(autouse=True)
 def disable_gateway_security_for_tests() -> Generator[None, None, None]:
     """Disable gateway secret validation by default for general unit/api tests.
 
