@@ -6,6 +6,7 @@ and register it in the action store for explicit human-in-the-loop confirmation.
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+import logging
 import secrets
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +16,8 @@ from app.agent.tools.base import Tool, ToolContext, ToolResult
 from app.clients.order import OrderClient
 from app.core.config import settings
 from app.core.pii import mask_pii
+
+logger = logging.getLogger(__name__)
 
 
 class RequestOrderCancellationArgs(BaseModel):
@@ -83,9 +86,10 @@ class RequestOrderCancellationTool(Tool):
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=self._ttl_sec)
         action_id = secrets.token_urlsafe(24)
+        clean_reason, _ = mask_pii(args.reason.strip())
         summary = (
             f"{order.order_number} numaralı siparişi iptal etmek istediğinizi "
-            f"onaylıyor musunuz? Sebep: {args.reason}"
+            f"onaylıyor musunuz? Sebep: {clean_reason}"
         )
 
         action = PendingAction(
@@ -95,7 +99,7 @@ class RequestOrderCancellationTool(Tool):
             params={
                 "order_id": order.id,
                 "order_number": order.order_number,
-                "reason": args.reason,
+                "reason": clean_reason,
             },
             summary=summary,
             created_at=now,

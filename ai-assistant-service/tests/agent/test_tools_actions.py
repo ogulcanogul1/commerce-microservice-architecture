@@ -109,3 +109,47 @@ async def test_request_support_ticket_tool_masks_pii_and_stores_action() -> None
     # PII maskeleme kontrolü
     assert "[KART]" in res.pending_action.params["summary"]
     assert "4532" not in res.pending_action.params["summary"]
+
+
+@pytest.mark.anyio
+async def test_request_order_cancellation_store_error_handles_without_name_error() -> None:
+    """Store hata verdiğinde logger.exception çalışmalı ve NameError fırlatılmadan hata dönmelidir."""
+    from unittest.mock import MagicMock
+
+    mock_order = AsyncMock()
+    mock_order.get_order_by_number.return_value = _make_order()
+    broken_store = MagicMock()
+    broken_store.create.side_effect = RuntimeError("Redis connection lost")
+
+    tool = RequestOrderCancellationTool(order_client=mock_order, action_store=broken_store)
+    ctx = ToolContext(user_id="user-1", correlation_id="c-err", question="iptal")
+
+    res = await tool.run(RequestOrderCancellationArgs(order_number="ORD-1", reason="Vazgeçtim"), ctx)
+
+    assert res.ok is False
+    assert "İşlem onay kaydı oluşturulamadı" in res.error
+
+
+@pytest.mark.anyio
+async def test_request_order_cancellation_masks_pii_in_reason_and_summary() -> None:
+    """İptal gerekçesindeki hassas veriler (telefon, e-posta) özette ve parametrede maskelenmelidir."""
+    mock_order = AsyncMock()
+    mock_order.get_order_by_number.return_value = _make_order()
+    store = InMemoryPendingActionStore()
+
+    tool = RequestOrderCancellationTool(order_client=mock_order, action_store=store)
+    ctx = ToolContext(user_id="user-1", correlation_id="c-pii", question="iptal")
+
+    res = await tool.run(
+        RequestOrderCancellationArgs(
+            order_number="ORD-1",
+            reason="İletişim için test@example.com ve 0555 123 45 67 aranabilir",
+        ),
+        ctx,
+    )
+
+    assert res.ok is True
+    assert res.pending_action is not None
+    assert "test@example.com" not in res.pending_action.summary
+    assert "[EPOSTA]" in res.pending_action.summary
+    assert "[TELEFON]" in res.pending_action.summary
