@@ -459,3 +459,48 @@ def test_answer_with_valid_user_id_succeeds(client: TestClient):
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "answered"
+
+
+def test_answer_propagates_sanitized_correlation_id(
+    client: TestClient,
+    rag_service: RagAnswerService,
+    fake_llm: FakeLLMProvider,
+):
+    """X-Correlation-Id başlığı RequestContext üzerinden temizlenerek service.answer'a aktarılmalıdır."""
+    fake_llm.responses.extend([
+        "İade süresi 14 gündür [1].",
+        "İade süresi 14 gündür [1].",
+    ])
+    captured_correlation_id = None
+    original_answer = rag_service.answer
+
+    async def _inspect_answer(*args, **kwargs):
+        nonlocal captured_correlation_id
+        captured_correlation_id = kwargs.get("correlation_id")
+        return await original_answer(*args, **kwargs)
+
+    rag_service.answer = _inspect_answer
+
+    # 1. Geçerli correlation id temizlenip geçirilmeli
+    resp = client.post(
+        "/rag/answer",
+        headers={
+            "X-User-Id": VALID_USER_ID,
+            "X-Correlation-Id": "CORR-TEST-12345",
+        },
+        json={"question": "İade süresi kaç gündür?"},
+    )
+    assert resp.status_code == 200
+    assert captured_correlation_id == "CORR-TEST-12345"
+
+    # 2. Zararlı / format dışı correlation id (CRLF injection vb.) sanitize edilip None olarak geçirilmeli
+    resp_invalid = client.post(
+        "/rag/answer",
+        headers={
+            "X-User-Id": VALID_USER_ID,
+            "X-Correlation-Id": "invalid\r\nheader: inject",
+        },
+        json={"question": "İade süresi kaç gündür?"},
+    )
+    assert resp_invalid.status_code == 200
+    assert captured_correlation_id is None

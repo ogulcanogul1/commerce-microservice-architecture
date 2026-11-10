@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -116,7 +116,6 @@ async def answer_question(
     # doğrulanmamış istekler uygulama içi servislere ulaşmadan doğrudan 401 Unauthorized ile kesilir.
     ctx: RequestContext = Depends(get_request_context),  # -> X-User-Id ve X-Correlation-Id başlıklarını doğrular, temizler ve RequestContext üretir
     service: RagAnswerService = Depends(get_rag_answer_service),  # -> app.state üzerinden doküman arama ve LLM cevaplama motorunu (RAG) çözer
-    x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     limiter: ConcurrencyLimiter = Depends(get_ai_limiter),  # -> Instance başına maksimum eşzamanlı LLM istek (concurrency slot) sınırlayıcısını çözer
     budget: TokenBudgetService | None = Depends(get_token_budget),  # -> Redis tabanlı kullanıcı ve model token bütçesi/kota yönetim servisini çözer
     runtime: RuntimeSettings = Depends(get_runtime_settings),  # -> Spring Cloud Config Server'dan gelen anlık (frozen snapshot) ayarları çözer
@@ -153,7 +152,7 @@ async def answer_question(
                             payload.question,
                             k=payload.k,
                             source_file=payload.source_file,
-                            correlation_id=x_correlation_id,
+                            correlation_id=ctx.correlation_id,
                             config=gen_config,
                         )
                         reservation.record(rag_answer.usage)
@@ -163,7 +162,7 @@ async def answer_question(
                         payload.question,
                         k=payload.k,
                         source_file=payload.source_file,
-                        correlation_id=x_correlation_id,
+                        correlation_id=ctx.correlation_id,
                         config=gen_config,
                     )
     except (asyncio.TimeoutError, TimeoutError):
