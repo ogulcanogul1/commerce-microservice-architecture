@@ -155,6 +155,11 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     SUPPORT_TICKET_TOPIC: str = "support.ticket.created"
 
+    # Observability
+    OTEL_ENABLED: bool = False  # Test/dev'de kapalı; compose'ta true
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318/v1/traces"  # TAM URL (Spring ile aynı sözleşme)
+    LOG_FORMAT: Literal["json", "text"] = "text"  # compose'ta json
+
     # Pydantic Settings
     model_config = SettingsConfigDict(
         env_file=".env",
