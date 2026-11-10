@@ -37,16 +37,27 @@ def test_write_audit_emits_single_json_line_with_required_fields(audit_records: 
     assert "timestamp" in record
 
 
-def test_audit_logger_does_not_propagate_to_root(caplog: pytest.LogCaptureFixture) -> None:
-    """Audit logger propagate=False olduğu için root handler'a (caplog) sızmamalıdır."""
-    with caplog.at_level(logging.INFO):
+def test_audit_logger_does_not_propagate_to_root() -> None:
+    """Audit logger propagate=False olduğu için root logger handler'larına sızmamalıdır."""
+    root_logger = logging.getLogger()
+    captured_records: list[logging.LogRecord] = []
+
+    class RootCapture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured_records.append(record)
+
+    root_handler = RootCapture()
+    root_logger.addHandler(root_handler)
+    try:
         write_audit(
             "secret_event",
             user_id="user-secret-uuid-9999",
             correlation_id="corr-xyz",
             outcome="ok",
         )
-    assert "user-secret-uuid-9999" not in caplog.text
+        assert not any("user-secret-uuid-9999" in r.getMessage() for r in captured_records)
+    finally:
+        root_logger.removeHandler(root_handler)
 
 
 def test_hash_args_is_stable_and_order_independent() -> None:

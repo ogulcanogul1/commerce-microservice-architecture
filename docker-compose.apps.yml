@@ -268,7 +268,7 @@ services:
     environment:
       - SERVICE_NAME=ai-assistant-service
       - PORT=8089
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
       - EUREKA_ENABLED=true
       - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
       - EUREKA_PREFER_IP=true

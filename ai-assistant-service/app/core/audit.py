@@ -61,35 +61,15 @@ DENY_OUTCOMES = frozenset({OUTCOME_DENIED, OUTCOME_OWNERSHIP_MISMATCH, OUTCOME_N
 # ==============================================================================
 
 def get_audit_logger() -> logging.Logger:
-    """Ayrık, ana loglara yayılmayan (propagate=False) ve stdout'a düz JSON basan logger'ı döner.
-
-    Özel İzolasyon Mekanizması:
-    Pytest'in `caplog` fikstürü arka planda tüm logger'lara dinamik olarak 'LogCaptureHandler' ekler.
-    Audit kayıtlarımızın normal test loglarına ve `caplog`'a sızmasını (böylece PII denetimlerinin
-    bozulmasını) engellemek için `addHandler` metodu filtrelenmiştir.
-    """
+    """Ayrık, ana loglara yayılmayan (propagate=False) ve stdout'a düz JSON basan logger'ı döner."""
     audit_logger = logging.getLogger(AUDIT_LOGGER_NAME)
     if not audit_logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(logging.Formatter("%(message)s"))
         audit_logger.addHandler(handler)
     audit_logger.setLevel(logging.INFO)
-    # Ana root logger'a log aktarımını engelle (Log ayrıştırması için kritik)
+    # Ana root logger'a log aktarımını engelle (Log ayrıştırması ve caplog izolasyonu için kritik)
     audit_logger.propagate = False
-
-    # Pytest LogCaptureHandler'ının bu logger'a takılmasını engelle
-    if not hasattr(audit_logger, "_caplog_filtered"):
-        orig_add_handler = audit_logger.addHandler
-
-        def _safe_add_handler(h: logging.Handler) -> None:
-            if h.__class__.__name__ == "LogCaptureHandler":
-                return
-            orig_add_handler(h)
-
-        audit_logger.addHandler = _safe_add_handler  # type: ignore[assignment]
-        audit_logger.handlers = [h for h in audit_logger.handlers if h.__class__.__name__ != "LogCaptureHandler"]
-        audit_logger._caplog_filtered = True  # type: ignore[attr-defined]
-
     return audit_logger
 
 

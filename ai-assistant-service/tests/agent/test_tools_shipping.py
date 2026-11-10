@@ -118,3 +118,26 @@ async def test_get_shipment_tool_when_no_shipment_yet() -> None:
     assert res.ok is True
     assert res.data["shipment"] is None
     assert "henüz kargo kaydı yok" in res.data["mesaj"]
+
+
+@pytest.mark.anyio
+async def test_get_shipment_tool_stops_if_shipment_customer_id_mismatch() -> None:
+    """Kargo kaydındaki customerId kullanıcı ile uyuşmuyorsa savunma derinliği gereği reddedilir."""
+    mock_order = AsyncMock()
+    mock_order.get_order_by_number.return_value = _make_order(customer_id="user-1")
+
+    # Kargo nesnesinde customerId başka kullanıcıya ait
+    alien_shipment = _make_shipment()
+    object.__setattr__(alien_shipment, "customer_id", "alien-user-999")
+
+    mock_shipping = AsyncMock()
+    mock_shipping.get_shipment_by_order.return_value = alien_shipment
+
+    tool = GetShipmentTool(order_client=mock_order, shipping_client=mock_shipping)
+    ctx = ToolContext(user_id="user-1", correlation_id=None, question="ORD-12345")
+
+    res = await tool.run(GetShipmentArgs(order_number="ORD-12345"), ctx)
+
+    assert res.ok is False
+    assert res.error == "Sipariş bulunamadı."
+    assert res.reason == "ownership_mismatch"

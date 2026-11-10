@@ -63,6 +63,7 @@ class ShipmentView(BaseModel):
 
     id: str
     order_id: str = Field(alias="orderId")
+    customer_id: str | None = Field(default=None, alias="customerId")
     tracking_number: str = Field(alias="trackingNumber")
     carrier: str
     status: str

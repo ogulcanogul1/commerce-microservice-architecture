@@ -77,6 +77,9 @@ class GetShipmentTool(Tool):
                 },
             )
 
+        if shipment.customer_id and shipment.customer_id.lower() != ctx.user_id.lower():
+            return ToolResult(ok=False, error="Sipariş bulunamadı.", reason="ownership_mismatch")
+
         status_aciklama = SHIPMENT_STATUS_EXPLANATIONS.get(
             shipment.status,
             f"{shipment.status} (Durum ayrıntısı bilinmiyor.)",
