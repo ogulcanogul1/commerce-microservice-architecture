@@ -20,4 +20,10 @@ Tüm mimari kurallar, araç tanımları, güvenlik politikaları ve port dağıl
 - **Kimlik ve Güven Modeli**: İki kimlik (kullanıcı: `X-User-Id`, servis: `X-Gateway-Secret`). Kimlik ASLA tool parametresi olamaz; `X-User-Roles` bilerek iletilmez. Yetki downstream'dedir, Python ikinci savunma hattıdır. Üretimde zayıf secret ile fail-fast (`startup_checks`).
 - **Ayrık Audit**: `audit` logger (`propagate=False`, stdout JSON) PII içermez (`args_hash` + `arg_names`). `ToolResult.reason` modele yansımaz. Audit logları altyapıda ayrı index ve saklama süresiyle tutulmalıdır.
 - **Yeni Tool Kontrolü**: `extra="forbid"`, kimlik parametresi yok, 403/404 aynı hata metni ("bulunamadı"), sahiplik uyuşmazlığında `reason="ownership_mismatch"`, `ToolRegistry` kaydı (otomatik audit), yan etkili işlemler yalnızca `PendingAction` teklifi üretir.
+- **Gözlemlenebilirlik (Observability)**:
+  - 3 ID Rolü: `Trace ID` (OTel W3C traceparent / Tempo), `Correlation ID` (RequestContext / Loki iş süreci), `Event ID` (Kafka envelope / idempotency).
+  - Loglama: stdout tek satır JSON, Java MDC uyumlu anahtarlar (`traceId`, `spanId`, `correlationId`), formatter seviyesinde `mask_pii`.
+  - Kafka Header: Her producer gönderimi `PRODUCER` span içine alınır ve `build_kafka_headers` ile `traceparent` ve `X-Correlation-Id` eklenir.
+  - Metrikler ve Kardinalite: `http_server_requests_seconds` (route şablonu ile; ham URL/user_id label YASAKTIR), `ai_tool_call_duration_seconds` (bilinmeyen -> `unknown`), `ai_llm_request_duration_seconds`, `ai_llm_tokens_total`. `/actuator/prometheus` secret'sızdır.
+  - Sağlık Probaları: `/actuator/health/liveness` (200), `/actuator/health/readiness` (startup+drain+redis). LLM veya downstream servisler KESİNLİKLE readiness'e eklenemez.
 - **Birim Testleri**: Ağ veya Docker gerektirmeden `uv run pytest -m "not integration"` ile çalışır.

@@ -58,4 +58,31 @@
   - [ ] Araç `ToolRegistry`'ye kayıtlıdır (audit sarmalaması otomatik).
   - [ ] Yan etkili araç yalnızca `PendingAction` teklifi üretir; çalıştırma `ActionExecutor` + kullanıcı onayı ile yürütülür.
 
+## 8. Gözlemlenebilirlik (Observability: Tracing, JSON Loglama, Metrikler ve Sağlık Denetimi)
+- **Üç Kimlik Rolü (IDs):**
+  - `Trace ID`: OpenTelemetry tarafından oluşturulur, gateway'den downstream servislere ve Kafka mesaj başlıklarına W3C `traceparent` ile taşınır (Tempo dağıtık izleme).
+  - `Correlation ID`: API Gateway tarafından oluşturulur (`X-Correlation-Id`), `RequestContext` ve `correlation_id_var` (`ContextVar`) ile taşınır, JSON log satırlarına ve Kafka başlıklarına basılır (Loki iş akışı korelasyonu).
+  - `Event ID`: Olayı üreten servis tarafından tekil UUIDv4 üretilir, Kafka event envelope `eventId` alanında taşınır (Idempotency tekilleştirme).
+- **Observability Paket Haritası (`app/observability/`):**
+  - `tracing.py`: OTLP HTTP trace dışa aktarımı, FastAPI ve HTTPX otomatik enstrümantasyonu, probe path filtreleme (`/health`, `/actuator/**`).
+  - `context.py`: `correlation_id_var` ContextVar ve CRLF/uzunluk güvenlik süzgecine sahip saf ASGI `RequestContextMiddleware`.
+  - `logging.py`: Root logger stdout yönlendirmesi, Java MDC uyumlu (`traceId`, `spanId`, `correlationId`) tek satır `JsonLogFormatter`, formatter seviyesinde `mask_pii` filtresi (mesaj ve stack trace).
+  - `propagation.py`: Kafka mesajları için W3C `traceparent` ve `X-Correlation-Id` başlıklarını üreten `build_kafka_headers`.
+  - `metrics.py`: `http_server_requests_seconds`, `ai_tool_call_duration_seconds`, `ai_llm_request_duration_seconds`, `ai_llm_tokens_total` Prometheus histogram ve sayaçları; route şablonunu çıkaran `HttpMetricsMiddleware`.
+  - `health.py`: Liveness ve Readiness denetim mantığı (`check_readiness`).
+- **Kardinalite ve Etiket (Label) Kuralları:**
+  - Prometheus ve Loki'de `user_id`, `trace_id`, `correlation_id`, sipariş no veya ham dinamik URL path KESİNLİKLE label yapılamaz.
+  - HTTP isteklerinde route daima şablona (`/agent/actions/{action_id}/confirm`) normalize edilir; 404 rotalar `UNMATCHED` olur.
+  - Modelin uydurduğu araç adları `unknown` etiketine indirgenir.
+  - `application` etiketi kodda tanımlanmaz; Prometheus scrape yapılandırması tarafından statik eklenir.
+- **Kafka Üretici (Producer) Kontrol Listesi:**
+  - Yeni bir Kafka producer yazıldığında mesaj gönderimi MUTLAKA `trace.SpanKind.PRODUCER` span'i içine alınmalı ve başlıklar `build_kafka_headers(event.get("correlationId"))` ile eklenmelidir.
+- **Readiness ve Liveness Ayrımı:**
+  - Liveness her zaman 200 döner (event loop donmadıysa canlıdır).
+  - Readiness YALNIZCA açılış tamamlanması (`ready=True`), drain olmaması (`draining=False`) ve (varsa) Redis pingine bakar.
+  - **Dış LLM Sağlayıcısı (Gemini, OpenAI), Qdrant veya downstream servisler KESİNLİKLE readiness'e eklenemez.** Dış kesintiler pod öldürülerek değil, uygulama içi fallback/circuit breaker ile yönetilir.
+- **Async Bağlam Koruması:**
+  - Kod içinde `run_in_executor` veya `ThreadPoolExecutor` kullanımı `copy_context` olmadan YASAKTIR (`asyncio.to_thread` ve `create_task` güvenle kullanılabilir).
+
+
 
