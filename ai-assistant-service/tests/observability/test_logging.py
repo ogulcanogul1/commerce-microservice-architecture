@@ -103,17 +103,23 @@ def test_json_log_formatter_exception_single_line_and_pii_masked():
 
 
 def test_json_log_formatter_stack_info_captured_and_masked():
-    """stack_info=True ile loglandığında stack_trace alanının oluştuğunu ve PII maskelendiğini doğrular."""
+    """stack_info=True ile loglandığında stack_trace alanının oluştuğunu ve yığın izi içindeki PII'nin maskelendiğini doğrular."""
     logger, stream = _setup_test_logger("test.stack_info")
-    logger.info("Yığın izi kaydı (telefon: 0532 555 44 33)", stack_info=True)
+
+    # Stack trace frame'inde yer alacak çağrı satırı (argümanda telefon numarası yer alır)
+    def _trace_caller(customer_phone: str):
+        logger.info("Yığın izi kaydı yapıldı", stack_info=True)
+
+    _trace_caller("0532 555 44 33")
 
     raw_output = stream.getvalue().strip()
     assert "\n" not in raw_output
     data = json.loads(raw_output)
 
     assert "stack_trace" in data
+    # Stack frame satırındaki (_trace_caller("0532 555 44 33")) telefon maskelenmiş olmalıdır
     assert "0532 555 44 33" not in data["stack_trace"]
-    assert "[TELEFON]" in data["message"]
+    assert "[TELEFON]" in data["stack_trace"]
 
 
 def test_json_log_formatter_trace_context_fields():
