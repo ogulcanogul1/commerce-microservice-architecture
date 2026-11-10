@@ -181,10 +181,22 @@ class InMemoryDenyTracker:
         """Kullanıcının reddedilen bir erişimini kaydeder. Eşik aşıldıysa True döner."""
         now = self._clock()
 
-        # Bellek taşması koruması: Tablo aşırı büyürse sıfırla
+        # Bellek taşması koruması: Tablo aşırı büyürse önce süresi dolmuş kayıtları temizle,
+        # hala doluysa en eski girdiyi tahliye et (tüm tabloyu sıfırlayarak başkalarının sayacını silme DoS'unu önle).
         if len(self._events) >= self._MAX_TRACKED_USERS and user_id not in self._events:
-            self._events.clear()
-            self._alerted_until.clear()
+            cutoff = now - self._window_sec
+            expired_users = [
+                u for u, q in self._events.items()
+                if not q or q[-1] < cutoff
+            ]
+            for u in expired_users:
+                self._events.pop(u, None)
+                self._alerted_until.pop(u, None)
+
+            while len(self._events) >= self._MAX_TRACKED_USERS:
+                oldest_user = next(iter(self._events))
+                self._events.pop(oldest_user, None)
+                self._alerted_until.pop(oldest_user, None)
 
         # Kullanıcının ret zaman damgalarını tutan kuyruğu al
         stamps = self._events.setdefault(user_id, deque())
@@ -296,6 +308,13 @@ class RedisDenyTracker:
                 "RedisDenyTracker hatası (devre %.1f sn açık kalacak), InMemory depoya dönülüyor: %s",
                 self._circuit_cooldown_sec,
                 exc,
+            )
+            write_audit(
+                "deny_tracker_circuit_opened",
+                user_id=user_id,
+                correlation_id=None,
+                outcome="fallback_in_memory",
+                cooldown_sec=self._circuit_cooldown_sec,
             )
             return self._local_fallback.record(user_id)
 

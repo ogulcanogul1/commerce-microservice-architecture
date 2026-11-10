@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock
 import pytest
 
@@ -88,7 +89,7 @@ async def test_get_order_tool_defense_in_depth_ownership_mismatch() -> None:
 
 
 @pytest.mark.anyio
-async def test_list_my_orders_tool_filters_alien_records() -> None:
+async def test_list_my_orders_tool_filters_alien_records(audit_records: list[dict[str, Any]]) -> None:
     mock_client = AsyncMock()
     mock_client.list_orders.return_value = OrderPage(
         items=[
@@ -100,7 +101,7 @@ async def test_list_my_orders_tool_filters_alien_records() -> None:
     )
     tool = ListMyOrdersTool(order_client=mock_client)
 
-    ctx = ToolContext(user_id="user-1", correlation_id=None, question="siparişlerim")
+    ctx = ToolContext(user_id="user-1", correlation_id="c-isolation", question="siparişlerim")
     res = await tool.run(ListMyOrdersArgs(limit=5), ctx)
 
     assert res.ok is True
@@ -108,3 +109,11 @@ async def test_list_my_orders_tool_filters_alien_records() -> None:
     assert res.data["total"] == 2
     assert len(res.data["orders"]) == 2
     assert [o["order_number"] for o in res.data["orders"]] == ["ORD-1", "ORD-3"]
+
+    # downstream_isolation_violation audit kaydı basılmış olmalı
+    isolation_audits = [r for r in audit_records if r.get("event") == "downstream_isolation_violation"]
+    assert len(isolation_audits) == 1
+    assert isolation_audits[0]["outcome"] == "isolation_violation"
+    assert isolation_audits[0]["total_received"] == 3
+    assert isolation_audits[0]["verified"] == 2
+    assert isolation_audits[0]["user_id"] == "user-1"

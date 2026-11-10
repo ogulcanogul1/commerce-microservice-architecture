@@ -137,14 +137,24 @@ class ToolRegistry:
         started: float,
     ) -> None:
         """Her araç çağrısı için PII içermeyen standart bir denetim kaydı yazar."""
+        safe_tool_name = str(name)[:64]
+        try:
+            arg_names = (
+                sorted(str(k)[:64] for k in raw_args.keys())[:32]
+                if isinstance(raw_args, dict)
+                else []
+            )
+        except Exception:
+            arg_names = []
+
         # 1. PII içermeyen güvenli audit kaydı bas (argüman değerleri yerine hash ve süre yazılır)
         write_audit(
             "tool_call",
             user_id=ctx.user_id,
             correlation_id=ctx.correlation_id,
             outcome=outcome,
-            tool=name,
-            arg_names=sorted(raw_args) if isinstance(raw_args, dict) else [],
+            tool=safe_tool_name,
+            arg_names=arg_names,
             args_hash=hash_args(raw_args),
             ms=round((time.monotonic() - started) * 1000),
         )

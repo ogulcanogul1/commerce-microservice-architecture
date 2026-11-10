@@ -246,3 +246,53 @@ async def test_record_denied_access_async(monkeypatch: pytest.MonkeyPatch, audit
     assert alerts[0]["user_id"] == "user-async-1"
     assert alerts[0]["correlation_id"] == "corr-async-1"
 
+
+def test_in_memory_deny_tracker_eviction_purges_expired_without_clearing_all() -> None:
+    """Bellek dolduğunda tüm tablo sıfırlanmaz; süresi dolmuşlar ve en eski girdi tahliye edilir."""
+    current_time = [100.0]
+    tracker = InMemoryDenyTracker(threshold=3, window_sec=60.0, clock=lambda: current_time[0])
+    tracker._MAX_TRACKED_USERS = 3  # Test için kapasiteyi 3 yap
+
+    # Kullanıcı 1: zaman 100 (daha sonra süresi dolacak)
+    tracker.record("user-1")
+    # Kullanıcı 2: zaman 100
+    tracker.record("user-2")
+
+    # Zaman ilerliyor (140): kullanıcı 3 aktif ret alıyor (süresi 140 + 60 = 200'e kadar geçerli)
+    current_time[0] = 140.0
+    tracker.record("user-3")
+
+    # Zaman ilerliyor (165): kullanıcı 2 yeni ret alıyor. Cutoff = 165 - 60 = 105.
+    # user-1 (100) süresi doldu (< 105), ancak user-3 (140) hala aktif (> 105)!
+    current_time[0] = 165.0
+    tracker.record("user-2")
+
+    # Kullanıcı 4 ekleniyor (kapasite 3 dolu olduğu için süresi dolan user-1 süpürülür)
+    tracker.record("user-4")
+    assert "user-1" not in tracker._events
+    assert "user-2" in tracker._events
+    assert "user-3" in tracker._events
+    assert "user-4" in tracker._events
+
+    # Kullanıcı 5 ekleniyor (süresi dolan yok, en eski eklenen user-2 tahliye edilir)
+    tracker.record("user-5")
+    assert len(tracker._events) <= 3
+    assert "user-5" in tracker._events
+
+
+def test_redis_deny_tracker_writes_audit_when_circuit_trips(audit_records: list[dict[str, Any]]) -> None:
+    """Redis hata verdiğinde devre açılır ve deny_tracker_circuit_opened audit kaydı basılır."""
+    from unittest.mock import MagicMock
+
+    broken_redis = MagicMock()
+    broken_redis.eval.side_effect = RuntimeError("Redis connection failure")
+
+    tracker = RedisDenyTracker(broken_redis, threshold=2, window_sec=60.0, circuit_cooldown_sec=15.0)
+    tracker.record("user-circuit-test")
+
+    circuit_audits = [r for r in audit_records if r.get("event") == "deny_tracker_circuit_opened"]
+    assert len(circuit_audits) == 1
+    assert circuit_audits[0]["outcome"] == "fallback_in_memory"
+    assert circuit_audits[0]["cooldown_sec"] == 15.0
+
+

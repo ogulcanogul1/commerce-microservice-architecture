@@ -837,3 +837,29 @@ def test_sec_16_gateway_secret_enforcement_blocks_downstream():
     finally:
         settings.GATEWAY_SECURITY_ENABLED = old_enabled
         settings.GATEWAY_INTERNAL_SECRET = old_secret
+
+
+@pytest.mark.anyio
+async def test_sec_17_audit_fields_model_input_sanitization(
+    security_test_rig, audit_records: list[dict[str, Any]]
+) -> None:
+    """17. Audit Sanitization: Model-controlled tool name is clamped to 64 chars and unhashable/weird args do not crash."""
+    from app.agent.tools.base import ToolContext
+    registry = ToolRegistry()
+    ctx = ToolContext(user_id=USER_A, correlation_id="c-sec-17", question="test")
+
+    # Long tool name (> 100 chars)
+    long_tool_name = "a" * 120
+    # Weird dict with non-string keys
+    weird_args = {1: "val1", 2: "val2"}
+
+    res = await registry.execute(long_tool_name, weird_args, ctx)
+    assert not res.ok
+
+    tool_audits = [r for r in audit_records if r.get("event") == "tool_call"]
+    assert len(tool_audits) >= 1
+    latest = tool_audits[-1]
+    assert len(latest["tool"]) <= 64
+    assert latest["tool"] == "a" * 64
+    assert latest["arg_names"] == ["1", "2"]
+

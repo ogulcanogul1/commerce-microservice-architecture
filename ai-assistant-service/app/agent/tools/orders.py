@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.tools.base import Tool, ToolContext, ToolResult
 from app.clients.order import OrderClient
+from app.core.audit import write_audit
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,14 @@ class ListMyOrdersTool(Tool):
         ]
         if len(verified_items) != len(page.items):
             logger.error("Downstream başka müşteriye ait kayıt döndürdü (ownership isolation ihlali)")
+            write_audit(
+                "downstream_isolation_violation",
+                user_id=ctx.user_id,
+                correlation_id=ctx.correlation_id,
+                outcome="isolation_violation",
+                total_received=len(page.items),
+                verified=len(verified_items),
+            )
 
         formatted_orders = [
             {
