@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 from typing import Any
 from unittest.mock import AsyncMock
 import pytest
@@ -111,7 +112,7 @@ async def test_executor_cancel_order_ownership_mismatch(audit_records: list[dict
     result = await executor.execute(action, ctx)
 
     assert result.ok is False
-    assert "yetkiniz yok" in result.message
+    assert result.message == "Sipariş bulunamadı."
     mock_order.cancel_order.assert_not_called()
 
     ownership_audits = [r for r in audit_records if r.get("event") == "ownership_check"]
@@ -151,18 +152,18 @@ async def test_executor_cancel_order_downstream_bad_request() -> None:
 
 @pytest.mark.anyio
 async def test_executor_cancel_order_downstream_forbidden(
-    audit_records: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+    audit_records: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     mock_order = AsyncMock()
     mock_order.get_order_by_number.side_effect = DownstreamForbidden("Access denied")
     mock_publisher = AsyncMock()
 
     executor = ActionExecutor(order_client=mock_order, ticket_publisher=mock_publisher)
-    ctx = RequestContext(user_id="user-1", correlation_id="c-forbidden")
+    ctx = RequestContext(user_id="secret-user-42", correlation_id="c-forbidden")
 
     action = PendingAction(
         action_id="act-1",
-        user_id="user-1",
+        user_id="secret-user-42",
         action_type="cancel_order",
         params={"order_id": "ord-id-1", "order_number": "ORD-1", "reason": "İptal"},
         summary="İptal?",
@@ -170,16 +171,22 @@ async def test_executor_cancel_order_downstream_forbidden(
         expires_at=datetime.now(timezone.utc),
     )
 
-    result = await executor.execute(action, ctx)
+    with caplog.at_level(logging.WARNING):
+        result = await executor.execute(action, ctx)
 
     assert result.ok is False
-    assert "yetkiniz yok" in result.message
+    assert result.message == "Sipariş bulunamadı."
+
+    # Raw user_id must NOT be logged in service warning logs; user_id_hash is logged instead
+    executor_logs = "\n".join(r.getMessage() for r in caplog.records if r.name != "audit")
+    assert "secret-user-42" not in executor_logs
+    assert "user_id_hash=" in executor_logs
 
     ownership_audits = [r for r in audit_records if r.get("event") == "ownership_check"]
     assert len(ownership_audits) == 1
     assert ownership_audits[0]["outcome"] == "denied"
     assert ownership_audits[0]["action_type"] == "cancel_order"
-    assert ownership_audits[0]["user_id"] == "user-1"
+    assert ownership_audits[0]["user_id"] == "secret-user-42"
 
 
 @pytest.mark.anyio

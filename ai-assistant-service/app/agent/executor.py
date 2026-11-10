@@ -85,7 +85,7 @@ class ActionExecutor:
                 await record_denied_access(ctx.user_id, ctx.correlation_id)
                 return ExecutionResult(
                     ok=False,
-                    message="Bu sipariş için işlem yapma yetkiniz yok.",
+                    message="Sipariş bulunamadı.",
                 )
 
             # Zaten iptal edilmişse gereksiz POST atmadan başarılı dön
@@ -106,7 +106,7 @@ class ActionExecutor:
                 message="Siparişiniz başarıyla iptal edildi.",
             )
         except DownstreamForbidden:
-            logger.warning("Downstream denied access during order cancellation for user %s", ctx.user_id)
+            logger.warning("Downstream denied access during order cancellation (user_id_hash=%s)", ctx.user_id_hash)
             write_audit(
                 "ownership_check",
                 user_id=ctx.user_id,
@@ -118,10 +118,10 @@ class ActionExecutor:
             await record_denied_access(ctx.user_id, ctx.correlation_id)
             return ExecutionResult(
                 ok=False,
-                message="Bu sipariş için işlem yapma yetkiniz yok.",
+                message="Sipariş bulunamadı.",
             )
         except DownstreamNotFound:
-            logger.warning("Downstream order not found during cancellation for user %s", ctx.user_id)
+            logger.warning("Downstream order not found during cancellation (user_id_hash=%s)", ctx.user_id_hash)
             write_audit(
                 "ownership_check",
                 user_id=ctx.user_id,

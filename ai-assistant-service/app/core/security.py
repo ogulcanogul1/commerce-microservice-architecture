@@ -10,6 +10,7 @@ Bu modül iki temel savunma mekanizmasını yönetir:
 """
 
 from dataclasses import dataclass
+import hashlib
 import hmac
 import re
 import uuid
@@ -40,6 +41,11 @@ def _sanitize_correlation_id(value: str | None) -> str | None:
     return stripped if _CORRELATION_ID_PATTERN.fullmatch(stripped) else None
 
 
+def hash_user_id(user_id: str) -> str:
+    """Produces a deterministic 12-char SHA-256 hash of the user ID for safe logging."""
+    return hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12]
+
+
 @dataclass(frozen=True)
 class RequestContext:
     """Her HTTP isteği boyunca taşınan değiştirilemez (immutable / frozen) kimlik ve izleme bağlamı.
@@ -50,6 +56,10 @@ class RequestContext:
 
     user_id: str
     correlation_id: str | None
+
+    @property
+    def user_id_hash(self) -> str:
+        return hash_user_id(self.user_id)
 
 
 async def get_request_context(
